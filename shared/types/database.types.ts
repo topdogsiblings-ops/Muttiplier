@@ -640,6 +640,12 @@ export type Database = {
       }
       settings: {
         Row: {
+          clip_aspect_height: number
+          clip_aspect_width: number
+          clip_max_fps: number
+          clip_min_fps: number
+          clip_min_height: number
+          clip_min_width: number
           created_at: string
           created_by: string | null
           default_submission_rate: number
@@ -652,9 +658,17 @@ export type Database = {
           productive_hours_per_day: number
           singleton: boolean
           updated_at: string
+          vo_max_share: number
+          vo_min_share: number
           words_per_second: number
         }
         Insert: {
+          clip_aspect_height?: number
+          clip_aspect_width?: number
+          clip_max_fps?: number
+          clip_min_fps?: number
+          clip_min_height?: number
+          clip_min_width?: number
           created_at?: string
           created_by?: string | null
           default_submission_rate?: number
@@ -667,9 +681,17 @@ export type Database = {
           productive_hours_per_day?: number
           singleton?: boolean
           updated_at?: string
+          vo_max_share?: number
+          vo_min_share?: number
           words_per_second?: number
         }
         Update: {
+          clip_aspect_height?: number
+          clip_aspect_width?: number
+          clip_max_fps?: number
+          clip_min_fps?: number
+          clip_min_height?: number
+          clip_min_width?: number
           created_at?: string
           created_by?: string | null
           default_submission_rate?: number
@@ -682,6 +704,8 @@ export type Database = {
           productive_hours_per_day?: number
           singleton?: boolean
           updated_at?: string
+          vo_max_share?: number
+          vo_min_share?: number
           words_per_second?: number
         }
         Relationships: []

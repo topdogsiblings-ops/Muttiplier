@@ -121,6 +121,7 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 - `productive_hours_per_day numeric default 6`
 - `words_per_second numeric default 2.5` — speech pace for estimating VO length
 - `general_broll jsonb default '[]'` — suggested general product shots: `[{ "description": "...", "product_visible": true }]`
+- Clip check presets (§10a): `clip_aspect_width int default 9`, `clip_aspect_height int default 16`, `clip_min_width int default 1080`, `clip_min_height int default 1920`, `clip_min_fps numeric default 24`, `clip_max_fps numeric default 60`, `vo_min_share numeric default 0.6`, `vo_max_share numeric default 1.75` (VO length as a share of the script's estimated reading time)
 
 **people** — on-camera talent
 - `name text`, `slug text unique` (lowercase kebab, used in folder names), `active boolean`
@@ -332,9 +333,15 @@ Route: `/shoots/[code]/sheet?person=[slug]&show=[hook|cta|body|broll]`. Both fil
 - Header: shoot, product, brand, date, elapsed time, progress for what's showing, Start / End / Resume.
 - Sections: **Hooks** (used for every channel), **CTAs**, **VOs** (recorded off set), then **B-roll** by beat.
 - Each item: code, rendered script (VOs by beat), angle, location, and filming notes ("How to film").
-  - **Everyone view:** the item once, with one tap button per person: not done → filmed → skipped → not done. Per-person rewordings are listed under the item.
-  - **Person view:** one big tick, plus Skip.
-- **B-roll:** one numbered box per required clip; the shot is filmed once all its clips are ticked. Skip covers the whole shot.
+- **Every deliverable is filmed or uploaded from the checklist** (hooks, sync CTAs and b-roll: **Film** opens the camera; VOs and VO CTAs: **Record** records from the phone's microphone in the page; **Upload** picks an existing video or audio file) into its folder (§10d). **Only an uploaded clip ticks it off**; nothing can be ticked by hand. Removing the clip unticks it. Skip / unskip stays manual.
+  - **Everyone view:** the item once, with a status chip per person (tap to skip/unskip) and a "Film / upload" fold-out with one capture row per person. Per-person rewordings are listed under the item.
+  - **Person view:** a status tick with Skip underneath; Film/Record and Upload in the item's top row (next to the code and badges); the attached clip below the script.
+- **B-roll:** one numbered box per required clip, each filled by uploading a clip for it; the shot is filmed once all its clips are in. Skip covers the whole shot.
+- **Sanity checks** before a clip is uploaded, with presets in Settings → Defaults → Clip checks:
+  - Video: aspect ratio (default 9:16 vertical), resolution (default at least 1080×1920) and frame rate (default 24–60 fps, measured by playing the clip briefly; skipped if the browser can't measure it).
+  - VO recordings and VO CTAs: length against the script's estimated reading time at the speech pace (default 60%–175% of it); under a second counts as empty.
+  - Anything off shows the problems and asks **Upload anyway** or cancel. The clip card shows what was measured (e.g. `1080×1920 · 9:16 · 30 fps` or `0:42 · script ~0:38`) and how many checks failed.
+- Until Dropbox is connected (§12) uploads run in **test mode**: the upload is simulated, the item still ticks, and the clip is labelled "test mode, not really uploaded". Attached clips last only for the browser session.
 - No notes: every clip is treated as the final take. No print view.
 - When everything is ticked off, a toast offers to end the shoot.
 

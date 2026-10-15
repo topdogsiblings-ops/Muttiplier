@@ -6,7 +6,7 @@ const { request, answer } = useConfirm()
 <template>
   <UModal :open="!!request" :title="request?.title" @update:open="!$event && answer(false)">
     <template v-if="request?.description" #body>
-      <p class="text-sm text-default">
+      <p class="text-sm whitespace-pre-line text-default">
         {{ request.description }}
       </p>
     </template>

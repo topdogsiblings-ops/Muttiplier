@@ -135,12 +135,16 @@ async function saveStatus(item: BundleItem, next: string) {
   if (ok) await afterTick(next)
 }
 
-/** Toggle one status on and off (person view). */
-const setStatus = (item: BundleItem, status: string) => saveStatus(item, item.status === status ? 'planned' : status)
-
-/** Everyone view: each tap moves a person on: not done -> filmed -> skipped -> not done. */
-const cycleStatus = (item: BundleItem) =>
-  saveStatus(item, item.status === 'planned' ? 'filmed' : item.status === 'filmed' ? 'skipped' : 'planned')
+// Only an uploaded clip ticks a deliverable off; by hand you can only skip or unskip.
+const toggleSkip = (item: BundleItem) => {
+  if (item.status !== 'filmed') saveStatus(item, item.status === 'skipped' ? 'planned' : 'skipped')
+}
+const itemUploaded = (item: BundleItem) => {
+  if (item.status !== 'filmed') saveStatus(item, 'filmed')
+}
+const itemClipRemoved = (item: BundleItem) => {
+  if (item.status === 'filmed') saveStatus(item, 'planned')
+}
 
 /** Every clip is the keeper, so b-roll is ticked off clip by clip: a box per required clip. */
 const clipCount = (shot: Row<'broll_shots'>) => Math.max(1, shot.min_clips)
@@ -152,11 +156,42 @@ async function saveBroll(shot: Row<'broll_shots'>, patch: { status: string, clip
   if (ok) await afterTick(patch.status)
 }
 
-/** Ticking a box adds a clip, unticking takes one off; the shot is filmed once all its clips are in. */
-function toggleClip(shot: Row<'broll_shots'>, index: number) {
-  const clips = Math.min(shot.clips_filmed, clipCount(shot))
-  const next = index < clips ? clips - 1 : clips + 1
-  saveBroll(shot, { clips_filmed: next, status: next >= clipCount(shot) ? 'filmed' : 'planned' })
+/** Each uploaded clip fills a box (removing one empties it); the shot is filmed once all its clips are in. */
+function brollClipChanged(shot: Row<'broll_shots'>, change: 1 | -1) {
+  const next = Math.min(clipCount(shot), Math.max(0, Math.min(shot.clips_filmed, clipCount(shot)) + change))
+  const status = shot.status === 'skipped' ? 'skipped' : next >= clipCount(shot) ? 'filmed' : 'planned'
+  saveBroll(shot, { clips_filmed: next, status })
+}
+
+// Clips filmed or picked on set (spec §12); the uploader is in test mode until Dropbox is connected.
+// Open question (§12 Q2): raw/ vs edited/. For now clips go to the export folders, which use edited/.
+const itemClipFolder = (item: BundleItem) => itemFolder(bundle.value, item)
+/** VOs and VO CTAs are recorded on the microphone; everything else is filmed. */
+const clipMedia = (item: BundleItem) => item.kind === 'body' || (item.kind === 'cta' && item.cta_mode === 'vo') ? 'audio' as const : 'video' as const
+
+// Sanity checks on submitted clips use the presets in Settings -> Defaults.
+const { settings, load: loadRefData } = useRefData()
+await loadRefData()
+const clipRules = computed(() => clipRulesFrom(settings.value))
+/** How long a recording should be: the script's reading time at the speech pace in Settings. */
+const expectedSeconds = (item: BundleItem) => {
+  if (clipMedia(item) !== 'audio') return 0
+  const resolved = script(item)
+  const text = resolved.beats ? resolved.beats.map(beat => beat.script).join(' ') : resolved.text ?? ''
+  return estimateSeconds(text, Number(settings.value?.words_per_second) || DEFAULT_WORDS_PER_SECOND)
+}
+const brollClipFolder = (shot: Row<'broll_shots'>) => brollFolder(bundle.value, shot)
+
+/** Capture rows (each person's clip in the everyone view, each b-roll clip) stay folded away until opened. */
+const { clipFor } = useClipUpload()
+const openCapture = ref(new Set<string>())
+const attachedClips = (shot: Row<'broll_shots'>) =>
+  Array.from({ length: clipCount(shot) }, (_, index) => clipFor(clipTarget.broll(shot.id, index))).filter(Boolean).length
+const attachedGroupClips = (group: ShotGroup) => group.items.filter(item => clipFor(clipTarget.item(item.id))).length
+const captureOpen = (key: string) => openCapture.value.has(key)
+function toggleCapture(key: string) {
+  if (openCapture.value.has(key)) openCapture.value.delete(key)
+  else openCapture.value.add(key)
 }
 
 function skipBroll(shot: Row<'broll_shots'>) {
@@ -255,6 +290,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
       description="Press Start shoot, or just tick off the first shot and the shoot starts automatically."
     />
 
+
     <section v-for="section in sections" :key="section.title" class="mt-6">
       <h2 class="mb-2 flex items-baseline gap-2 text-sm font-semibold text-highlighted uppercase">
         {{ section.title }}
@@ -275,16 +311,25 @@ function skipBroll(shot: Row<'broll_shots'>) {
                 'opacity-60': item.status === 'skipped'
               }"
             >
-              <button
-                type="button"
-                class="flex size-12 shrink-0 items-center justify-center rounded-full border-2 transition"
-                :class="item.status === 'filmed' ? 'border-success bg-success text-inverted' : 'border-accented text-transparent'"
-                :aria-label="item.status === 'filmed' ? `Mark ${item.code} as not filmed` : `Mark ${item.code} as filmed`"
-                :aria-pressed="item.status === 'filmed'"
-                @click="setStatus(item, 'filmed')"
-              >
-                <UIcon name="i-lucide-check" class="size-7" />
-              </button>
+              <div class="flex shrink-0 flex-col items-center gap-1.5">
+                <!-- ticked by uploading a clip, not by hand -->
+                <span
+                  class="flex size-12 items-center justify-center rounded-full border-2"
+                  :class="item.status === 'filmed' ? 'border-success bg-success text-inverted' : 'border-accented text-transparent'"
+                  role="img"
+                  :aria-label="item.status === 'filmed' ? `${item.code} uploaded` : `${item.code} not uploaded yet`"
+                >
+                  <UIcon name="i-lucide-check" class="size-7" />
+                </span>
+                <UButton
+                  v-if="item.status !== 'filmed'"
+                  :label="item.status === 'skipped' ? 'Unskip' : 'Skip'"
+                  size="xs"
+                  color="neutral"
+                  :variant="item.status === 'skipped' ? 'solid' : 'ghost'"
+                  @click="toggleSkip(item)"
+                />
+              </div>
 
               <div class="min-w-0 flex-1 space-y-1.5">
                 <div class="flex flex-wrap items-center gap-1.5">
@@ -297,6 +342,20 @@ function skipBroll(shot: Row<'broll_shots'>) {
                   <span v-if="item.location" class="flex items-center gap-0.5 text-xs text-muted">
                     <UIcon name="i-lucide-map-pin" />{{ item.location }}
                   </span>
+                  <!-- film / record and upload, in the top row -->
+                  <ClipCapture
+                    v-if="item.status !== 'skipped'"
+                    part="actions"
+                    class="ml-auto"
+                    :target="clipTarget.item(item.id)"
+                    :folder="itemClipFolder(item)"
+                    :label="item.code"
+                    :media="clipMedia(item)"
+                    :rules="clipRules"
+                    :expected-seconds="expectedSeconds(item)"
+                    @uploaded="itemUploaded(item)"
+                    @removed="itemClipRemoved(item)"
+                  />
                 </div>
 
                 <template v-if="item.kind === 'body'">
@@ -315,16 +374,15 @@ function skipBroll(shot: Row<'broll_shots'>) {
                   <span><span class="font-medium">How to film:</span> {{ item.filming_notes }}</span>
                 </p>
 
-                <div class="flex justify-end">
-                  <UButton
-                    :label="item.status === 'skipped' ? 'Unskip' : 'Skip'"
-                    size="sm"
-                    color="neutral"
-                    :variant="item.status === 'skipped' ? 'solid' : 'ghost'"
-                    @click="setStatus(item, 'skipped')"
-                  />
-                </div>
-
+                <!-- the attached clip -->
+                <ClipCapture
+                  part="clip"
+                  :target="clipTarget.item(item.id)"
+                  :folder="itemClipFolder(item)"
+                  :label="item.code"
+                  :media="clipMedia(item)"
+                  @removed="itemClipRemoved(item)"
+                />
               </div>
             </article>
           </template>
@@ -344,6 +402,21 @@ function skipBroll(shot: Row<'broll_shots'>) {
               <span v-if="group.items[0]!.location" class="flex items-center gap-0.5 text-xs text-muted">
                 <UIcon name="i-lucide-map-pin" />{{ group.items[0]!.location }}
               </span>
+              <!-- film / record and upload for each person, in the top row -->
+              <UButton
+                :icon="clipMedia(group.items[0]!) === 'audio' ? 'i-lucide-mic' : 'i-lucide-video'"
+                :trailing-icon="captureOpen(`group:${group.code}`) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+                color="primary"
+                variant="soft"
+                size="sm"
+                class="ml-auto"
+                :aria-expanded="captureOpen(`group:${group.code}`)"
+                :aria-label="`${clipMedia(group.items[0]!) === 'audio' ? 'Record' : 'Film'} or upload clips for ${group.code}`"
+                @click="toggleCapture(`group:${group.code}`)"
+              >
+                <span v-if="attachedGroupClips(group)" class="tabular-nums"><span class="hidden sm:inline">Clips · </span>{{ attachedGroupClips(group) }}</span>
+                <span v-else class="hidden sm:inline">{{ clipMedia(group.items[0]!) === 'audio' ? 'Record / upload' : 'Film / upload' }}</span>
+              </UButton>
             </div>
 
             <template v-if="group.kind === 'body'">
@@ -366,7 +439,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
               {{ script(item).beats ? script(item).beats!.map(beat => beat.script).join(' ') : script(item).text }}
             </p>
 
-            <!-- one tap per person: not done -> filmed -> skipped -> not done -->
+            <!-- each person's status: ticked by their uploaded clip; tap to skip or unskip -->
             <div class="flex flex-wrap gap-2 pt-1">
               <button
                 v-for="item in group.items"
@@ -378,8 +451,11 @@ function skipBroll(shot: Row<'broll_shots'>) {
                   : item.status === 'skipped'
                     ? 'border-warning/50 text-muted line-through'
                     : 'border-accented text-highlighted'"
-                :aria-label="`${personName(item.person_id)}: ${item.status === 'planned' ? 'not done' : item.status}. Tap to change.`"
-                @click="cycleStatus(item)"
+                :disabled="item.status === 'filmed'"
+                :aria-label="item.status === 'filmed'
+                  ? `${personName(item.person_id)}: uploaded`
+                  : `${personName(item.person_id)}: ${item.status === 'skipped' ? 'skipped. Tap to unskip.' : 'not uploaded yet. Tap to skip.'}`"
+                @click="toggleSkip(item)"
               >
                 <UIcon
                   :name="item.status === 'filmed' ? 'i-lucide-check' : item.status === 'skipped' ? 'i-lucide-skip-forward' : 'i-lucide-circle'"
@@ -388,13 +464,30 @@ function skipBroll(shot: Row<'broll_shots'>) {
                 {{ personName(item.person_id) }}
               </button>
             </div>
+            <!-- film or upload, one clip per person -->
+            <div v-if="captureOpen(`group:${group.code}`)" class="space-y-2">
+              <div v-for="item in group.items" :key="`clip-${item.id}`" class="flex items-start gap-2">
+                <span class="mt-2 w-16 shrink-0 truncate text-sm font-medium text-muted">{{ personName(item.person_id) }}</span>
+                <ClipCapture
+                  class="min-w-0 flex-1"
+                  :target="clipTarget.item(item.id)"
+                  :folder="itemClipFolder(item)"
+                  :label="`${group.code} for ${personName(item.person_id)}`"
+                  :media="clipMedia(item)"
+                  :rules="clipRules"
+                  :expected-seconds="expectedSeconds(item)"
+                  @uploaded="itemUploaded(item)"
+                  @removed="itemClipRemoved(item)"
+                />
+              </div>
+            </div>
           </article>
         </template>
       </div>
     </section>
 
     <p v-if="!person && sections.length" class="mt-3 text-xs text-muted">
-      Tap a name to mark it filmed, again for skipped, and again to clear.
+      A name is ticked once their clip is uploaded. Tap a name to skip it, and again to unskip.
     </p>
     <section v-if="showBroll && brollGroups.length" class="mt-8">
       <h2 class="mb-2 text-sm font-semibold text-highlighted uppercase">
@@ -426,6 +519,21 @@ function skipBroll(shot: Row<'broll_shots'>) {
                   </template>
                 </p>
               </div>
+              <!-- film / upload, in the top row -->
+              <UButton
+                v-if="shot.status !== 'skipped' || attachedClips(shot)"
+                icon="i-lucide-video"
+                :trailing-icon="captureOpen(shot.id) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+                color="primary"
+                variant="soft"
+                size="sm"
+                :aria-expanded="captureOpen(shot.id)"
+                :aria-label="`Film or upload clips for ${shot.description || 'this shot'}`"
+                @click="toggleCapture(shot.id)"
+              >
+                <span v-if="attachedClips(shot)" class="tabular-nums"><span class="hidden sm:inline">Clips · </span>{{ attachedClips(shot) }}</span>
+                <span v-else class="hidden sm:inline">Film / upload</span>
+              </UButton>
               <UButton
                 :label="shot.status === 'skipped' ? 'Unskip' : 'Skip'"
                 size="sm"
@@ -436,20 +544,32 @@ function skipBroll(shot: Row<'broll_shots'>) {
             </div>
             <!-- one box per clip -->
             <div class="mt-2 flex flex-wrap gap-2">
-              <button
+              <span
                 v-for="(_, index) in clipCount(shot)"
                 :key="index"
-                type="button"
                 class="flex size-11 items-center justify-center rounded-lg border-2 text-sm font-semibold tabular-nums"
                 :class="index < shot.clips_filmed ? 'border-success bg-success text-inverted' : 'border-accented text-muted'"
-                :disabled="shot.status === 'skipped'"
-                :aria-label="`Clip ${index + 1} of ${clipCount(shot)}: ${shot.description}`"
-                :aria-pressed="index < shot.clips_filmed"
-                @click="toggleClip(shot, index)"
+                role="img"
+                :aria-label="`Clip ${index + 1} of ${clipCount(shot)}: ${index < shot.clips_filmed ? 'uploaded' : 'not uploaded yet'}`"
               >
                 <UIcon v-if="index < shot.clips_filmed" name="i-lucide-check" class="size-5" />
-                <span v-else >{{ index + 1 }}</span>
-              </button>
+                <span v-else>{{ index + 1 }}</span>
+              </span>
+            </div>
+            <!-- film or upload, one clip per box -->
+            <div v-if="captureOpen(shot.id)" class="mt-2 space-y-2">
+              <div v-for="(_, index) in clipCount(shot)" :key="index" class="flex items-start gap-2">
+                <span class="mt-2 w-5 shrink-0 text-center text-sm font-semibold text-muted tabular-nums">{{ index + 1 }}</span>
+                <ClipCapture
+                  class="min-w-0 flex-1"
+                  :target="clipTarget.broll(shot.id, index)"
+                  :folder="brollClipFolder(shot)"
+                  :rules="clipRules"
+                  :label="`clip ${index + 1} of ${shot.description || 'this shot'}`"
+                  @uploaded="brollClipChanged(shot, 1)"
+                  @removed="brollClipChanged(shot, -1)"
+                />
+              </div>
             </div>
           </div>
         </div>

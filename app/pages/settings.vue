@@ -154,6 +154,17 @@ const defaults = reactive({
 })
 /** General product shots suggested on every shoot (pack shots, label close-ups…). */
 const generalBroll = ref<BrollSuggestion[]>([])
+/** Presets for the sanity checks on clips submitted from the checklist. VO shares are shown as %. */
+const clipChecks = reactive({
+  clip_aspect_width: DEFAULT_CLIP_RULES.aspectWidth,
+  clip_aspect_height: DEFAULT_CLIP_RULES.aspectHeight,
+  clip_min_width: DEFAULT_CLIP_RULES.minWidth,
+  clip_min_height: DEFAULT_CLIP_RULES.minHeight,
+  clip_min_fps: DEFAULT_CLIP_RULES.minFps,
+  clip_max_fps: DEFAULT_CLIP_RULES.maxFps,
+  vo_min_share: DEFAULT_CLIP_RULES.voMinShare * 100,
+  vo_max_share: DEFAULT_CLIP_RULES.voMaxShare * 100
+})
 
 watch(settings, (value) => {
   if (!value) return
@@ -167,7 +178,29 @@ watch(settings, (value) => {
     words_per_second: Number(value.words_per_second)
   })
   generalBroll.value = parseSuggestions(value.general_broll)
+  const rules = clipRulesFrom(value)
+  Object.assign(clipChecks, {
+    clip_aspect_width: rules.aspectWidth,
+    clip_aspect_height: rules.aspectHeight,
+    clip_min_width: rules.minWidth,
+    clip_min_height: rules.minHeight,
+    clip_min_fps: rules.minFps,
+    clip_max_fps: rules.maxFps,
+    vo_min_share: Math.round(rules.voMinShare * 100),
+    vo_max_share: Math.round(rules.voMaxShare * 100)
+  })
 }, { immediate: true })
+
+const clipCheckFields = [
+  { key: 'clip_aspect_width', label: 'Aspect ratio width', unit: '', step: 1, help: 'e.g. 9 for 9:16 vertical' },
+  { key: 'clip_aspect_height', label: 'Aspect ratio height', unit: '', step: 1, help: 'e.g. 16 for 9:16 vertical' },
+  { key: 'clip_min_width', label: 'Minimum width', unit: 'px', step: 1, help: 'Short side of the frame' },
+  { key: 'clip_min_height', label: 'Minimum height', unit: 'px', step: 1, help: 'Long side of the frame' },
+  { key: 'clip_min_fps', label: 'Minimum frame rate', unit: 'fps', step: 1, help: '23.976 counts as 24' },
+  { key: 'clip_max_fps', label: 'Maximum frame rate', unit: 'fps', step: 1, help: 'Higher is usually slow motion' },
+  { key: 'vo_min_share', label: 'Shortest VO', unit: '%', step: 5, help: 'Of the script\'s estimated reading time' },
+  { key: 'vo_max_share', label: 'Longest VO', unit: '%', step: 5, help: 'Of the script\'s estimated reading time' }
+] as const
 
 const defaultFields = [
   { key: 'default_submission_rate', label: 'Default submission rate', unit: '%', help: 'Share of recipes rendered and submitted' },
@@ -186,7 +219,10 @@ async function saveDefaults() {
     must(await db.from('settings').update({
       ...defaults,
       default_submission_rate: defaults.default_submission_rate / 100,
-      general_broll: parseSuggestions(generalBroll.value) as unknown as Json
+      general_broll: parseSuggestions(generalBroll.value) as unknown as Json,
+      ...clipChecks,
+      vo_min_share: clipChecks.vo_min_share / 100,
+      vo_max_share: clipChecks.vo_max_share / 100
     }).eq('id', settings.value!.id))
     await load(true)
   }, 'Defaults saved')
@@ -342,6 +378,29 @@ async function saveDefaults() {
             <BrollSuggestionsEditor v-model="generalBroll" placeholder="e.g. Pack shot on a clean surface" />
             <template #footer>
               <UButton label="Save product shots" :loading="saving" @click="saveDefaults" />
+            </template>
+          </UCard>
+
+          <UCard>
+            <template #header>
+              <h3 class="font-semibold text-highlighted">
+                Clip checks
+              </h3>
+              <p class="text-sm text-muted">
+                Every clip filmed, recorded or uploaded from the checklist is checked against these. Videos: shape, resolution and frame rate. VO recordings: length against the script's estimated reading time at the speech pace above. Anything off asks before uploading.
+              </p>
+            </template>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <UFormField v-for="field in clipCheckFields" :key="field.key" :label="field.label" :help="field.help">
+                <UInput v-model.number="clipChecks[field.key]" type="number" :step="field.step" min="1" class="w-full">
+                  <template v-if="field.unit" #trailing>
+                    <span class="text-xs text-muted">{{ field.unit }}</span>
+                  </template>
+                </UInput>
+              </UFormField>
+            </div>
+            <template #footer>
+              <UButton label="Save clip checks" :loading="saving" @click="saveDefaults" />
             </template>
           </UCard>
         </template>
