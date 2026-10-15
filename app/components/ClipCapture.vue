@@ -1,37 +1,35 @@
 <script setup lang="ts">
-// Film, record or pick a clip for one checklist target and send it through useClipUpload
-// (test mode until Dropbox, spec §12). Video (hooks, sync CTAs, b-roll) films with the camera;
-// audio (VOs, VO CTAs) records from the phone's microphone right here in the page.
+// Add a clip for one checklist target from the phone (Photos or Files) and save it on the
+// phone through useClipUpload; saved clips go to Dropbox when the shoot is ended (spec §12).
+// Clips are filmed and recorded in the phone's own apps: iOS compresses anything its camera
+// hands straight to a web page (to 480×360), so the app doesn't film or record itself.
 // Every clip is sanity-checked first (clipChecks.ts, presets in Settings); anything off asks
-// before uploading.
+// before saving.
 //
-// Video with a script (hooks, sync CTAs) can also be filmed in the page with the script over
-// the camera (TeleprompterCamera.vue).
-//
-// `part` splits it so the buttons can sit in an item's top row and the clip below:
-// 'actions' = Film/Record + Upload (and the recording bar), 'clip' = the attached clip, 'all' = both.
+// `part` splits it so the button can sit in an item's top row and the clip below:
+// 'actions' = Add clip / Replace, 'clip' = the attached clip, 'all' = both.
 const props = withDefaults(defineProps<{
   /** from clipTarget.item() / clipTarget.broll() */
   target: string
+  /** the shoot code, so the clip uploads with its shoot */
+  shoot: string
   /** Dropbox folder under topdogugc/, from itemFolder() / brollFolder() */
   folder: string
-  /** what the clip is for, for screen readers and recording names (e.g. "V03", "clip 2") */
+  /** what the clip is for, for screen readers (e.g. "V03", "clip 2") */
   label: string
   media?: 'video' | 'audio'
   part?: 'all' | 'actions' | 'clip'
   rules?: ClipRules
   /** audio: the script's estimated reading time, for the length check */
   expectedSeconds?: number
-  /** video: the resolved script, to film with it over the camera */
-  script?: string
   size?: 'xs' | 'sm' | 'md'
 }>(), { media: 'video', part: 'all', rules: () => DEFAULT_CLIP_RULES, expectedSeconds: 0, size: 'sm' })
 
-// An uploaded clip is what ticks a deliverable off: `uploaded` when this target gains one,
-// `removed` when it loses it (removed, or replaced by a clip that failed).
-const emit = defineEmits<{ uploaded: [path: string], removed: [] }>()
+// A saved clip is what ticks a deliverable off: `saved` when this target gains one,
+// `removed` when it loses it.
+const emit = defineEmits<{ saved: [], removed: [] }>()
 
-const { connected, clipFor, attach, remove } = useClipUpload()
+const { connected, clipFor, save, remove } = useClipUpload()
 const { confirmDialog } = useConfirm()
 const toast = useToast()
 const clip = computed(() => clipFor(props.target))
@@ -39,35 +37,36 @@ const audio = computed(() => props.media === 'audio')
 const showActions = computed(() => props.part !== 'clip')
 const showClip = computed(() => props.part !== 'actions')
 
-const filmInput = useTemplateRef<HTMLInputElement>('filmInput')
 const pickInput = useTemplateRef<HTMLInputElement>('pickInput')
 const checking = ref(false)
 
 /** Measure the clip and run the sanity checks. */
-async function check(file: File, recordedSeconds?: number) {
+async function check(file: File) {
   if (audio.value) {
-    const duration = recordedSeconds ?? (await measureAudio(file)).duration
-    const measure = { duration, expectedSeconds: props.expectedSeconds }
+    const measure = { duration: (await measureAudio(file)).duration, expectedSeconds: props.expectedSeconds }
     return { details: describeAudio(measure) || null, issues: checkAudio(measure, props.rules) }
   }
   const measure = await measureVideo(file)
   return { details: measure.width ? describeVideo(measure, props.rules) : null, issues: checkVideo(measure, props.rules) }
 }
 
-async function send(file: File, recordedSeconds?: number) {
+async function send(file: File) {
   checking.value = true
-  const checked = await check(file, recordedSeconds).finally(() => (checking.value = false))
+  const checked = await check(file).finally(() => (checking.value = false))
   if (checked.issues.length && !(await confirmDialog({
     title: 'This clip looks off',
-    description: `${checked.issues.map(issue => `• ${issue}`).join('\n')}\n\nUpload it anyway, or cancel and ${audio.value ? 'record' : 'film'} it again.`,
-    confirmLabel: 'Upload anyway'
+    description: `${checked.issues.map(issue => `• ${issue}`).join('\n')}\n\nSave it anyway, or cancel and pick another.`,
+    confirmLabel: 'Save anyway'
   }))) return
 
-  const hadUpload = clip.value?.state === 'uploaded'
-  const result = await attach(props.target, props.folder, file, checked)
-  const uploaded = result.state === 'uploaded' && !!result.path
-  if (uploaded && !hadUpload) emit('uploaded', result.path!)
-  else if (!uploaded && hadUpload) emit('removed')
+  const hadClip = !!clip.value
+  try {
+    await save(props.target, props.shoot, props.folder, file, checked)
+  } catch {
+    toast.add({ title: 'Couldn\'t save the clip on this phone', description: 'The phone may be out of space. Free some up, then try again.', color: 'error', icon: 'i-lucide-hard-drive' })
+    return
+  }
+  if (!hadClip) emit('saved')
 }
 
 async function onPick(event: Event) {
@@ -77,69 +76,6 @@ async function onPick(event: Event) {
   if (file) await send(file)
 }
 
-// --- recording (audio) --------------------------------------------------------
-
-const recorder = shallowRef<MediaRecorder | null>(null)
-const recordStart = ref(0)
-const now = ref(0)
-let ticker: ReturnType<typeof setInterval> | undefined
-const recordedSeconds = computed(() => Math.max(0, (now.value - recordStart.value) / 1000))
-
-const extensionFor = (type: string) =>
-  type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : type.includes('wav') ? 'wav' : 'webm'
-
-async function startRecording() {
-  let stream: MediaStream
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-  } catch {
-    toast.add({ title: 'Can\'t use the microphone', description: 'Allow microphone access for this site, then try again.', color: 'error', icon: 'i-lucide-mic-off' })
-    return
-  }
-  const chunks: Blob[] = []
-  const next = new MediaRecorder(stream)
-  next.ondataavailable = event => event.data.size && chunks.push(event.data)
-  next.onstop = async () => {
-    stream.getTracks().forEach(track => track.stop())
-    clearInterval(ticker)
-    now.value = Date.now()
-    const seconds = recordedSeconds.value
-    recorder.value = null
-    if (!chunks.length) return
-    const type = next.mimeType || chunks[0]!.type || 'audio/webm'
-    const name = `${props.label.replace(/[^\w-]+/g, '-')}-${new Date().toISOString().slice(11, 19).replace(/:/g, '')}.${extensionFor(type)}`
-    await send(new File(chunks, name, { type }), seconds)
-  }
-  next.start()
-  recorder.value = next
-  recordStart.value = now.value = Date.now()
-  ticker = setInterval(() => (now.value = Date.now()), 250)
-}
-
-const stopRecording = () => recorder.value?.stop()
-
-onBeforeUnmount(() => {
-  // leaving mid-recording: let go of the microphone without keeping the take
-  if (!recorder.value) return
-  recorder.value.ondataavailable = null
-  recorder.value.onstop = null
-  recorder.value.stream.getTracks().forEach(track => track.stop())
-  recorder.value.stop()
-  clearInterval(ticker)
-})
-
-const capture = () => audio.value ? startRecording() : filmInput.value?.click()
-
-// --- teleprompter (video with a script) ----------------------------------------
-
-const canPrompt = computed(() => !audio.value && !!props.script?.trim())
-const prompting = ref(false)
-
-function onPrompted(file: File) {
-  prompting.value = false
-  send(file)
-}
-
 // --- clip ------------------------------------------------------------------
 
 async function removeClip() {
@@ -147,13 +83,13 @@ async function removeClip() {
   if (!(await confirmDialog({
     title: 'Remove this clip?',
     description: uploaded
-      ? 'It will be unticked until another clip is uploaded.'
-      : 'It hasn\'t been uploaded. If you recorded it here, your phone may not have kept a copy.',
+      ? 'It will be unticked until another clip is saved. The copy already uploaded stays in Dropbox.'
+      : 'It will be deleted from this phone and unticked until another clip is saved.',
     confirmLabel: 'Remove',
     danger: true
   }))) return
-  remove(props.target)
-  if (uploaded) emit('removed')
+  await remove(props.target)
+  emit('removed')
 }
 
 const badge = computed(() => {
@@ -161,28 +97,16 @@ const badge = computed(() => {
     case 'uploading': return { label: 'Uploading…', color: 'info' as const, icon: 'i-lucide-loader-circle' }
     case 'uploaded': return connected
       ? { label: 'Uploaded to Dropbox', color: 'success' as const, icon: 'i-lucide-cloud-check' }
-      : { label: 'Ticked off · test mode, not really uploaded', color: 'warning' as const, icon: 'i-lucide-flask-conical' }
-    case 'failed': return { label: 'Upload failed · try again', color: 'error' as const, icon: 'i-lucide-cloud-alert' }
-    default: return { label: 'Not uploaded · Dropbox not connected', color: 'neutral' as const, icon: 'i-lucide-cloud-off' }
+      : { label: 'Uploaded · test mode, not really sent', color: 'warning' as const, icon: 'i-lucide-flask-conical' }
+    case 'failed': return { label: 'Upload failed · retried with the rest', color: 'error' as const, icon: 'i-lucide-cloud-alert' }
+    default: return { label: 'Saved on this phone · uploads when the shoot ends', color: 'neutral' as const, icon: 'i-lucide-smartphone' }
   }
 })
-
-const captureLabel = computed(() => (audio.value ? 'Record' : 'Film') + (clip.value ? ' again' : ''))
-const captureIcon = computed(() => audio.value ? 'i-lucide-mic' : 'i-lucide-video')
 </script>
 
 <template>
   <div v-if="showActions || clip" :class="props.part === 'all' ? 'space-y-2' : undefined">
     <template v-if="showActions">
-      <input
-        v-if="!audio"
-        ref="filmInput"
-        type="file"
-        accept="video/*"
-        capture="environment"
-        class="hidden"
-        @change="onPick"
-      >
       <input
         ref="pickInput"
         type="file"
@@ -190,70 +114,19 @@ const captureIcon = computed(() => audio.value ? 'i-lucide-mic' : 'i-lucide-vide
         class="hidden"
         @change="onPick"
       >
-
-      <!-- recording in progress -->
-      <div v-if="recorder" class="flex items-center gap-2 rounded-md border border-error/40 bg-error/5 py-1 pr-1 pl-2">
-        <span class="relative flex size-2.5 shrink-0">
-          <span class="absolute inline-flex size-full animate-ping rounded-full bg-error opacity-60" />
-          <span class="relative inline-flex size-2.5 rounded-full bg-error" />
-        </span>
-        <span class="text-sm font-medium text-highlighted tabular-nums">{{ formatDuration(recordedSeconds) }}</span>
-        <UButton
-          icon="i-lucide-square"
-          label="Stop"
-          color="error"
-          :size="props.size"
-          :aria-label="`Stop recording ${props.label}`"
-          @click="stopRecording"
-        />
-      </div>
-
-      <div v-else class="flex gap-1.5">
-        <!-- icons only on phones; labels from sm up -->
-        <UButton
-          :icon="captureIcon"
-          :color="clip ? 'neutral' : 'primary'"
-          :variant="clip ? 'ghost' : 'soft'"
-          :size="props.size"
-          :loading="checking"
-          :aria-label="`${captureLabel} ${props.label}`"
-          @click="capture"
-        >
-          <span class="hidden sm:inline">{{ captureLabel }}</span>
-        </UButton>
-        <UButton
-          v-if="canPrompt"
-          icon="i-lucide-scroll-text"
-          color="neutral"
-          variant="outline"
-          :size="props.size"
-          :disabled="checking"
-          :aria-label="`Film ${props.label} with the script on screen`"
-          @click="prompting = true"
-        >
-          <span class="hidden sm:inline">Film with script</span>
-        </UButton>
-        <UButton
-          :icon="clip ? 'i-lucide-replace' : 'i-lucide-upload'"
-          color="neutral"
-          :variant="clip ? 'ghost' : 'outline'"
-          :size="props.size"
-          :disabled="checking"
-          :aria-label="`${clip ? 'Replace the clip' : 'Upload a clip'} for ${props.label}`"
-          @click="pickInput?.click()"
-        >
-          <span class="hidden sm:inline">{{ clip ? 'Replace' : 'Upload' }}</span>
-        </UButton>
-      </div>
+      <!-- icon only on phones; label from sm up -->
+      <UButton
+        :icon="clip ? 'i-lucide-replace' : 'i-lucide-plus'"
+        :color="clip ? 'neutral' : 'primary'"
+        :variant="clip ? 'ghost' : 'soft'"
+        :size="props.size"
+        :loading="checking"
+        :aria-label="`${clip ? 'Replace the clip' : 'Add a clip'} for ${props.label}`"
+        @click="pickInput?.click()"
+      >
+        <span class="hidden sm:inline">{{ clip ? 'Replace' : 'Add clip' }}</span>
+      </UButton>
     </template>
-
-    <TeleprompterCamera
-      v-if="prompting && props.script"
-      :script="props.script"
-      :label="props.label"
-      @recorded="onPrompted"
-      @close="prompting = false"
-    />
 
     <div v-if="showClip && clip" class="space-y-2 rounded-md border border-default p-2">
       <div class="flex items-center gap-2">
@@ -298,7 +171,7 @@ const captureIcon = computed(() => audio.value ? 'i-lucide-mic' : 'i-lucide-vide
         </UTooltip>
       </div>
 
-      <template v-if="clip.state !== 'uploading'">
+      <template v-if="clip.url && clip.state !== 'uploading'">
         <audio v-if="audio" :src="clip.url" controls preload="metadata" class="w-full" />
         <video
           v-else

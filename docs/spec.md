@@ -333,15 +333,16 @@ Route: `/shoots/[code]/sheet?person=[slug]&show=[hook|cta|body|broll]`. Both fil
 - Header: shoot, product, brand, date, elapsed time, progress for what's showing, Start / End / Resume.
 - Sections: **Hooks** (used for every channel), **CTAs**, **VOs** (recorded off set), then **B-roll** by beat.
 - Each item: code, rendered script (VOs by beat), angle, location, and filming notes ("How to film").
-- **Every deliverable is filmed or uploaded from the checklist** (hooks, sync CTAs and b-roll: **Film** opens the camera; VOs and VO CTAs: **Record** records from the phone's microphone in the page; **Upload** picks an existing video or audio file) into its folder (§10d). **Only an uploaded clip ticks it off**; nothing can be ticked by hand. Removing the clip unticks it. Skip / unskip stays manual.
-  - **Everyone view:** the item once, with a status chip per person (tap to skip/unskip) and a "Film / upload" fold-out with one capture row per person. Per-person rewordings are listed under the item.
-  - **Person view:** a status tick with Skip underneath; Film/Record and Upload in the item's top row (next to the code and badges); the attached clip below the script.
-- **B-roll:** one numbered box per required clip, each filled by uploading a clip for it; the shot is filmed once all its clips are in. Skip covers the whole shot.
-- **Sanity checks** before a clip is uploaded, with presets in Settings → Defaults → Clip checks:
+- **Every deliverable gets its clip from the checklist** with **Add clip**, which picks a video (hooks, sync CTAs, b-roll) or audio file (VOs, VO CTAs) from the phone, for its folder (§10d). Clips are filmed and recorded in the phone's own apps; the app doesn't film or record itself, because iOS compresses video its camera hands straight to a web page (to 480×360). **Only a saved clip ticks it off**; nothing can be ticked by hand. Removing the clip unticks it. Skip / unskip stays manual.
+  - **Everyone view:** the item once, with a status chip per person (tap to skip/unskip) and an "Add clips" fold-out with one row per person. Per-person rewordings are listed under the item.
+  - **Person view:** a status tick with Skip underneath; Add clip in the item's top row (next to the code and badges); the attached clip below the script.
+- **B-roll:** one numbered box per required clip, each filled by saving a clip for it; the shot is filmed once all its clips are in. Skip covers the whole shot.
+- **Sanity checks** before a clip is saved, with presets in Settings → Defaults → Clip checks:
   - Video: aspect ratio (default 9:16 vertical), resolution (default at least 1080×1920) and frame rate (default 24–60 fps, measured by playing the clip briefly; skipped if the browser can't measure it).
   - VO recordings and VO CTAs: length against the script's estimated reading time at the speech pace (default 60%–175% of it); under a second counts as empty.
-  - Anything off shows the problems and asks **Upload anyway** or cancel. The clip card shows what was measured (e.g. `1080×1920 · 9:16 · 30 fps` or `0:42 · script ~0:38`) and how many checks failed.
-- Until Dropbox is connected (§12) uploads run in **test mode**: the upload is simulated, the item still ticks, and the clip is labelled "test mode, not really uploaded". Attached clips last only for the browser session.
+  - Anything off shows the problems and asks **Save anyway** or cancel. The clip card shows what was measured (e.g. `1080×1920 · 9:16 · 30 fps` or `0:42 · script ~0:38`) and how many checks failed.
+- **Clips are saved on the phone first** (IndexedDB, with persistent storage requested), so they survive reloads, closing the app and a flat battery. Nothing uploads during the shoot. **Ending the shoot** from the checklist uploads every clip saved on that phone, one at a time, with progress (keep the app open); each clip is deleted from the phone once its upload is confirmed. Failed uploads stay on the phone and an **Upload** button retries them, also for a shoot ended elsewhere.
+- Until Dropbox is connected (§12) uploads run in **test mode**: the upload is simulated and the clip is labelled "test mode, not really sent".
 - No notes: every clip is treated as the final take. No print view.
 - When everything is ticked off, a toast offers to end the shoot.
 
