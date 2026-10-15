@@ -9,8 +9,22 @@ export default defineNuxtConfig({
   app: {
     head: {
       title: 'Muttiplier',
-      meta: [{ name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' }],
-      link: [{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }]
+      meta: [
+        { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
+        // Saved to the home screen, open as a standalone app rather than in Safari.
+        { name: 'apple-mobile-web-app-capable', content: 'yes' },
+        { name: 'mobile-web-app-capable', content: 'yes' },
+        { name: 'apple-mobile-web-app-title', content: 'Muttiplier' },
+        { name: 'apple-mobile-web-app-status-bar-style', content: 'default' },
+        // The status bar follows the app's background in light and dark mode.
+        { name: 'theme-color', content: '#ffffff', media: '(prefers-color-scheme: light)' },
+        { name: 'theme-color', content: '#1c1917', media: '(prefers-color-scheme: dark)' }
+      ],
+      link: [
+        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+        { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
+        { rel: 'manifest', href: '/manifest.webmanifest' }
+      ]
     }
   },
 
