@@ -23,6 +23,8 @@ const props = withDefaults(defineProps<{
   /** audio: the script's estimated reading time, for the length check */
   expectedSeconds?: number
   size?: 'xs' | 'sm' | 'md'
+  /** a label always shown on the button (e.g. a person's name): + before a clip, ✓ after */
+  buttonLabel?: string
 }>(), { media: 'video', part: 'all', rules: () => DEFAULT_CLIP_RULES, expectedSeconds: 0, size: 'sm' })
 
 // A saved clip is what ticks a deliverable off: `saved` when this target gains one,
@@ -114,8 +116,20 @@ const badge = computed(() => {
         class="hidden"
         @change="onPick"
       >
+      <UButton
+        v-if="props.buttonLabel"
+        :icon="clip ? 'i-lucide-check' : 'i-lucide-plus'"
+        :label="props.buttonLabel"
+        :color="clip ? 'success' : 'primary'"
+        variant="soft"
+        :size="props.size"
+        :loading="checking"
+        :aria-label="`${clip ? 'Replace the clip' : 'Add a clip'} for ${props.label}`"
+        @click="pickInput?.click()"
+      />
       <!-- icon only on phones; label from sm up -->
       <UButton
+        v-else
         :icon="clip ? 'i-lucide-replace' : 'i-lucide-plus'"
         :color="clip ? 'neutral' : 'primary'"
         :variant="clip ? 'ghost' : 'soft'"

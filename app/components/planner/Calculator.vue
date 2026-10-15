@@ -222,7 +222,7 @@ const warnings = computed(() => [
         </ul>
       </template>
       <p v-if="result.totals.brollClips" class="mt-2 text-xs text-muted">
-        {{ result.totals.brollClips }} b-roll clips, shared by every channel.
+        {{ result.totals.brollClips }} b-roll clips: every channel films its own clips of each shared shot.
       </p>
     </section>
     <!-- Chart: time per person, on camera + VO stacked -->

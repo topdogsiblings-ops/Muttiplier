@@ -60,7 +60,7 @@ export interface ChannelResult {
   recipes: number
   concepts: number
   submissions: number
-  /** Σ min_clips of this channel's b-roll shots (product-only shots are counted in totals.sharedBrollClips) */
+  /** Σ min_clips of this channel's own b-roll shots plus every shared shot: each channel films its own */
   brollClips: number
 }
 
@@ -79,6 +79,7 @@ export interface CalcResult {
     voHours: number
     shootDays: number
     brollClips: number
+    /** Σ min_clips of the shared shots, which every channel films (once if the shoot has no channels) */
     sharedBrollClips: number
   }
   warnings: string[]
@@ -99,6 +100,8 @@ export function calculate(input: CalcInput): CalcResult {
   const broll = (input.brollShots ?? []).filter(shot => shot.status !== 'skipped')
   const warnings: string[] = []
 
+  // Shared shots (no channel) are filmed min_clips times for every channel.
+  const sharedBroll = broll.filter(shot => shot.channelId === null).reduce((sum, shot) => sum + shot.minClips, 0)
   const perChannel: ChannelResult[] = channels.map(channel => ({
     id: channel.id,
     name: channel.name,
@@ -106,7 +109,7 @@ export function calculate(input: CalcInput): CalcResult {
     recipes: 0,
     concepts: 0,
     submissions: 0,
-    brollClips: broll.filter(shot => shot.channelId === channel.id).reduce((sum, shot) => sum + shot.minClips, 0)
+    brollClips: broll.filter(shot => shot.channelId === channel.id).reduce((sum, shot) => sum + shot.minClips, 0) + sharedBroll
   }))
 
   const hooksOf = (personId: string, channelId: string) => items.filter(item =>
@@ -200,7 +203,6 @@ export function calculate(input: CalcInput): CalcResult {
   // person with the most on-camera time, not everyone's time added up.
   const longestOnCameraMin = Math.max(0, ...perPerson.map(p => p.onCameraMin))
   const days = longestOnCameraMin / 60 / settings.productive_hours_per_day
-  const sharedBrollClips = sum(broll.filter(shot => shot.channelId === null), shot => shot.minClips)
 
   return {
     perPerson,
@@ -217,8 +219,8 @@ export function calculate(input: CalcInput): CalcResult {
       voHours: sum(perPerson, p => p.voMin) / 60,
       // rounded up to the nearest half day
       shootDays: Math.ceil(days * 2 - 1e-9) / 2,
-      brollClips: sum(perChannel, c => c.brollClips) + sharedBrollClips,
-      sharedBrollClips
+      brollClips: channels.length ? sum(perChannel, c => c.brollClips) : sharedBroll,
+      sharedBrollClips: sharedBroll
     },
     warnings
   }

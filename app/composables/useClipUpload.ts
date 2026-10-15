@@ -52,10 +52,10 @@ const stubUploader: ClipUploader = {
   }
 }
 
-/** One clip per target: a shoot item, or one clip box of a b-roll shot. */
+/** One clip per target: a shoot item, or one required clip of a b-roll shot for one channel. */
 export const clipTarget = {
   item: (itemId: string) => `item:${itemId}`,
-  broll: (shotId: string, index: number) => `broll:${shotId}:${index}`
+  broll: (shotId: string, channelId: string | null, index: number) => `broll:${shotId}:${channelId ?? 'shared'}:${index}`
 }
 
 export function formatFileSize(bytes: number) {

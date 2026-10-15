@@ -141,9 +141,10 @@ describe('calculate: split-mode warnings and b-roll', () => {
       ]
     })
     expect(result.warnings).toEqual(['joe: 1 hook not assigned to a channel', 'whiskey has no hooks', 'both has no hooks'])
-    expect(result.perChannel.map(channel => channel.brollClips)).toEqual([5, 0, 0])
+    // the shared shot is filmed 4 times for each of the 3 channels
+    expect(result.perChannel.map(channel => channel.brollClips)).toEqual([9, 4, 4])
     expect(result.totals.sharedBrollClips).toBe(4)
-    expect(result.totals.brollClips).toBe(9)
+    expect(result.totals.brollClips).toBe(17)
   })
 })
 

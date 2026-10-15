@@ -210,10 +210,10 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 
 Snapshots matter: editing a template later must never change a shoot that's already planned.
 
-**broll_shots** — b-roll shot list, shared by every channel
+**broll_shots** — b-roll shot list; every channel films its own clips of each shot
 - `shoot_id`, `format_id` (null = general product shots), `beat text`, `description text`, `product_visible boolean`
-- `min_clips int` — clips required; `clips_filmed int` — clips ticked off on set
-- `status text check (status in ('planned','filmed','skipped'))` — `filmed` once `clips_filmed ≥ min_clips`
+- `min_clips int` — clips required **per channel** (a shot with no `channel_id` is filmed for every channel on the shoot); `clips_filmed int` — clips saved on set, across all channels
+- `status text check (status in ('planned','filmed','skipped'))` — `filmed` once `clips_filmed ≥ min_clips × channels`
 - `channel_id` — null; kept for older channel-specific rows
 - `sort_order int`
 
@@ -336,7 +336,7 @@ Route: `/shoots/[code]/sheet?person=[slug]&show=[hook|cta|body|broll]`. Both fil
 - **Every deliverable gets its clip from the checklist** with **Add clip**, which picks a video (hooks, sync CTAs, b-roll) or audio file (VOs, VO CTAs) from the phone, for its folder (§10d). Clips are filmed and recorded in the phone's own apps; the app doesn't film or record itself, because iOS compresses video its camera hands straight to a web page (to 480×360). **Only a saved clip ticks it off**; nothing can be ticked by hand. Removing the clip unticks it. Skip / unskip stays manual.
   - **Everyone view:** the item once, with a status chip per person (tap to skip/unskip) each with its own Add clip button; added clips show below with the person's name. Per-person rewordings are listed under the item.
   - **Person view:** a status tick with Skip underneath; Add clip in the item's top row (next to the code and badges); the attached clip below the script.
-- **B-roll:** one Add clip button per required clip, each with its clip shown below once saved; the shot is filmed once all its clips are in. Skip covers the whole shot.
+- **B-roll:** a row per channel, each with one Add clip button per required clip (`min_clips`) and its clips shown below once saved; each channel's clips go to that channel's b-roll folder. The shot is filmed once every channel's clips are in. Filtered to a person, only the channels they're linked to show (shots with none are hidden). Skip covers the whole shot.
 - **Sanity checks** before a clip is saved, with presets in Settings → Defaults → Clip checks:
   - Video: aspect ratio (default 9:16 vertical), resolution (default at least 1080×1920) and frame rate (default 24–60 fps, measured by playing the clip briefly; skipped if the browser can't measure it).
   - VO recordings and VO CTAs: length against the script's estimated reading time at the speech pace (default 60%–175% of it); under a second counts as empty.
