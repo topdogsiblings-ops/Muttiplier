@@ -101,7 +101,7 @@ const badge = computed(() => {
       ? { label: 'Uploaded to Dropbox', color: 'success' as const, icon: 'i-lucide-cloud-check' }
       : { label: 'Uploaded · test mode, not really sent', color: 'warning' as const, icon: 'i-lucide-flask-conical' }
     case 'failed': return { label: 'Upload failed · retried with the rest', color: 'error' as const, icon: 'i-lucide-cloud-alert' }
-    default: return { label: 'Saved on this phone · uploads when the shoot ends', color: 'neutral' as const, icon: 'i-lucide-smartphone' }
+    default: return { label: 'Saved on this phone', color: 'neutral' as const, icon: 'i-lucide-smartphone' }
   }
 })
 </script>
