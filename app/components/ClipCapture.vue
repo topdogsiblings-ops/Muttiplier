@@ -5,6 +5,9 @@
 // Every clip is sanity-checked first (clipChecks.ts, presets in Settings); anything off asks
 // before uploading.
 //
+// Video with a script (hooks, sync CTAs) can also be filmed in the page with the script over
+// the camera (TeleprompterCamera.vue).
+//
 // `part` splits it so the buttons can sit in an item's top row and the clip below:
 // 'actions' = Film/Record + Upload (and the recording bar), 'clip' = the attached clip, 'all' = both.
 const props = withDefaults(defineProps<{
@@ -19,6 +22,8 @@ const props = withDefaults(defineProps<{
   rules?: ClipRules
   /** audio: the script's estimated reading time, for the length check */
   expectedSeconds?: number
+  /** video: the resolved script, to film with it over the camera */
+  script?: string
   size?: 'xs' | 'sm' | 'md'
 }>(), { media: 'video', part: 'all', rules: () => DEFAULT_CLIP_RULES, expectedSeconds: 0, size: 'sm' })
 
@@ -125,6 +130,16 @@ onBeforeUnmount(() => {
 
 const capture = () => audio.value ? startRecording() : filmInput.value?.click()
 
+// --- teleprompter (video with a script) ----------------------------------------
+
+const canPrompt = computed(() => !audio.value && !!props.script?.trim())
+const prompting = ref(false)
+
+function onPrompted(file: File) {
+  prompting.value = false
+  send(file)
+}
+
 // --- clip ------------------------------------------------------------------
 
 async function removeClip() {
@@ -207,6 +222,18 @@ const captureIcon = computed(() => audio.value ? 'i-lucide-mic' : 'i-lucide-vide
           <span class="hidden sm:inline">{{ captureLabel }}</span>
         </UButton>
         <UButton
+          v-if="canPrompt"
+          icon="i-lucide-scroll-text"
+          color="neutral"
+          variant="outline"
+          :size="props.size"
+          :disabled="checking"
+          :aria-label="`Film ${props.label} with the script on screen`"
+          @click="prompting = true"
+        >
+          <span class="hidden sm:inline">Film with script</span>
+        </UButton>
+        <UButton
           :icon="clip ? 'i-lucide-replace' : 'i-lucide-upload'"
           color="neutral"
           :variant="clip ? 'ghost' : 'outline'"
@@ -219,6 +246,14 @@ const captureIcon = computed(() => audio.value ? 'i-lucide-mic' : 'i-lucide-vide
         </UButton>
       </div>
     </template>
+
+    <TeleprompterCamera
+      v-if="prompting && props.script"
+      :script="props.script"
+      :label="props.label"
+      @recorded="onPrompted"
+      @close="prompting = false"
+    />
 
     <div v-if="showClip && clip" class="space-y-2 rounded-md border border-default p-2">
       <div class="flex items-center gap-2">

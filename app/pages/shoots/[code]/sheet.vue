@@ -180,6 +180,8 @@ const expectedSeconds = (item: BundleItem) => {
   const text = resolved.beats ? resolved.beats.map(beat => beat.script).join(' ') : resolved.text ?? ''
   return estimateSeconds(text, Number(settings.value?.words_per_second) || DEFAULT_WORDS_PER_SECOND)
 }
+/** On-camera items (hooks, sync CTAs) can be filmed with their script over the camera. */
+const promptScript = (item: BundleItem) => clipMedia(item) === 'video' ? script(item).text ?? undefined : undefined
 const brollClipFolder = (shot: Row<'broll_shots'>) => brollFolder(bundle.value, shot)
 
 /** Capture rows (each person's clip in the everyone view, each b-roll clip) stay folded away until opened. */
@@ -353,6 +355,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
                     :media="clipMedia(item)"
                     :rules="clipRules"
                     :expected-seconds="expectedSeconds(item)"
+                    :script="promptScript(item)"
                     @uploaded="itemUploaded(item)"
                     @removed="itemClipRemoved(item)"
                   />
@@ -476,6 +479,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
                   :media="clipMedia(item)"
                   :rules="clipRules"
                   :expected-seconds="expectedSeconds(item)"
+                  :script="promptScript(item)"
                   @uploaded="itemUploaded(item)"
                   @removed="itemClipRemoved(item)"
                 />
