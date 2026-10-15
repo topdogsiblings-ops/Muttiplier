@@ -3,6 +3,10 @@
 // lens, so whoever's on camera can read it while filming. Records with MediaRecorder and
 // hands the take back as a File; ClipCapture checks and uploads it like any other clip.
 // The front camera's preview is mirrored, like a selfie; the recording isn't.
+//
+// Safari records the camera track as raw landscape sensor frames with no rotation tag, so a
+// portrait take comes out 1920x1080 and sideways. Instead each frame is drawn upright, as the
+// preview shows it, onto a fixed 1080x1920 canvas (cover-cropped), and the canvas is recorded.
 const props = defineProps<{
   /** the resolved script to show */
   script: string
@@ -36,7 +40,7 @@ async function openCamera() {
   stopStream()
   try {
     stream.value = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: facing.value, width: { ideal: 1080 }, height: { ideal: 1920 }, frameRate: { ideal: 30 } },
+      video: { facingMode: facing.value, width: { ideal: 1080 }, height: { ideal: 1920 }, frameRate: { ideal: 60 } },
       audio: true
     })
   } catch {
@@ -53,15 +57,61 @@ function flip() {
   openCamera()
 }
 
+// --- portrait canvas -----------------------------------------------------------
+
+const OUTPUT = { width: 1080, height: 1920 }
+type FrameCallbackVideo = HTMLVideoElement & { requestVideoFrameCallback?: (callback: () => void) => number }
+let canvas: HTMLCanvasElement | null = null
+let drawing = false
+
+/** Draw the current camera frame onto the canvas, cropped to fill 9:16 like the preview's object-cover. */
+function drawFrame() {
+  const video = preview.value
+  const context = canvas?.getContext('2d')
+  if (!video || !context || !video.videoWidth || !video.videoHeight) return
+  const target = OUTPUT.width / OUTPUT.height
+  const source = video.videoWidth / video.videoHeight
+  const sw = source > target ? video.videoHeight * target : video.videoWidth
+  const sh = source > target ? video.videoHeight : video.videoWidth / target
+  context.drawImage(video, (video.videoWidth - sw) / 2, (video.videoHeight - sh) / 2, sw, sh, 0, 0, OUTPUT.width, OUTPUT.height)
+}
+
+/** Redraw on every new camera frame while recording (or every animation frame where that isn't supported). */
+function drawLoop() {
+  if (!drawing) return
+  drawFrame()
+  const video = preview.value as FrameCallbackVideo | null
+  if (video?.requestVideoFrameCallback) video.requestVideoFrameCallback(drawLoop)
+  else requestAnimationFrame(drawLoop)
+}
+
+function portraitStream(camera: MediaStream): MediaStream {
+  canvas = document.createElement('canvas')
+  canvas.width = OUTPUT.width
+  canvas.height = OUTPUT.height
+  drawing = true
+  drawLoop()
+  const fps = camera.getVideoTracks()[0]?.getSettings().frameRate ?? 60
+  return new MediaStream([...canvas.captureStream(Math.round(fps)).getVideoTracks(), ...camera.getAudioTracks()])
+}
+
+function stopDrawing(recorded?: MediaStream) {
+  drawing = false
+  recorded?.getVideoTracks().forEach(track => track.stop())
+  canvas = null
+}
+
 const mimeType = () => ['video/mp4', 'video/webm'].find(type => MediaRecorder.isTypeSupported(type)) ?? ''
 
 function startRecording() {
   if (!stream.value) return
   const chunks: Blob[] = []
   const type = mimeType()
-  const next = new MediaRecorder(stream.value, { ...(type && { mimeType: type }), videoBitsPerSecond: 10_000_000 })
+  const recorded = portraitStream(stream.value)
+  const next = new MediaRecorder(recorded, { ...(type && { mimeType: type }), videoBitsPerSecond: 16_000_000 })
   next.ondataavailable = event => event.data.size && chunks.push(event.data)
   next.onstop = () => {
+    stopDrawing(recorded)
     clearInterval(ticker)
     recorder.value = null
     if (!chunks.length) return
@@ -92,6 +142,7 @@ onBeforeUnmount(() => {
     recorder.value.ondataavailable = null
     recorder.value.onstop = null
     recorder.value.stop()
+    stopDrawing(recorder.value.stream)
   }
   clearInterval(ticker)
   stopStream()
