@@ -1,0 +1,216 @@
+import { describe, expect, it } from 'vitest'
+import type { ShootBundle } from '../shared/utils/shootsheet'
+import {
+  allocateChannels,
+  buildCsv,
+  buildShootsheet,
+  groupShotList,
+  nextItemCodes,
+  planSnapshots,
+  resolveItemScript,
+  skeletonFiles,
+  unfilledItems
+} from '../shared/utils/shootsheet'
+
+const format = { code: 'F02', cta_modes: ['sync', 'vo'], beats: ['problem', 'product', 'result'] }
+
+function bundle(): ShootBundle {
+  return {
+    shoot: { code: 'S014', shoot_date: '2026-10-20', status: 'planned', hook_allocation: 'split', broll_variations: 3, submission_rate: 0.15 },
+    brand: { name: 'PawCo', slug: 'pawco' },
+    product: { name: 'Calming Chews', slug: 'calming-chews', slot_values: { benefit: 'calmer walks' } },
+    people: [{ id: 'p1', slug: 'joe', name: 'Joe' }],
+    channels: [
+      { id: 'c1', name: 'topdognix', slug: 'topdognix', folder_slug: 'nix', dogs: ['nix'], dog_phrase: 'my Doberman' },
+      { id: 'c2', name: 'topdogwhiskey', slug: 'topdogwhiskey', folder_slug: 'whiskey', dogs: ['whiskey'], dog_phrase: 'my Vizsla' }
+    ],
+    items: [
+      {
+        id: 'i1', code: 'H01', kind: 'hook', person_id: 'p1', channel_id: 'c1', script_snapshot: 'Nobody told me {{product}} could do this for {{dog}}',
+        script_override: null, cta_mode: null, location: 'kitchen', status: 'planned', sort_order: 0, template_id: 'aaaaaaaa-0000-0000-0000-000000000001',
+        angle: 'curiosity', universal: false, format: null, caption: '{{dog}} and {{product}}: {{benefit}}'
+      },
+      {
+        id: 'i2', code: 'U01', kind: 'hook', person_id: 'p1', channel_id: 'c2', script_snapshot: 'POV: {{dog}} finally settles',
+        script_override: null, cta_mode: null, location: null, status: 'planned', sort_order: 1, template_id: '1a2b3c4d-0000-0000-0000-000000000002',
+        angle: 'pov', universal: true, format: null
+      },
+      {
+        id: 'i3', code: 'V01', kind: 'body', person_id: 'p1', channel_id: null,
+        script_snapshot: [{ beat: 'problem', script: 'My dog pulled' }, { beat: 'product', script: '{{brand}} {{product}}' }, { beat: 'result', script: '{{benefit}}' }],
+        script_override: null, cta_mode: null, location: null, status: 'planned', sort_order: 2, template_id: 'bbbbbbbb-0000-0000-0000-000000000003',
+        angle: 'problem', universal: false, format
+      },
+      {
+        id: 'i4', code: 'C01', kind: 'cta', person_id: 'p1', channel_id: null, script_snapshot: 'Template CTA',
+        script_override: 'Grab {{product}}, "today"', cta_mode: 'sync', location: null, status: 'planned', sort_order: 3,
+        template_id: 'cccccccc-0000-0000-0000-000000000004', angle: null, universal: false, format: null
+      }
+    ],
+    broll: [
+      { channel_id: 'c1', beat: 'problem', description: 'anxious pacing', product_visible: false, min_clips: 3, status: 'planned' },
+      { channel_id: null, beat: 'product', description: 'pack shot', product_visible: true, min_clips: 2, status: 'planned' }
+    ]
+  }
+}
+
+describe('codes and allocation', () => {
+  it('continues numbering after the highest code for a prefix', () => {
+    expect(nextItemCodes(['H01', 'H03', 'V09', 'U02'], 'H', 2)).toEqual(['H04', 'H05'])
+    expect(nextItemCodes([], 'U', 1)).toEqual(['U01'])
+    expect(nextItemCodes(['C99'], 'C', 1)).toEqual(['C100'])
+  })
+
+  it('allocates hooks round-robin, topping up the least-loaded channel', () => {
+    expect(allocateChannels(['a', 'b', 'c'], {}, 5)).toEqual(['a', 'b', 'c', 'a', 'b'])
+    expect(allocateChannels(['a', 'b', 'c'], { a: 2, b: 1 }, 3)).toEqual(['c', 'b', 'c'])
+    expect(allocateChannels([], {}, 3)).toEqual([])
+  })
+})
+
+describe('shared shot list', () => {
+  /** The same hook filmed by two people: same code, one item each. */
+  function twoPeople(): ShootBundle {
+    const b = bundle()
+    b.people.push({ id: 'p2', slug: 'sam', name: 'Sam' })
+    b.items.push({ ...b.items[0]!, id: 'i1b', person_id: 'p2', channel_id: null })
+    b.items[0]!.channel_id = null
+    return b
+  }
+
+  it('groups items by template, one entry per hook / VO / CTA, in code order', () => {
+    const groups = groupShotList(twoPeople().items)
+    expect(groups.map(group => [group.code, group.items.length])).toEqual([['C01', 1], ['H01', 2], ['U01', 1], ['V01', 1]])
+  })
+
+  it('reports an unfilled code once, not once per person', () => {
+    const b = twoPeople()
+    b.channels[0]!.dog_phrase = ''
+    expect(unfilledItems(b)).toEqual([{ code: 'H01', slots: ['dog'] }])
+  })
+
+  it('keeps each person in their own folder under the shared code', () => {
+    const b = twoPeople()
+    expect(buildShootsheet(b).items.filter(item => item.code === 'H01').map(item => item.folder)).toEqual([
+      'pawco/calming-chews/shoots/S014_2026-10-20/edited/hooks/joe/H01',
+      'pawco/calming-chews/shoots/S014_2026-10-20/edited/hooks/sam/H01'
+    ])
+  })
+
+  it('puts shared b-roll in b-roll/shared/<beat>', () => {
+    const b = bundle()
+    b.broll.push({ channel_id: null, beat: 'result', description: 'happy dog', product_visible: false, min_clips: 2, status: 'planned' })
+    expect(buildShootsheet(b).broll.map(shot => shot.folder)).toContain('pawco/calming-chews/b-roll/shared/result')
+  })
+})
+
+describe('resolveItemScript', () => {
+  it('fills {{dog}} from the hook channel and prefers overrides', () => {
+    const b = bundle()
+    expect(resolveItemScript(b, b.items[0]!).text).toBe('Nobody told me Calming Chews could do this for my Doberman')
+    expect(resolveItemScript(b, b.items[1]!).text).toBe('POV: my Vizsla finally settles')
+    expect(resolveItemScript(b, b.items[3]!)).toMatchObject({ text: 'Grab Calming Chews, "today"', overridden: true })
+  })
+
+  it('fills {{dog}} on an item used for every channel when every channel has a dog phrase', () => {
+    const b = bundle()
+    b.items[0]!.channel_id = null
+    expect(unfilledItems(b)).toEqual([])
+    expect(resolveItemScript(b, b.items[0]!).text).toBe('Nobody told me Calming Chews could do this for my Doberman / my Vizsla')
+  })
+
+  it('flags {{dog}} only when a channel on the shoot has no dog phrase', () => {
+    const b = bundle()
+    b.items[0]!.channel_id = null
+    b.channels[0]!.dog_phrase = ''
+    expect(unfilledItems(b)).toEqual([{ code: 'H01', slots: ['dog'] }])
+  })
+})
+
+describe('planSnapshots', () => {
+  it('freezes filled scripts so later template or product edits cannot change the shoot', () => {
+    const b = bundle()
+    const frozen = planSnapshots(b)
+    expect(frozen[0]).toEqual({
+      id: 'i1',
+      script_snapshot: 'Nobody told me Calming Chews could do this for my Doberman',
+      script_override: null,
+      caption: 'my Doberman and Calming Chews: calmer walks'
+    })
+    expect(frozen[2]!.script_snapshot).toEqual([
+      { beat: 'problem', script: 'My dog pulled' },
+      { beat: 'product', script: 'PawCo Calming Chews' },
+      { beat: 'result', script: 'calmer walks' }
+    ])
+    expect(frozen[3]).toEqual({ id: 'i4', script_snapshot: 'Template CTA', script_override: 'Grab Calming Chews, "today"', caption: null })
+
+    // apply, then change the product: the planned shoot renders exactly as before
+    b.items.forEach((item, index) => Object.assign(item, frozen[index]))
+    const before = JSON.stringify(buildShootsheet(b).items)
+    b.product = { name: 'Renamed', slug: 'calming-chews', slot_values: {} }
+    b.brand.name = 'NewCo'
+    expect(JSON.stringify(buildShootsheet(b).items)).toBe(before)
+  })
+})
+
+describe('buildShootsheet', () => {
+  it('matches the worker contract', () => {
+    const sheet = buildShootsheet(bundle())
+    expect(sheet.schema_version).toBe(1)
+    expect(sheet.shoot).toMatchObject({ code: 'S014', date: '2026-10-20', hook_allocation: 'split', broll_variations: 3, submission_rate: 0.15 })
+    expect(sheet.channels[0]).toEqual({ slug: 'topdognix', folder_slug: 'nix', dogs: ['nix'] })
+    expect(sheet.formats).toEqual([format])
+    expect(sheet.items.map(item => [item.code, item.folder])).toEqual([
+      ['C01', 'pawco/calming-chews/shoots/S014_2026-10-20/edited/ctas/joe/C01'],
+      ['H01', 'pawco/calming-chews/shoots/S014_2026-10-20/edited/hooks/joe/H01'],
+      ['U01', 'universal/hooks/joe/U1a2b3c4d'],
+      ['V01', 'pawco/calming-chews/shoots/S014_2026-10-20/edited/vo/joe/V01']
+    ])
+    expect(sheet.items[1]).toEqual({
+      code: 'H01', kind: 'hook', person: 'joe', channel: 'topdognix', template_id: 'aaaaaaaa-0000-0000-0000-000000000001',
+      angle: 'curiosity', universal: false, script: 'Nobody told me Calming Chews could do this for my Doberman',
+      caption: 'my Doberman and Calming Chews: calmer walks',
+      folder: 'pawco/calming-chews/shoots/S014_2026-10-20/edited/hooks/joe/H01'
+    })
+    expect(sheet.items[3]).toMatchObject({ kind: 'body', channel: null, format: 'F02', angle: 'problem' })
+    expect(sheet.items[0]).toMatchObject({ kind: 'cta', cta_mode: 'sync', channel: null })
+    expect(sheet.broll.map(shot => shot.folder)).toEqual([
+      'pawco/calming-chews/b-roll/nix/problem',
+      'pawco/calming-chews/b-roll/shared/product'
+    ])
+  })
+
+  it('leaves out skipped items', () => {
+    const b = bundle()
+    b.items[0]!.status = 'skipped'
+    expect(buildShootsheet(b).items.map(item => item.code)).toEqual(['C01', 'U01', 'V01'])
+  })
+})
+
+describe('skeleton zip', () => {
+  it('contains exactly the folders listed in shootsheet.json, plus the fixed structure', () => {
+    const b = bundle()
+    const files = skeletonFiles(b)
+    const folders = Object.keys(files).filter(path => path.endsWith('/.keep')).map(path => path.slice(0, -'/.keep'.length))
+    const sheet = buildShootsheet(b)
+    for (const entry of [...sheet.items, ...sheet.broll]) expect(folders).toContain(entry.folder)
+
+    const shoot = 'pawco/calming-chews/shoots/S014_2026-10-20'
+    expect(folders).toEqual(expect.arrayContaining([
+      `${shoot}/raw`, `${shoot}/captions`, 'pawco/calming-chews/renders',
+      'pawco/calming-chews/b-roll/whiskey/result', 'pawco/calming-chews/b-roll/shared/product'
+    ]))
+    expect(JSON.parse(files[`${shoot}/shootsheet.json`]!)).toEqual(sheet)
+  })
+})
+
+describe('buildCsv', () => {
+  it('writes one row per item and b-roll shot, with bodies joined by beat', () => {
+    const lines = buildCsv(bundle()).trimEnd().split('\r\n')
+    expect(lines[0]).toBe('shoot,person,kind,code,channel,angle,cta_mode,location,script,status,folder_path')
+    expect(lines).toHaveLength(1 + 4 + 2)
+    expect(lines[1]).toBe('S014,joe,cta,C01,,,sync,,"Grab Calming Chews, ""today""",planned,pawco/calming-chews/shoots/S014_2026-10-20/edited/ctas/joe/C01')
+    expect(lines[4]).toContain('[problem] My dog pulled [product] PawCo Calming Chews [result] calmer walks')
+    expect(lines[5]).toBe('S014,,broll,,topdognix,,,,[problem] anxious pacing,planned,pawco/calming-chews/b-roll/nix/problem')
+  })
+})

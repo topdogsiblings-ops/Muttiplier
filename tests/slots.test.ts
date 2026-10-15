@@ -1,0 +1,126 @@
+import { describe, expect, it } from 'vitest'
+import {
+  alignBeats,
+  beatsMatchFormat,
+  bodyUsesDog,
+  buildSlotContext,
+  countWords,
+  estimateSeconds,
+  extractSlots,
+  joinBeats,
+  renderScript,
+  renderSegments,
+  slugify,
+  universalHookViolations
+} from '../shared/utils/slots'
+
+const context = buildSlotContext({
+  brand: 'PawCo',
+  product: 'Calming Chews',
+  dogPhrase: 'my Doberman',
+  slotValues: { benefit: 'calmer walks', offer: '', brand: 'ignored' }
+})
+
+describe('extractSlots', () => {
+  it('finds unique slot names, tolerating spacing and case', () => {
+    expect(extractSlots('{{brand}} and {{ Product }} then {{brand}} {{benefit}}')).toEqual(['brand', 'product', 'benefit'])
+  })
+
+  it('ignores single braces and empty slots', () => {
+    expect(extractSlots('{brand} {{}} {{ }}')).toEqual([])
+  })
+})
+
+describe('renderScript', () => {
+  it('fills built-in, dog and custom slots', () => {
+    const result = renderScript('{{dog}} loves {{product}} by {{brand}}: {{benefit}}', context)
+    expect(result.text).toBe('my Doberman loves Calming Chews by PawCo: calmer walks')
+    expect(result.unfilled).toEqual([])
+  })
+
+  it('built-ins win over custom slot values of the same name', () => {
+    expect(renderScript('{{brand}}', context).text).toBe('PawCo')
+  })
+
+  it('flags unfilled slots and leaves them in place', () => {
+    const result = renderScript('Get {{offer}} at {{price}} today, {{price}}!', context)
+    expect(result.text).toBe('Get {{offer}} at {{price}} today, {{price}}!')
+    expect(result.unfilled).toEqual(['offer', 'price'])
+  })
+
+  it('treats a missing dog phrase as unfilled', () => {
+    expect(renderScript('{{dog}}', buildSlotContext({ brand: 'PawCo', product: 'Chews' })).unfilled).toEqual(['dog'])
+  })
+
+  it('is stable once filled', () => {
+    const once = renderScript('{{dog}} loves {{product}}', context).text
+    expect(renderScript(once, {}).text).toBe(once)
+  })
+})
+
+describe('renderSegments', () => {
+  it('splits text and slots for highlighting', () => {
+    expect(renderSegments('Hi {{brand}}!', context)).toEqual([
+      { type: 'text', text: 'Hi ' },
+      { type: 'slot', name: 'brand', raw: '{{brand}}', value: 'PawCo' },
+      { type: 'text', text: '!' }
+    ])
+  })
+})
+
+describe('universalHookViolations', () => {
+  it('rejects brand, product and custom slots', () => {
+    expect(universalHookViolations('Why {{brand}} {{product}} {{benefit}}?')).toEqual(['brand', 'product', 'benefit'])
+  })
+
+  it('allows {{dog}} and plain text', () => {
+    expect(universalHookViolations('Nobody told me {{dog}} would do this')).toEqual([])
+  })
+})
+
+describe('beats', () => {
+  const format = ['problem', 'product', 'result']
+
+  it('aligns beats to the format, keeping existing scripts', () => {
+    expect(alignBeats(format, [{ beat: 'result', script: 'R' }, { beat: 'old', script: 'x' }])).toEqual([
+      { beat: 'problem', script: '' },
+      { beat: 'product', script: '' },
+      { beat: 'result', script: 'R' }
+    ])
+  })
+
+  it('checks beat names against the format', () => {
+    expect(beatsMatchFormat(format, alignBeats(format, []))).toBe(true)
+    expect(beatsMatchFormat(format, [{ beat: 'problem', script: '' }])).toBe(false)
+  })
+
+  it('joins beats for the CSV', () => {
+    expect(joinBeats([{ beat: 'problem', script: 'A' }, { beat: 'product', script: 'B' }])).toBe('[problem] A [product] B')
+  })
+
+  it('detects {{dog}} in a body', () => {
+    expect(bodyUsesDog([{ beat: 'problem', script: '{{dog}} pulls' }])).toBe(true)
+    expect(bodyUsesDog([{ beat: 'problem', script: 'my dog pulls' }])).toBe(false)
+  })
+})
+
+describe('estimateSeconds', () => {
+  it('counts words, with a slot as one word', () => {
+    expect(countWords('  Try {{product}} today,  seriously ')).toBe(4)
+    expect(countWords('')).toBe(0)
+  })
+
+  it('divides by the speaking pace and rounds up', () => {
+    // 10 words at 2.5 words per second
+    expect(estimateSeconds('one two three four five six seven eight nine ten')).toBe(4)
+    expect(estimateSeconds('one two three four five six seven eight nine ten eleven')).toBe(5)
+    expect(estimateSeconds('one two three four', 2)).toBe(2)
+    expect(estimateSeconds('', 2.5)).toBe(0)
+  })
+})
+
+describe('slugify', () => {
+  it('produces lowercase kebab-case', () => {
+    expect(slugify('  Calming Chews (XL) é ')).toBe('calming-chews-xl-e')
+  })
+})
