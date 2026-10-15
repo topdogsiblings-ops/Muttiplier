@@ -48,7 +48,8 @@ const tab = computed({
           <UDashboardSidebarCollapse />
         </template>
       </UDashboardNavbar>
-      <!-- The tabs' own bottom border is the toolbar's divider, so the active indicator sits on it. -->
+      <!-- The tabs' own bottom border is the toolbar's divider, so the active indicator sits on it.
+           On phones the tabs are icons only; the label stays for screen readers. -->
       <UDashboardToolbar class="items-end overflow-visible border-b-0 px-0 sm:px-0">
         <UTabs
           v-model="tab"
@@ -56,7 +57,7 @@ const tab = computed({
           :content="false"
           variant="link"
           class="w-full min-w-0"
-          :ui="{ list: 'overflow-x-auto overflow-y-hidden border-b-0 px-4 shadow-[inset_0_-1px_0_var(--ui-border)] sm:px-6', indicator: 'bottom-0' }"
+          :ui="{ list: 'overflow-x-auto overflow-y-hidden border-b-0 px-4 shadow-[inset_0_-1px_0_var(--ui-border)] sm:px-6', indicator: 'bottom-0', label: 'truncate max-sm:sr-only' }"
         >
           <template #trailing="{ item }">
             <UPopover :content="{ side: 'bottom', align: 'start' }">
