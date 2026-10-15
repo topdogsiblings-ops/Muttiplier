@@ -1,8 +1,10 @@
-# topdogugc Planner — Project Spec
+# Muttiplier — Project Spec
 
-Internal web app for the topdogugc UGC agency. It holds the script **Library** (hooks, CTAs, bodies, formats) and the **Planner** that turns library items into a shoot day: shot lists per person, a recipe/submission calculator, and exports that feed the later processing pipeline.
+Internal web app for the topdogugc UGC agency. It holds the script **Library** (hooks, CTAs, formats & VOs, angles), the **Brands** pipeline from Trybe, and the **Planner** that turns library items into a shoot day: one shared shot list, a recipe/submission calculator, an on-set checklist, and exports that feed the later processing pipeline.
 
-This spec covers the Library and Planner only. Ingest, rendering and submissions are later projects. The schema is designed so they plug in without migrations of existing tables.
+This spec covers the Library, Brands and Planner. Ingest, rendering and submissions are later projects. The schema is designed so they plug in without migrations of existing tables.
+
+*Last brought up to date: 2026-10-15, to match the app as built.*
 
 ---
 
@@ -13,40 +15,42 @@ This spec covers the Library and Planner only. Ingest, rendering and submissions
   - `topdognix` (Nix, Doberman)
   - `topdogwhiskey` (Whiskey, Vizsla)
   - `topdogsiblings` (both)
-- Several on-camera people (currently 3; must support adding more).
-- Every finished video = **Hook → Body → CTA**, all from the same person:
+- Several on-camera people (currently 3; must support adding more). Each person films on **their own phone**, at the same time as everyone else.
+- Every finished video = **Hook → Body → CTA**:
   - **Hook:** on-camera, sync audio.
-  - **Body:** a voiceover (VO) recorded separately, with b-roll laid underneath. The VO script is broken into **beats** (problem / product / result) and b-roll is matched per beat.
+  - **Body:** a voiceover (VO) recorded separately, with b-roll laid underneath. The VO follows a **format**, whose script is broken into **beats** (e.g. problem / product / result); b-roll is matched per beat.
   - **CTA:** either on-camera with sync audio, or VO over b-roll.
+  - By default all three parts come from the same person. On a channel with **linked people** (§9), parts can mix across those people.
 - Software later assembles every valid combination ("recipe") and renders only a selected share for submission. The Planner's job is to plan what gets filmed and estimate what that yields.
 
-### Pipeline (for orientation; only stages 1–2 are in scope)
+### Pipeline (for orientation)
 
 1. **Library** — reusable, brand-agnostic templates. *(this project)*
-2. **Planner** — build a shoot for one product; export shot lists, `shootsheet.json` and folder skeleton. *(this project)*
-3. Ingest + conformance + captions — local worker. *(later)*
-4. Recipe generation, selection, rendering — local worker. *(later)*
-5. Submission queue + form-filling Chrome extension. *(later)*
+2. **Planner** — build a shoot for one product, run it on set, export shot lists, `shootsheet.json` and folder skeleton. *(this project)*
+3. **Dropbox uploads** — clips land in the right shoot folders. *(next; see §12)*
+4. Ingest + conformance + captions — local worker. *(later)*
+5. Recipe generation, selection, rendering — local worker. *(later)*
+6. Submission queue + form-filling Chrome extension. *(later)*
 
 ---
 
 ## 2. Stack
 
-- **Frontend/app:** Nuxt (latest stable) + Nuxt UI + Tailwind, deployed on **Vercel**.
-- **Database + auth:** **Supabase** (Postgres, Auth, Row Level Security).
+- **Frontend/app:** Nuxt 4 (SPA, `ssr: false`) + Nuxt UI v4 + Tailwind, deployed on **Vercel**.
+- **Database + auth:** **Supabase** (Postgres, Auth, Row Level Security) via `@nuxtjs/supabase`.
 - **Auth:** Google OAuth via Supabase Auth, restricted to an email allowlist.
-- **Server routes:** Nuxt server (Nitro) API routes for anything needing secrets (AI drafting, exports).
-- **AI drafting (phase 6):** Anthropic API called from a server route. Model name in an env var.
-- Mobile-friendly throughout. The shot sheet view is used on phones on set.
+- **Server routes:** Nuxt server (Nitro) API routes for anything needing secrets (AI drafting, exports). They run as the signed-in user under RLS.
+- **AI drafting:** Anthropic API (`@anthropic-ai/sdk`) called from server routes, structured output validated with Zod. Model name in an env var.
+- Mobile-friendly throughout. The checklist is used on phones on set.
 
 ### Environment variables
 
 ```
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=      # server routes only
-ANTHROPIC_API_KEY=              # phase 6
-ANTHROPIC_MODEL=                # phase 6
+SUPABASE_SERVICE_ROLE_KEY=      # server routes only; not required today
+ANTHROPIC_API_KEY=
+ANTHROPIC_MODEL=claude-opus-5-5
 ```
 
 ---
@@ -56,22 +60,23 @@ ANTHROPIC_MODEL=                # phase 6
 - Sign in with Google. After sign-in, check the email against `allowed_users`. Not on the list → signed out with a "no access" message.
 - Two roles:
   - **admin** — everything, plus managing people, channels, allowlist and settings.
-  - **member** — full read/write on the Library and Planner.
+  - **member** — full read/write on the Library, Brands and Planner.
 - Enforce with RLS: every table readable/writable only by allowlisted authenticated users; admin-only tables (`allowed_users`, `settings`) writable by admins only.
+- `profiles` mirrors each auth user's name and email so the app can show who created or changed things.
 - Seed admin: `joe@thesmilyfam.com`.
 
 ---
 
 ## 4. App structure
 
-Top-level navigation:
-
 | Tab | Purpose |
 |---|---|
-| **Library** | Hooks, CTAs, Bodies, Formats, Angles |
-| **Planner** | Shoots list → shoot builder → calculator → exports |
-| **Brands** | Brands, products (with slot values), brand → channel assignment |
-| **Settings** (admin) | People, channels, allowlist, time-per-item defaults |
+| **Library** | Hooks, CTAs, **Formats & VOs**, Angles |
+| **Planner** | Shoots list → shoot planner (with calculator) → checklist → exports |
+| **Brands** | Brands (Trybe deal data, CSV import, filters), products with slot values, brand → channel assignment |
+| **Settings** (admin) | People, channels, allowlist, defaults (time per item, speech pace, general product shots) |
+
+UI conventions: every destructive or state-changing action asks in an in-app confirm dialog (never a browser alert); collapsible sections start collapsed; long lists paginate and show a spinner while loading; each Library tab has a `?` help popover.
 
 ---
 
@@ -82,26 +87,30 @@ Top-level navigation:
 Scripts use double-brace slots: `{{brand}}`, `{{product}}`, `{{dog}}`, plus any custom slot.
 
 - `{{brand}}` and `{{product}}` are built in and filled from the product.
-- `{{dog}}` is filled per channel from the channel's dog phrase (e.g. "my Doberman", "my Vizsla", "my two dogs").
+- `{{dog}}` is filled per channel from the channel's dog phrase (e.g. "my Doberman", "my Vizsla", "my two dogs"). On items shared by every channel, `{{dog}}` is filled as the channels' phrases joined with " / " (e.g. "my Doberman / my Vizsla / my two dogs"), and only counts as unfilled if a channel on the shoot has no phrase.
 - Custom slots (e.g. `{{benefit}}`, `{{price}}`, `{{offer}}`) are filled from the product's `slot_values`.
-- Unfilled slots must be visibly flagged in previews and block export until filled or overridden.
+- The script editor lists the available slots, and highlights recognised vs unrecognised slots as you type.
+- Unfilled slots are flagged in previews and block "Mark as planned".
 
 ### Rules
 
-- **Universal hooks** (`is_universal = true`) must not contain `{{brand}}`, `{{product}}` or custom product slots. Validate on save. `{{dog}}` is allowed.
-- VOs (bodies) should be written dog-neutral by default ("my dog", "my pup") so all channels can share them. Not enforced; show a soft warning if a body uses `{{dog}}`.
+- **Universal hooks** (`is_universal = true`) work for any brand: they may only use `{{dog}}`. Enforced in the editor and by a database check. On a shoot they get `U` codes and a template-based folder (§10d) so the same clip can be reused across products.
+- VOs should be written dog-neutral by default ("my dog", "my pup") so all channels can share them. Not enforced; soft warning if a VO uses `{{dog}}`.
 - Editor UI: highlight slots, show a live preview against a chosen product + channel.
 
 ---
 
 ## 6. Data model
 
-All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at`, and `created_by uuid` (auth user) unless noted. Library tables get `archived boolean default false` (archive instead of delete, so past shoots keep their references).
+All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at`, and `created_by uuid default auth.uid()` (stamped by trigger) unless noted. Library tables get `archived boolean default false` (archive instead of delete, so past shoots keep their references) and an optional `source_url` (must be http/https) for where the idea came from. Lists show "Added by X · date".
 
 ### Reference data
 
 **allowed_users**
-- `email text unique`, `role text check (role in ('admin','member'))`, `display_name text`
+- `email text unique` (lowercase), `role text check (role in ('admin','member'))`, `display_name text`
+
+**profiles** — one per auth user, synced by trigger
+- `id` (= auth user id), `email`, `full_name`, `avatar_url`
 
 **settings** (single row)
 - `default_submission_rate numeric default 0.15`
@@ -110,20 +119,29 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 - `minutes_per_vo numeric default 9`
 - `minutes_per_cta_vo numeric default 3`
 - `productive_hours_per_day numeric default 6`
+- `words_per_second numeric default 2.5` — speech pace for estimating VO length
+- `general_broll jsonb default '[]'` — suggested general product shots: `[{ "description": "...", "product_visible": true }]`
 
 **people** — on-camera talent
-- `name text`, `slug text unique` (lowercase, used in folder names, e.g. `joe`), `active boolean`
+- `name text`, `slug text unique` (lowercase kebab, used in folder names), `active boolean`
+- `allowed_user_id` — optional link to an allowlisted user; that user's checklist opens on their own shots
+
+**person_channels** — `person_id`, `channel_id`, pk on both. People linked to a channel; recipes on that channel can mix their parts (§9).
 
 **channels**
-- `name text` (e.g. `topdognix`), `slug text unique`, `dogs text[]` (e.g. `{nix}`, `{whiskey}`, `{nix,whiskey}`), `dog_phrase text` (fills `{{dog}}`), `folder_slug text` (e.g. `nix`, `whiskey`, `both`), `active boolean`
+- `name text` (e.g. `topdognix`), `slug text unique`, `dogs text[]`, `dog_phrase text` (fills `{{dog}}`), `folder_slug text` (e.g. `nix`, `whiskey`, `both`), `active boolean`
 
-**angles** — hook/body angle taxonomy (editable)
-- `name text unique` (seed: curiosity, problem, testimonial, pov, skeptic, contrarian, demo), `description text`
+**angles** — hook/VO angle taxonomy (editable, title case)
+- `name text unique`, `description text`. Seed: Curiosity, Problem, Testimonial, POV, Skeptic, Contrarian, Demo, each with a description. Angles are the *persuasion approach*; formats are the *structure* of the video.
 
 ### Brands
 
 **brands**
-- `name text`, `slug text unique`, `status text check (status in ('prospect','auditioning','active','paused'))`, `trybe_url text`, `pay_model text` (free text for now: flat / commission / performance / mixed), `notes text`
+- `name text`, `slug text unique`, `status text check (status in ('prospect','auditioning','active','paused'))`, `notes text`
+- Trybe deal: `trybe_url text`, `pay_model text check (pay_model in ('flat','commission','both'))`, `flat_fee numeric`, `commission_pct numeric` (0–100), `currency text default 'GBP'` (ISO code), `trybe_score numeric`
+- Import: `trybe_brand_id text`, `trybe_data jsonb` — everything else from the Scrybe export (about text, category, website, earnings, top formats, unrecognised columns under `extra`)
+- `videos_required int` — legacy, no longer shown
+- New brands are assigned to every active channel by default (trigger).
 
 **brand_channels** — which channels a brand's deal is funnelled to
 - `brand_id`, `channel_id`, primary key (`brand_id`, `channel_id`)
@@ -137,55 +155,66 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 
 **formats** — the structure of a video
 - `code text unique` (e.g. `F01`), `name text`, `description text`
-- `cta_modes text[]` — which CTA modes this format accepts: subset of `{sync, vo}`
 - `beats text[] default '{problem,product,result}'`
+- `beat_descriptions jsonb` — beat → what that beat is for (shown as `?` help in the planner)
+- `beat_broll jsonb` — beat → suggested b-roll shots, `[{ "description", "product_visible" }]`; edited on the format, offered in the planner
 - `target_seconds int`
+- `cta_modes text[]` — legacy, no longer used: any CTA can follow any VO
 
 **body_templates** — VO scripts, each belonging to a format
 - `format_id`, `title text`, `angle_id`
-- `beats jsonb` — ordered array: `[{ "beat": "problem", "script": "..." }, { "beat": "product", "script": "..." }, { "beat": "result", "script": "..." }]`; beat names must match the format's `beats`
-- `est_seconds int`, `tags text[]`, `notes text`
+- `beats jsonb` — ordered array: `[{ "beat": "problem", "script": "..." }, ...]`; beat names must match the format's `beats`
+- `est_seconds int` — **computed** from the word count ÷ `settings.words_per_second`, not typed in
+- `tags text[]`, `notes text`
 
 **hook_templates**
 - `script text`, `angle_id`, `is_universal boolean default false`, `est_seconds int`, `tags text[]`, `notes text`
+- `filming_notes text` — how to film it (shown on the checklist)
+- `caption text` — suggested on-screen caption (may use slots)
 
 **cta_templates**
 - `script text`, `mode text check (mode in ('sync','vo'))`, `est_seconds int`, `tags text[]`, `notes text`
+
+**template_usage** (view) — `kind`, `template_id`, `shoot_count`, for "used in N shoots".
 
 ### Planner
 
 **shoots**
 - `code text unique` — auto-assigned sequential `S001`, `S002`, …
-- `product_id`, `shoot_date date`, `location_notes text`
-- `status text check (status in ('draft','planned','filmed','edited','ingested','rendering','done'))` — only `draft` → `planned` → `filmed` are set by this app; later stages are reserved for the worker
-- `hook_allocation text check (hook_allocation in ('split','shared')) default 'split'`
+- `product_id`, `shoot_date date`, `location_notes text`, `notes text`
+- `status text check (status in ('draft','planned','shooting','filmed','edited','ingested','rendering','done'))` — this app sets `draft` → `planned` → `shooting` → `filmed` (and back, §9); later stages are reserved for the worker
+- `started_at`, `started_by`, `ended_at`, `ended_by` — stamped by trigger on status changes only
 - `broll_variations int default 3` — b-roll arrangements per VO used in recipe estimates
 - `submission_rate numeric` — defaults from settings
-- `kit text check (kit in ('audition','scale','custom'))` — label only
-- `notes text`
+- `runway_target int default 60` — target submissions per channel per month, for runway
+- `kit text check (kit in ('audition','scale','custom'))` — a tag for the shoot only; it changes nothing
+- `hook_allocation text default 'shared'` — legacy; hooks are always shared across channels
 
 **shoot_people** — `shoot_id`, `person_id`, pk on both
 **shoot_channels** — `shoot_id`, `channel_id`, pk on both. Default: the product's brand's `brand_channels`.
+**shoot_formats** — `shoot_id`, `format_id`, pk on both. Formats added to the plan (VOs and b-roll follow them).
 
-**shoot_items** — one row per thing to film or record
+**shoot_items** — one row per person per thing to film or record
 - `shoot_id`, `person_id`
 - `kind text check (kind in ('hook','body','cta'))`
 - `hook_template_id` / `body_template_id` / `cta_template_id` (exactly one set, matching `kind`)
-- `code text` — auto-assigned, unique per shoot: hooks `H01…`, bodies `V01…`, CTAs `C01…`, universal hooks `U01…`
-- `channel_id` — set for hooks in split mode; null means "all channels" (shared mode, bodies, CTAs)
-- `script_snapshot` — `text` for hooks/CTAs, `jsonb` beats for bodies: the template with slots filled at plan time
-- `script_override` — same type, nullable: per-person edits / renditions; takes priority over snapshot
-- `cta_mode text` (copied from template for CTAs)
-- `location text`
-- `status text check (status in ('planned','filmed','skipped')) default 'planned'`
-- `take_notes text`, `sort_order int`
+- `code text` — shared per template within a shoot: everyone filming the same hook has the same code. Hooks `H01…`, VOs `V01…`, CTAs `C01…`, universal hooks `U01…`. Unique on (`shoot_id`, `person_id`, `code`), deferrable for renumbering.
+- `channel_id` — null (hooks are used for every channel); kept for older rows
+- `script_snapshot` — `text` for hooks/CTAs, `jsonb` beats for VOs: the template at plan time
+- `script_override` — same type, nullable: per-person rewording; takes priority over the snapshot
+- `caption text` — hooks only: the template's caption, snapshotted
+- `cta_mode text` (copied from template for CTAs), `location text`
+- `status text check (status in ('planned','filmed','skipped')) default 'planned'`, `sort_order int`
+- `take_notes text` — legacy, no longer shown (every clip is the final take)
 
 Snapshots matter: editing a template later must never change a shoot that's already planned.
 
-**broll_shots** — b-roll shot list
-- `shoot_id`, `channel_id` (null = product-only shots shared by all channels)
-- `beat text`, `description text`, `product_visible boolean`, `min_clips int`
-- `status text check (status in ('planned','filmed','skipped'))`, `sort_order int`
+**broll_shots** — b-roll shot list, shared by every channel
+- `shoot_id`, `format_id` (null = general product shots), `beat text`, `description text`, `product_visible boolean`
+- `min_clips int` — clips required; `clips_filmed int` — clips ticked off on set
+- `status text check (status in ('planned','filmed','skipped'))` — `filmed` once `clips_filmed ≥ min_clips`
+- `channel_id` — null; kept for older channel-specific rows
+- `sort_order int`
 
 ### Reserved for later (do not build yet; keep names free)
 
@@ -195,102 +224,127 @@ Snapshots matter: editing a template later must never change a shoot that's alre
 
 ## 7. Library tab
 
-For each of Hooks, CTAs, Bodies, Formats, Angles:
+Tabs: **Hooks, CTAs, Formats & VOs, Angles**.
 
-- List view with search, filters (angle, tags, universal, CTA mode, format, archived) and sort.
+- List view with search, filters (angle, tags, universal, CTA mode, archived) and sort; paginated.
+- Tags input autocompletes from tags already used in the Library.
 - Create / edit drawer:
-  - Script editor with slot highlighting.
+  - Script editor with slot palette and slot highlighting.
   - Live preview: pick a product + channel → rendered script with slots filled; unfilled slots flagged.
-  - Bodies: one editor block per beat from the chosen format.
+  - Hooks: filming notes and suggested caption.
   - Validation rules from §5.
-- Archive / unarchive. No hard delete if referenced by a shoot.
-- Usage count per template ("used in 4 shoots") from `shoot_items`.
-- Duplicate action (copy a template as a starting point).
+- **Formats & VOs:** one collapsible panel per format (description, beats) listing its VOs, with **Add VO** inside the format. The format editor edits beats, each beat's description and its suggested b-roll shots. The VO editor has one block per beat and shows the estimated length (computed).
+- Archive / unarchive (with confirm). No hard delete if referenced by a shoot.
+- Usage count per template ("used in 4 shoots").
+- Duplicate action.
+- **AI drafts** (§11) for hooks (with captions), VOs and CTAs.
+- Seeded starter library: 30 hooks, 15 CTAs, 10 VOs, 5 formats, with starter beat descriptions and b-roll suggestions.
 
 ---
 
 ## 8. Brands tab
 
-- Brands list with status chips and assigned channels.
-- Brand detail: edit fields, assign channels (`brand_channels`), list products.
+- Brands list with status chips, assigned channels and deal summary; paginated.
+- **Filters and sort:** Trybe score, pay model, commission %, flat fee, category, channel, text match.
+- **Scrybe CSV import:** accepts any version of the Scrybe export (column names matched by alias, unit words ignored, unknown columns kept in `trybe_data.extra`). Every imported brand comes in as a **prospect**; existing brands (by Trybe id or slug) are updated rather than duplicated. A preview shows what will be created/updated and which columns weren't recognised.
+- Brand detail: edit fields and Trybe deal, full Trybe "about" text (with link to the full description on Trybe), assign channels, list products.
 - Product detail: name, slot values editor (key/value rows), allowed/forbidden claims, notes, list of shoots for this product.
 
 ---
 
-## 9. Planner tab
+## 9. Planner
 
 ### Shoots list
 
 Table of shoots: code, brand, product, date, status, people, channels, estimated recipes, estimated submissions. Filter by brand, product, status. "New shoot" button.
 
-### Shoot builder
+### Shoot planner
 
-Single page with a sticky **calculator panel** (right side on desktop, bottom sheet on mobile) that updates live.
+Single page with a scrollable **calculator panel** (right side on desktop, drawer on mobile) that updates live. Four sections, each collapsible and each with a **Clear** action (confirmed):
 
-1. **Setup:** product, date, people (add/remove; any active person), channels (defaults from brand), hook allocation (split/shared), b-roll variations per VO, submission rate, kit label.
-2. **Per person, add items from the Library:** multi-select hooks, bodies and CTAs (searchable picker with angle/tag filters). Option to "apply to all people" to add the same templates for everyone.
-3. **Hook allocation:**
-   - *Split:* each person's hooks are distributed across the shoot's channels round-robin (drag to reassign). Universal hooks are allocated the same way.
-   - *Shared:* hooks apply to all channels.
-4. **Scripts:** every item shows its rendered script (slots filled, `{{dog}}` filled per the hook's channel). Edit inline to create a per-person override. Unfilled slots block "Mark as planned".
-5. **B-roll shot list:** per channel and per beat, plus a "product-only (all channels)" group. Quick-add presets per beat; `product_visible` toggle; `min_clips`.
-6. **Codes:** assigned automatically when items are added (H/V/C/U, sequential within the shoot). Re-number button before the shoot is marked planned; codes frozen after.
-7. **Status:** Draft → Planned (locks codes, enables exports) → Filmed (set manually or when all items are filmed/skipped).
+1. **Setup:** product, date, location, people (add/remove; any active person), channels (default from the brand), b-roll variations per VO, submission rate, runway target, kit tag.
+2. **Formats:** add or remove formats on the plan. Removing a format (confirmed) also removes its VOs and its b-roll.
+3. **Structure:** one shared shot list that **everyone films together**, one by one:
+   - **Hooks** — used for every channel (no per-channel split).
+   - **Formats & VOs** — one collapsible panel per planned format, with an "Add F01 VOs" picker limited to that format.
+   - **CTAs.**
+   - Every item shows its rendered script (slots filled; `{{dog}}` per §5). Edit inline to create a per-person override, or use AI to reword it per person. Captions on hooks are snapshotted.
+4. **B-roll:** one collapsible panel per planned format (name, description, clip count), a section per beat with its `?` description, plus **General product shots** (suggestions from Settings). Suggested shots can be added one at a time, per beat ("Add this beat's") or for the whole format ("Add all suggestions"), or written by hand; **Generate b-roll** asks the AI for shots for every section based on the brand, product, formats and beat descriptions. Each shot has `product_visible` and `min_clips`.
+
+- **Codes:** assigned automatically when items are added (H/V/C/U, sequential within the shoot, shared per template). **Re-number** closes gaps while in draft.
+- **Status:**
+  - Draft → **Planned** (confirm dialog; blocked by unfilled slots; freezes codes and snapshots, enables the checklist and exports).
+  - Planned → **Back to draft** to keep editing.
+  - Planned → **Shooting** (Start shoot, or automatically on the first tick) → **Filmed** (End shoot; asks first if shots are still unticked).
+  - Filmed → **Resume shoot**, when shots are still unticked. A resumed shoot keeps its original start time.
+  - Elapsed time is shown while shooting and once ended.
 
 ### Calculator (live)
 
-Definitions, per person *p* and channel *c* in the shoot:
+Definitions, per person *p* and channel *c* in the shoot (skipped items are ignored):
 
-- `H(p,c)` = hooks for *p* on channel *c* (split mode: hooks assigned to *c*; shared mode: all of *p*'s hooks)
-- For each of *p*'s bodies *b*: `CTA(p,b)` = *p*'s CTAs whose mode is in `b.format.cta_modes`
+- `H(p)` = *p*'s hooks (every hook is used on every channel)
+- `B(p)`, `C(p)` = *p*'s VOs and CTAs. Any CTA can follow any VO.
 - `V` = `broll_variations`
+- `L(c)` = people on the shoot linked to channel *c* (§6 `person_channels`)
 
 ```
-recipes(p,c) = Σ over p's bodies b of [ H(p,c) × CTA(p,b) × V ]
+if L(c) is empty (same-person rule):
+  recipes(p,c) = H(p) × B(p) × C(p) × V
+if L(c) is not empty (mixed):
+  recipes(p,c) = H(p) × [Σ over q in L(c) of B(q)] × [Σ over q in L(c) of C(q)] × V   for p in L(c), else 0
+  (credited to p, whose hook opens the recipe)
 recipes(c)   = Σ over p of recipes(p,c)
 recipes      = Σ over c of recipes(c)
 submissions  = round(recipes × submission_rate)          (also shown per channel)
-concepts(p,c)= H(p,c) × number of p's bodies             (genuinely distinct hook×VO pairs)
+concepts(p,c)= H(p) × number of VOs available to p on c   (distinct hook×VO pairs)
 ```
 
-Time estimates (from settings):
+Time estimates (from settings). Everyone films on their own phone at the same time, so the shoot is as long as the busiest person:
 
 ```
 on_camera_min(p) = hooks(p) × minutes_per_hook + sync_ctas(p) × minutes_per_cta_sync
-vo_min(p)        = bodies(p) × minutes_per_vo + vo_ctas(p) × minutes_per_cta_vo
-shoot_days       = Σ on_camera_min / 60 / productive_hours_per_day   (rounded up to 0.5)
+vo_min(p)        = vos(p) × minutes_per_vo + vo_ctas(p) × minutes_per_cta_vo
+shoot_days       = max over p of on_camera_min(p) / 60 / productive_hours_per_day   (rounded up to 0.5)
 ```
 
 Panel shows:
 
-- **Per person:** clips to film (hooks / VOs / CTAs), on-camera time, VO time, recipes, concepts.
-- **Per channel:** recipes, concepts, estimated submissions, b-roll clips required (Σ `min_clips`).
-- **Totals:** clips, recipes, estimated submissions, on-camera hours, VO hours, shoot days.
-- **Runway:** input "target submissions per channel per month" → months of supply per channel.
-- Warnings: a body with zero compatible CTAs for a person; channels with zero hooks in split mode; unfilled slots.
+- **Per channel:** donut chart of estimated submissions with a legend table (share, recipes, runway).
+- **Per person:** stacked bars of on-camera vs VO time, plus clips, recipes and concepts.
+- **Totals:** clips, recipes, estimated submissions, on-camera hours, VO hours, shoot days, b-roll clips.
+- **Runway:** months of supply per channel at the shoot's `runway_target`.
+- **Warnings:** someone (or a mixed channel) has VOs but no CTAs; unfilled slots.
 
-Example to use as a test case (split mode, 3 people, 3 channels, each person with 30 hooks, 10 bodies, 5 CTAs all compatible, V = 3): recipes per channel = 3 × (10 × 10 × 5 × 3) = 4,500; total = 13,500; submissions at 15% = 2,025. Same inputs in shared mode: 40,500 recipes, 6,075 submissions.
+Chart colours use a fixed, colour-blind-checked categorical palette (`--chart-1…8`, separate light/dark values); every chart also shows its values as text.
+
+Test case (3 people, 3 channels, no linked people, each person with 30 hooks, 10 VOs, 5 CTAs, V = 3): recipes per channel = 3 × (30 × 10 × 5 × 3) = 13,500; total = 40,500; submissions at 15% = 6,075.
 
 ---
 
-## 10. Exports (available once a shoot is Planned)
+## 10. Checklist and exports (available once a shoot is Planned)
 
-### a) Shot sheet view (on set)
+### a) Checklist (on set)
 
-Route: `/shoots/[code]/sheet?person=[slug]` (and an "all people" view).
+Route: `/shoots/[code]/sheet?person=[slug]&show=[hook|cta|body|broll]`. Both filters are optional and combine (e.g. one person's CTAs); the URL can be shared. A signed-in user linked to a person opens on their own shots.
 
-- Mobile-first, large tap targets, works on a phone.
-- Grouped: Hooks (by channel), CTAs, then VOs (separate section, recorded off-set), then B-roll (by channel → beat).
-- Each line: code, rendered script, angle, location, channel, and a checkbox that sets `status` to filmed / skipped, with optional take notes. Updates save immediately.
-- Print stylesheet for paper copies.
+- Mobile-first, large tap targets. Updates save immediately.
+- Header: shoot, product, brand, date, elapsed time, progress for what's showing, Start / End / Resume.
+- Sections: **Hooks** (used for every channel), **CTAs**, **VOs** (recorded off set), then **B-roll** by beat.
+- Each item: code, rendered script (VOs by beat), angle, location, and filming notes ("How to film").
+  - **Everyone view:** the item once, with one tap button per person: not done → filmed → skipped → not done. Per-person rewordings are listed under the item.
+  - **Person view:** one big tick, plus Skip.
+- **B-roll:** one numbered box per required clip; the shot is filmed once all its clips are ticked. Skip covers the whole shot.
+- No notes: every clip is treated as the final take. No print view.
+- When everything is ticked off, a toast offers to end the shoot.
 
 ### b) CSV
 
-One row per shoot item and b-roll shot: `shoot, person, kind, code, channel, angle, cta_mode, location, script, status, folder_path`. For bodies, beats joined as `[problem] … [product] … [result] …`.
+One row per shoot item and b-roll shot: `shoot, person, kind, code, channel, angle, cta_mode, location, script, status, folder_path`. For VOs, beats joined as `[problem] … [product] … [result] …`.
 
 ### c) `shootsheet.json`
 
-The contract with the future worker. Download from the shoot page.
+The contract with the future worker. Download from the shoot page. Skipped items and shots are left out.
 
 ```json
 {
@@ -300,18 +354,19 @@ The contract with the future worker. Download from the shoot page.
     "date": "2026-10-20",
     "brand": { "name": "PawCo", "slug": "pawco" },
     "product": { "name": "Calming Chews", "slug": "calming-chews", "slot_values": {} },
-    "hook_allocation": "split",
+    "hook_allocation": "shared",
     "broll_variations": 3,
     "submission_rate": 0.15
   },
-  "people": [{ "slug": "joe", "name": "Joe" }],
+  "people": [{ "slug": "joe", "name": "Joe", "channels": ["topdognix"] }],
   "channels": [{ "slug": "topdognix", "folder_slug": "nix", "dogs": ["nix"] }],
   "formats": [{ "code": "F02", "cta_modes": ["sync", "vo"], "beats": ["problem", "product", "result"] }],
   "items": [
     {
-      "code": "H01", "kind": "hook", "person": "joe", "channel": "topdognix",
+      "code": "H01", "kind": "hook", "person": "joe", "channel": null,
       "template_id": "uuid", "angle": "curiosity", "universal": false,
       "script": "Nobody told me Calming Chews could do this…",
+      "caption": "…",
       "folder": "pawco/calming-chews/shoots/S014_2026-10-20/edited/hooks/joe/H01"
     },
     {
@@ -332,96 +387,120 @@ The contract with the future worker. Download from the shoot page.
   ],
   "broll": [
     {
-      "channel": "topdognix", "beat": "problem", "description": "anxious pacing",
+      "channel": null, "beat": "problem", "description": "anxious pacing",
       "product_visible": false, "min_clips": 3,
-      "folder": "pawco/calming-chews/b-roll/nix/problem"
+      "folder": "pawco/calming-chews/b-roll/shared/problem"
     }
   ]
 }
 ```
 
+`people[].channels` lists the channels a person is linked to; recipes on those channels can mix their linked people's parts. `formats[].cta_modes` is legacy and can be ignored.
+
 ### d) Folder skeleton (zip)
 
-Download a zip of empty folders (each with a `.keep` file) plus `shootsheet.json`, to unzip into the Dropbox `topdogugc/` root. A later phase can replace this with Dropbox API folder creation.
+Download a zip of empty folders (each with a `.keep` file) plus `shootsheet.json`, to unzip into the Dropbox `topdogugc/` root. §12 replaces this with direct Dropbox folder creation.
 
 ```
 topdogugc/
   universal/
-    hooks/[person]/U##/
+    hooks/[person]/U[template short id]/   universal hooks, by template across products
   [brand]/[product]/
     b-roll/
-      shared/product/                       product-only shots, all channels
-      [nix|whiskey|both]/problem|product|result/
+      shared/[beat]/                       b-roll for every channel (incl. shared/product)
+      [nix|whiskey|both]/[beat]/           older channel-specific b-roll
     shoots/[S###_YYYY-MM-DD]/
       shootsheet.json
       raw/
       edited/
-        hooks/[person]/H##/                 one folder per hook; filenames don't matter
+        hooks/[person]/H##/                one folder per hook; filenames don't matter
         vo/[person]/V##/
         ctas/[person]/C##/
       captions/
     renders/
 ```
 
-Universal hook folder naming: `universal/hooks/[person]/U[template short id]/` so universal clips are identified by template across products, not by shoot.
-
 All slugs lowercase kebab-case; generate once and never change after a shoot is planned.
 
 ---
 
-## 11. Phase 6 — AI drafting (optional, after core works)
+## 11. AI drafting
 
-Server route calling the Anthropic API. Every generation produces **drafts** a person approves before saving; nothing writes to the Library automatically.
+Server routes calling the Anthropic API (`ANTHROPIC_MODEL`, default `claude-opus-5-5`). Every generation produces **drafts** a person approves before saving; nothing writes to the Library automatically. Refusals and invalid output are reported, not saved.
 
-- **Hook drafts:** given an angle and optional tags, generate N brand-agnostic hook templates using slot syntax.
-- **Body drafts:** given a format and angle, generate a beat-structured VO script.
-- **Per-person renditions:** in the shoot builder, generate reworded variants of a body or hook for each person (saved as `script_override`), so cast members don't say identical lines.
+- **Hook drafts:** given an angle and optional tags, generate N brand-agnostic hooks in slot syntax, each with a suggested caption. Universal hook drafts that use any slot other than `{{dog}}` are dropped.
+- **VO drafts:** given a format (and its beat descriptions) and an angle, generate a beat-structured VO script.
+- **CTA drafts:** given a mode (sync/vo), generate CTAs.
+- **Per-person rewording:** in the planner, reword a hook, VO or CTA for each person (saved as `script_override`), so cast members don't say identical lines.
+- **B-roll generation:** in the planner, suggest shots for every planned format's beats and the general product section, using the brand, product, format and beat descriptions, with the format's own suggestions as examples.
 - Respect the product's `claims_forbidden` when generating with a product selected.
 
 ---
 
-## 12. Build phases and acceptance criteria
+## 12. Dropbox uploads (next; not built)
 
-**Phase 0 — Foundation**
-- Nuxt + Nuxt UI app on Vercel, Supabase connected, Google sign-in, allowlist enforced, admin seeded, RLS on all tables.
-- ✅ A non-allowlisted Google account cannot see any data.
+Goal: clips go straight from the shoot into the right Dropbox folders (§10d), so nobody sorts footage by hand.
 
-**Phase 1 — Reference data**
-- Settings tab: people, channels (with dogs, dog phrase, folder slug), allowlist, time defaults.
-- Brands tab: brands, products with slot values, brand → channel assignment.
-- Seed: 3 channels (topdognix / nix, topdogwhiskey / whiskey, topdogsiblings / both); angles list.
-- ✅ Can create a brand, a product with custom slots, and assign channels.
+Proposed design, to confirm:
 
-**Phase 2 — Library**
-- CRUD for formats, bodies (beat editor), hooks, CTAs, angles; slot highlighting; live preview; universal validation; archive; usage counts; duplicate.
-- ✅ A universal hook containing `{{brand}}` cannot be saved. Preview flags unfilled slots.
+- A Dropbox app (App Console) with its app key/secret in env vars; each person connects their Dropbox once (OAuth), or the agency connects one team folder.
+- Planning a shoot creates its folder structure in Dropbox instead of (or as well as) the zip.
+- In the checklist, each item and b-roll shot gets an **Upload** action: the clip uploads from the phone straight into that item's folder (e.g. `…/edited/hooks/bren/H03/`), and uploading ticks it off (for b-roll, one clip per box).
 
-**Phase 3 — Shoot builder**
-- Create shoot, add people/channels, add items per person from the Library, split/shared allocation with round-robin + manual reassign, auto codes, inline script overrides, b-roll shot list, status Draft → Planned.
-- ✅ Editing a template after a shoot is planned does not change that shoot's scripts.
+Open questions:
 
-**Phase 4 — Calculator**
-- Live panel per §9, including CTA-mode compatibility, time estimates, runway and warnings.
-- ✅ The §9 example inputs produce 13,500 recipes / 2,025 submissions (split) and 40,500 / 6,075 (shared).
-
-**Phase 5 — Exports**
-- Shot sheet view (mobile, live checkboxes, print), CSV, `shootsheet.json`, folder skeleton zip.
-- ✅ Unzipping the skeleton gives exactly the folder paths listed in `shootsheet.json`.
-
-**Phase 6 — AI drafting** per §11.
+1. **Account:** a Dropbox Business team folder everyone shares, or one personal Dropbox?
+2. **What gets uploaded:** raw clips straight from phones during the shoot, or edited clips afterwards (`raw/` vs `edited/`)?
+3. **Who uploads:** each person from their own phone, or one person collecting everything?
 
 ---
 
-## 13. Conventions
+## 13. Build phases and acceptance criteria
 
-- TypeScript throughout; generate Supabase types and use them.
+**Phase 0 — Foundation** ✔
+- Nuxt + Nuxt UI app, Supabase connected, Google sign-in, allowlist enforced, admin seeded, RLS on all tables.
+- ✅ A non-allowlisted Google account cannot see any data.
+
+**Phase 1 — Reference data** ✔
+- Settings: people (linked users, channels), channels, allowlist, defaults. Brands: brands with Trybe deal, CSV import, filters, products with slot values, brand → channel assignment.
+- ✅ Can create a brand, a product with custom slots, and assign channels.
+
+**Phase 2 — Library** ✔
+- CRUD for formats & VOs, hooks, CTAs, angles; slot highlighting; live preview; universal validation; archive; usage counts; duplicate; seeded starter library.
+- ✅ A universal hook containing `{{brand}}` cannot be saved. Preview flags unfilled slots.
+
+**Phase 3 — Shoot planner** ✔
+- Setup / Formats / Structure / B-roll, shared shot list, auto codes, inline overrides, b-roll from format suggestions, status flow including back to draft, start/end/resume.
+- ✅ Editing a template after a shoot is planned does not change that shoot's scripts.
+
+**Phase 4 — Calculator** ✔
+- Live panel per §9, including linked-people mixing, time estimates, runway, charts and warnings.
+- ✅ The §9 test case produces 40,500 recipes / 6,075 submissions.
+
+**Phase 5 — Checklist and exports** ✔
+- Checklist (mobile, live ticks, filters, per-clip b-roll), CSV, `shootsheet.json`, folder skeleton zip.
+- ✅ Unzipping the skeleton gives exactly the folder paths listed in `shootsheet.json` (plus the fixed structure).
+
+**Phase 6 — AI drafting** ✔ per §11.
+
+**Phase 7 — Dropbox uploads** per §12, once the open questions are answered.
+
+---
+
+## 14. Conventions
+
+- TypeScript throughout; Supabase types in `shared/types/database.types.ts`.
 - Database changes as SQL migrations in the repo (`supabase/migrations`).
-- Keep calculator math in a pure, unit-tested module (`utils/calculator.ts`) shared by the UI and exports.
-- Keep slot rendering in a pure, unit-tested module (`utils/slots.ts`).
-- No hard deletes on library or shoot data; archive instead.
+- Pure, unit-tested modules in `shared/utils/` (Vitest, `tests/`), shared by the UI and server routes:
+  - `calculator.ts` — recipes, submissions, time, runway
+  - `slots.ts` — slot rendering, universal-hook rule, VO length estimate
+  - `shootsheet.ts` — shot list grouping, folders, CSV, `shootsheet.json`, skeleton
+  - `brandImport.ts` — Scrybe CSV parsing and import planning
+- No hard deletes on library or shoot data; archive instead. (Removing items from a draft shoot is allowed.)
 
-## 14. Out of scope (later projects)
+## 15. Out of scope (later projects)
 
 - Local worker (Windows now, VPS later): ingest, auto-tagging, conformance checks, caption alignment, recipe generation, selection, rendering.
 - Submission queue and form-filling Chrome extension (linked to Dropbox).
 - Performance tracking per template / angle once brand data is known.
+- Interactive checklist ideas beyond ticking (parked).
