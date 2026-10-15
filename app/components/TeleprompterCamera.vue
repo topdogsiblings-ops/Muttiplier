@@ -35,20 +35,35 @@ function stopStream() {
   stream.value = null
 }
 
+// Safari weighs an `ideal` frame rate against the `ideal` size, and happily settles on a
+// 30fps mode; asking for at least 50 makes it pick a 60fps-capable mode. Falls back to
+// best effort where the camera has none.
+async function requestCamera(): Promise<MediaStream> {
+  const video = { facingMode: facing.value, width: { ideal: 1080 }, height: { ideal: 1920 } }
+  try {
+    return await navigator.mediaDevices.getUserMedia({ video: { ...video, frameRate: { min: 50, ideal: 60 } }, audio: true })
+  } catch (error) {
+    if ((error as Error).name !== 'OverconstrainedError') throw error
+    return navigator.mediaDevices.getUserMedia({ video: { ...video, frameRate: { ideal: 60 } }, audio: true })
+  }
+}
+
+/** What the camera is actually giving us, e.g. "1080×1920 · 60fps". */
+const cameraInfo = ref('')
+
 async function openCamera() {
   starting.value = true
   stopStream()
   try {
-    stream.value = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: facing.value, width: { ideal: 1080 }, height: { ideal: 1920 }, frameRate: { ideal: 60 } },
-      audio: true
-    })
+    stream.value = await requestCamera()
   } catch {
     toast.add({ title: 'Can\'t use the camera', description: 'Allow camera and microphone access for this site, then try again.', color: 'error', icon: 'i-lucide-video-off' })
     emit('close')
     return
   }
   if (preview.value) preview.value.srcObject = stream.value
+  const settings = stream.value.getVideoTracks()[0]?.getSettings()
+  cameraInfo.value = settings?.width ? `${settings.width}×${settings.height} · ${Math.round(settings.frameRate ?? 0)}fps` : ''
   starting.value = false
 }
 
@@ -67,7 +82,7 @@ let drawing = false
 /** Draw the current camera frame onto the canvas, cropped to fill 9:16 like the preview's object-cover. */
 function drawFrame() {
   const video = preview.value
-  const context = canvas?.getContext('2d')
+  const context = canvas?.getContext('2d', { alpha: false })
   if (!video || !context || !video.videoWidth || !video.videoHeight) return
   const target = OUTPUT.width / OUTPUT.height
   const source = video.videoWidth / video.videoHeight
@@ -178,6 +193,7 @@ onBeforeUnmount(() => {
         <div class="mt-2 flex items-center gap-1">
           <UButton icon="i-lucide-a-arrow-down" color="neutral" variant="ghost" size="sm" class="text-white" aria-label="Smaller text" :disabled="textSize <= 18" @click="textSize -= 4" />
           <UButton icon="i-lucide-a-arrow-up" color="neutral" variant="ghost" size="sm" class="text-white" aria-label="Bigger text" :disabled="textSize >= 48" @click="textSize += 4" />
+          <span v-if="cameraInfo" class="ml-auto text-xs text-white/70 tabular-nums">camera {{ cameraInfo }}</span>
         </div>
       </div>
 
