@@ -334,9 +334,9 @@ Route: `/shoots/[code]/sheet?person=[slug]&show=[hook|cta|body|broll]`. Both fil
 - Sections: **Hooks** (used for every channel), **CTAs**, **VOs** (recorded off set), then **B-roll** by beat.
 - Each item: code, rendered script (VOs by beat), angle, location, and filming notes ("How to film").
 - **Every deliverable gets its clip from the checklist** with **Add clip**, which picks a video (hooks, sync CTAs, b-roll) or audio file (VOs, VO CTAs) from the phone, for its folder (§10d). Clips are filmed and recorded in the phone's own apps; the app doesn't film or record itself, because iOS compresses video its camera hands straight to a web page (to 480×360). **Only a saved clip ticks it off**; nothing can be ticked by hand. Removing the clip unticks it. Skip / unskip stays manual.
-  - **Everyone view:** the item once, with a status chip per person (tap to skip/unskip) and an "Add clips" fold-out with one row per person. Per-person rewordings are listed under the item.
+  - **Everyone view:** the item once, with a status chip per person (tap to skip/unskip) each with its own Add clip button; added clips show below with the person's name. Per-person rewordings are listed under the item.
   - **Person view:** a status tick with Skip underneath; Add clip in the item's top row (next to the code and badges); the attached clip below the script.
-- **B-roll:** one numbered box per required clip, each filled by saving a clip for it; the shot is filmed once all its clips are in. Skip covers the whole shot.
+- **B-roll:** one Add clip button per required clip, each with its clip shown below once saved; the shot is filmed once all its clips are in. Skip covers the whole shot.
 - **Sanity checks** before a clip is saved, with presets in Settings → Defaults → Clip checks:
   - Video: aspect ratio (default 9:16 vertical), resolution (default at least 1080×1920) and frame rate (default 24–60 fps, measured by playing the clip briefly; skipped if the browser can't measure it).
   - VO recordings and VO CTAs: length against the script's estimated reading time at the speech pace (default 60%–175% of it); under a second counts as empty.
