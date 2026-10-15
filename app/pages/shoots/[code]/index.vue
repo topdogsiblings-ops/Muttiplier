@@ -535,10 +535,15 @@ const exportItems: DropdownMenuItem[] = [
             :color="shoot.status === 'shooting' ? 'warning' : 'success'"
             variant="subtle"
             :icon="shoot.status === 'shooting' ? 'i-lucide-clapperboard' : 'i-lucide-check-check'"
-            :title="shoot.status === 'shooting' ? 'Shoot in progress' : 'Shoot finished'"
           >
+            <template #title>
+              <span class="flex flex-wrap items-center gap-x-2">
+                {{ shoot.status === 'shooting' ? 'Shoot in progress' : 'Shoot finished' }}
+                <ShootElapsed :shoot="shoot" />
+              </span>
+            </template>
             <template #description>
-              <p>Started {{ timeOf(shoot.started_at) }} by {{ nameOf(shoot.started_by) }}. <ShootElapsed :shoot="shoot" /></p>
+              <p>Started {{ timeOf(shoot.started_at) }} by {{ nameOf(shoot.started_by) }}.</p>
               <p v-if="shoot.ended_at">
                 Ended {{ timeOf(shoot.ended_at) }} by {{ nameOf(shoot.ended_by) }}.
               </p>
