@@ -71,6 +71,7 @@ const product = reactive({
   claims_forbidden: '',
   notes: ''
 })
+const requestProductOpen = useGuardedClose(productOpen, product)
 watch(() => product.name, (name) => {
   if (!product.id) product.slug = slugify(name)
 })
@@ -229,7 +230,7 @@ async function saveProduct() {
         </div>
       </div>
 
-      <USlideover v-model:open="productOpen" :title="product.id ? product.name : 'New product'" :ui="{ content: 'max-w-xl' }">
+      <USlideover :open="productOpen" @update:open="requestProductOpen" :title="product.id ? product.name : 'New product'" :ui="{ content: 'max-w-xl' }">
         <template #body>
           <div class="space-y-5">
             <UFormField label="Name" required help="Fills {{product}}">

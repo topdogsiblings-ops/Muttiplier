@@ -40,6 +40,7 @@ const form = reactive({
   filming_notes: '',
   caption: ''
 })
+const requestOpen = useGuardedClose(open, form)
 
 function edit(row?: Partial<Row<'hook_templates'>>, duplicate = false) {
   Object.assign(form, {
@@ -146,7 +147,7 @@ async function save() {
     </div>
     <ListPager v-model:page="library.page.value" :total="visible.length" :page-size="library.pageSize" />
 
-    <USlideover v-model:open="open" :title="form.id ? 'Edit hook' : 'New hook'" :ui="{ content: 'max-w-xl' }">
+    <USlideover :open="open" @update:open="requestOpen" :title="form.id ? 'Edit hook' : 'New hook'" :ui="{ content: 'max-w-xl' }">
       <template #body>
         <div class="space-y-5">
           <UFormField

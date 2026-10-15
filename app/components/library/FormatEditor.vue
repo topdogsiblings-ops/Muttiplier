@@ -22,6 +22,7 @@ const form = reactive({
   target_seconds: undefined as number | undefined,
   source_url: ''
 })
+const requestOpen = useGuardedClose(open, form)
 
 function nextCode() {
   const highest = Math.max(0, ...formats.value.map(row => Number(row.code.match(/^F(\d+)$/)?.[1] ?? 0)))
@@ -80,7 +81,7 @@ async function save() {
 </script>
 
 <template>
-  <USlideover v-model:open="open" :title="form.id ? 'Edit format' : 'New format'" :ui="{ content: 'max-w-xl' }">
+  <USlideover :open="open" @update:open="requestOpen" :title="form.id ? 'Edit format' : 'New format'" :ui="{ content: 'max-w-xl' }">
     <template #body>
       <div class="space-y-5">
         <div class="grid gap-4 sm:grid-cols-3">

@@ -29,6 +29,7 @@ const form = reactive({
   notes: '',
   source_url: ''
 })
+const requestOpen = useGuardedClose(open, form)
 
 function edit(row?: Partial<Omit<Row<'body_templates'>, 'beats'>> & { beats?: unknown }, duplicate = false) {
   Object.assign(form, {
@@ -120,7 +121,7 @@ async function save() {
 </script>
 
 <template>
-  <USlideover v-model:open="open" :title="form.id ? 'Edit VO' : 'New VO'" :ui="{ content: 'max-w-xl' }">
+  <USlideover :open="open" @update:open="requestOpen" :title="form.id ? 'Edit VO' : 'New VO'" :ui="{ content: 'max-w-xl' }">
     <template #body>
       <div class="space-y-5">
         <UFormField label="Title" required>
