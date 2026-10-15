@@ -473,6 +473,9 @@ const exportItems: DropdownMenuItem[] = [
             />
             <UButton
               label="Mark as planned"
+              aria-label="Mark as planned"
+              :ui="ICON_ON_MOBILE"
+              class="max-sm:px-1.5"
               icon="i-lucide-lock"
               :disabled="blockers.length > 0"
               :loading="busy"
@@ -482,23 +485,29 @@ const exportItems: DropdownMenuItem[] = [
           <template v-else>
             <UButton
               label="Checklist"
+              aria-label="Checklist"
+              :ui="ICON_ON_MOBILE"
+              class="max-sm:px-1.5"
               icon="i-lucide-clipboard-check"
               :color="shoot.status === 'shooting' ? 'primary' : 'neutral'"
               :variant="shoot.status === 'shooting' ? 'solid' : 'subtle'"
               :to="`/shoots/${shoot.code}/sheet`"
             />
             <UDropdownMenu :items="exportItems">
-              <UButton label="Export" icon="i-lucide-download" color="neutral" variant="subtle" />
+              <UButton label="Export" aria-label="Export" icon="i-lucide-download" color="neutral" variant="subtle" :ui="ICON_ON_MOBILE" class="max-sm:px-1.5" />
             </UDropdownMenu>
             <UButton
               v-if="shoot.status === 'planned'"
               label="Back to draft"
+              aria-label="Back to draft"
+              :ui="ICON_ON_MOBILE"
+              class="max-sm:px-1.5"
               icon="i-lucide-lock-open"
               color="neutral"
               variant="ghost"
               @click="confirmUnplan = true"
             />
-            <ShootControls :shoot="shoot" :remaining="remaining" @changed="refresh" />
+            <ShootControls :shoot="shoot" :remaining="remaining" icon-on-mobile @changed="refresh" />
           </template>
         </template>
       </UDashboardNavbar>

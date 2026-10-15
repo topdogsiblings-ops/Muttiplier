@@ -97,7 +97,7 @@ function addVo(format: Row<'formats'>) {
       <USelect v-model="tag" :items="tagOptions(vos.rows.value)" class="w-32" />
       <template #actions>
         <LibraryAiDrafts kind="body" @use="bodyEditor?.edit($event)" />
-        <UButton label="New VO" icon="i-lucide-plus" color="neutral" variant="subtle" @click="bodyEditor?.edit()" />
+        <UButton label="New VO" aria-label="New VO" icon="i-lucide-plus" color="neutral" variant="subtle" :ui="ICON_ON_MOBILE" class="max-sm:px-1.5" @click="bodyEditor?.edit()" />
       </template>
     </LibraryToolbar>
 

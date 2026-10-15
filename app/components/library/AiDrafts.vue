@@ -73,7 +73,7 @@ function use(draft: { title?: string, script?: string, caption?: string, beats?:
 </script>
 
 <template>
-  <UButton label="Draft with AI" icon="i-lucide-sparkles" color="neutral" variant="subtle" @click="open = true" />
+  <UButton label="Draft with AI" aria-label="Draft with AI" icon="i-lucide-sparkles" color="neutral" variant="subtle" :ui="ICON_ON_MOBILE" class="max-sm:px-1.5" @click="open = true" />
 
   <UModal
     v-model:open="open"

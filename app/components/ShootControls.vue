@@ -7,6 +7,8 @@ const props = defineProps<{
   /** items and b-roll shots not yet filmed or skipped */
   remaining: number
   size?: 'sm' | 'md'
+  /** show icons only on phones */
+  iconOnMobile?: boolean
 }>()
 const emit = defineEmits<{ changed: [] }>()
 
@@ -34,12 +36,16 @@ function end() {
 }
 
 defineExpose({ start, end, resume })
+
+const compact = computed(() => props.iconOnMobile ? { ui: ICON_ON_MOBILE, class: 'max-sm:px-1.5' } : {})
 </script>
 
 <template>
   <UButton
     v-if="props.shoot.status === 'planned'"
     label="Start shoot"
+    aria-label="Start shoot"
+    v-bind="compact"
     icon="i-lucide-play"
     color="success"
     :size="props.size"
@@ -49,6 +55,8 @@ defineExpose({ start, end, resume })
   <UButton
     v-else-if="props.shoot.status === 'shooting'"
     label="End shoot"
+    aria-label="End shoot"
+    v-bind="compact"
     icon="i-lucide-square"
     color="error"
     :size="props.size"
@@ -58,6 +66,8 @@ defineExpose({ start, end, resume })
   <UButton
     v-else-if="props.shoot.status === 'filmed' && props.remaining > 0"
     label="Resume shoot"
+    aria-label="Resume shoot"
+    v-bind="compact"
     icon="i-lucide-rotate-ccw"
     color="success"
     variant="subtle"

@@ -21,7 +21,7 @@ const sorts = computed(() => props.sortable ? LIBRARY_SORTS : LIBRARY_SORTS.filt
     <USwitch v-model="showArchived" label="Archived" />
     <div class="ml-auto flex items-center gap-2">
       <slot name="actions" />
-      <UButton icon="i-lucide-plus" :label="props.newLabel" @click="emit('create')" />
+      <UButton icon="i-lucide-plus" :label="props.newLabel" :aria-label="props.newLabel" :ui="ICON_ON_MOBILE" class="max-sm:px-1.5" @click="emit('create')" />
     </div>
   </div>
 </template>

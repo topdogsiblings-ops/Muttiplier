@@ -105,3 +105,6 @@ export function formatDate(value: string | null): string {
 
 export const formatNumber = (value: number, digits = 0) =>
   value.toLocaleString(undefined, { maximumFractionDigits: digits })
+
+/** Button `ui` that drops the label below the `sm` breakpoint; pair with `class="max-sm:px-1.5"` and an `aria-label`. */
+export const ICON_ON_MOBILE = { label: 'hidden sm:inline' }
