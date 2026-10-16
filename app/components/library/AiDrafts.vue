@@ -38,6 +38,7 @@ const form = reactive({
   count: props.kind === 'body' ? 2 : 6,
   brief: ''
 })
+const requestOpen = useGuardedClose(open, () => ({ form, drafts: drafts.value }))
 
 const formatOptions = computed(() =>
   formats.value.filter(format => !format.archived).map(format => ({ label: `${format.code} — ${format.name}`, value: format.id }))
@@ -76,7 +77,8 @@ function use(draft: { title?: string, script?: string, caption?: string, beats?:
   <UButton label="Draft with AI" aria-label="Draft with AI" icon="i-lucide-sparkles" color="neutral" variant="subtle" :ui="ICON_ON_MOBILE" class="max-sm:px-1.5" @click="open = true" />
 
   <UModal
-    v-model:open="open"
+    :open="open"
+    @update:open="requestOpen"
     :title="TITLES[props.kind]"
     description="Drafts are suggestions. Open one to edit it, then save it to the Library yourself."
     :ui="{ content: 'sm:max-w-2xl' }"

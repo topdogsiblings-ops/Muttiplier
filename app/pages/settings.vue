@@ -35,6 +35,7 @@ const saving = ref(false)
 // --- people ----------------------------------------------------------------
 const personOpen = ref(false)
 const person = reactive({ id: '', name: '', slug: '', active: true, allowed_user_id: undefined as string | undefined, channel_ids: [] as string[] })
+const requestPersonOpen = useGuardedClose(personOpen, person)
 
 function editPerson(row?: Row<'people'>) {
   Object.assign(person, { id: row?.id ?? '', name: row?.name ?? '', slug: row?.slug ?? '', active: row?.active ?? true, allowed_user_id: row?.allowed_user_id ?? undefined, channel_ids: row ? channelsOf(row.id) : [] })
@@ -72,6 +73,7 @@ async function savePerson() {
 // --- channels --------------------------------------------------------------
 const channelOpen = ref(false)
 const channel = reactive({ id: '', name: '', slug: '', dogs: [] as string[], dog_phrase: '', folder_slug: '', active: true })
+const requestChannelOpen = useGuardedClose(channelOpen, channel)
 
 function editChannel(row?: Row<'channels'>) {
   Object.assign(channel, {
@@ -109,6 +111,7 @@ async function saveChannel() {
 // --- allowlist -------------------------------------------------------------
 const userOpen = ref(false)
 const allowedUser = reactive({ id: '', email: '', role: 'member', display_name: '' })
+const requestUserOpen = useGuardedClose(userOpen, allowedUser)
 const roles = [{ label: 'Member', value: 'member' }, { label: 'Admin', value: 'admin' }]
 const isSelf = (email: string) => email === access.value?.email
 
@@ -406,7 +409,7 @@ async function saveDefaults() {
         </template>
       </div>
 
-      <UModal v-model:open="personOpen" :title="person.id ? 'Edit person' : 'Add person'">
+      <UModal :open="personOpen" @update:open="requestPersonOpen" :title="person.id ? 'Edit person' : 'Add person'">
         <template #body>
           <div class="space-y-4">
             <UFormField label="Name" required>
@@ -446,7 +449,7 @@ async function saveDefaults() {
         </template>
       </UModal>
 
-      <UModal v-model:open="channelOpen" :title="channel.id ? 'Edit channel' : 'Add channel'">
+      <UModal :open="channelOpen" @update:open="requestChannelOpen" :title="channel.id ? 'Edit channel' : 'Add channel'">
         <template #body>
           <div class="space-y-4">
             <UFormField label="Name" required>
@@ -479,7 +482,7 @@ async function saveDefaults() {
         </template>
       </UModal>
 
-      <UModal v-model:open="userOpen" :title="allowedUser.id ? 'Edit access' : 'Add to allowlist'">
+      <UModal :open="userOpen" @update:open="requestUserOpen" :title="allowedUser.id ? 'Edit access' : 'Add to allowlist'">
         <template #body>
           <div class="space-y-4">
             <UFormField label="Google account email" required>

@@ -132,6 +132,7 @@ const channelName = (id: string) => channels.value.find(channel => channel.id ==
 const open = ref(false)
 const saving = ref(false)
 const draft = reactive({ name: '', slug: '', status: 'prospect' })
+const requestOpen = useGuardedClose(open, draft)
 watch(() => draft.name, (name) => {
   draft.slug = slugify(name)
 })
@@ -274,7 +275,7 @@ async function save() {
       </p>
       <ListPager v-model:page="page" :total="filtered.length" :page-size="pageSize" class="mt-4" />
 
-      <UModal v-model:open="open" title="New brand">
+      <UModal :open="open" @update:open="requestOpen" title="New brand">
         <template #body>
           <div class="space-y-4">
             <UFormField label="Name" required>

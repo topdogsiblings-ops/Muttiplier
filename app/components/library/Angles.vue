@@ -13,6 +13,7 @@ const pageRows = computed(() => library.paginate(visible.value))
 const open = ref(false)
 const saving = ref(false)
 const form = reactive({ id: '', name: '', description: '', source_url: '' })
+const requestOpen = useGuardedClose(open, form)
 
 function edit(row?: Row<'angles'>) {
   Object.assign(form, { id: row?.id ?? '', name: row?.name ?? '', description: row?.description ?? '', source_url: row?.source_url ?? '' })
@@ -77,7 +78,7 @@ async function setArchived(row: Row<'angles'>, archived: boolean) {
     </div>
     <ListPager v-model:page="library.page.value" :total="visible.length" :page-size="library.pageSize" />
 
-    <UModal v-model:open="open" :title="form.id ? 'Edit angle' : 'New angle'">
+    <UModal :open="open" @update:open="requestOpen" :title="form.id ? 'Edit angle' : 'New angle'">
       <template #body>
         <div class="space-y-4">
           <UFormField label="Name" required help="Title case, e.g. Before and After">

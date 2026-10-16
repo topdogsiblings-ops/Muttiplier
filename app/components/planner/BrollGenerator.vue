@@ -20,6 +20,7 @@ const loading = ref(false)
 const adding = ref(false)
 const drafts = ref<DraftBrollShot[]>([])
 const picked = ref<Set<number>>(new Set())
+const requestOpen = useGuardedClose(open, () => ({ drafts: drafts.value, picked: [...picked.value] }))
 
 async function generate() {
   open.value = true
@@ -83,7 +84,8 @@ async function add() {
   <UButton label="Generate b-roll" icon="i-lucide-sparkles" color="neutral" variant="subtle" @click="generate" />
 
   <UModal
-    v-model:open="open"
+    :open="open"
+    @update:open="requestOpen"
     title="Suggested b-roll"
     description="Drafted from the product, brand, formats, beat descriptions and VO scripts. Untick anything you don't want."
     :ui="{ content: 'sm:max-w-3xl' }"

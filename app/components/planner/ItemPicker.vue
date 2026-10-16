@@ -32,6 +32,7 @@ const search = ref('')
 const angle = ref('all')
 const tag = ref('all')
 const selected = ref<Set<string>>(new Set())
+const requestOpen = useGuardedClose(open, () => [...selected.value])
 
 watch(open, async (isOpen) => {
   if (!isOpen) return
@@ -127,7 +128,8 @@ function add() {
 
 <template>
   <UModal
-    v-model:open="open"
+    :open="open"
+    @update:open="requestOpen"
     :title="props.format ? `Add ${props.format.code} VOs` : 'Add to the structure'"
     :description="props.format ? `VOs written for ${props.format.name}.` : 'Pick hooks, VOs and CTAs from the Library.'"
     :ui="{ content: 'sm:max-w-3xl' }"

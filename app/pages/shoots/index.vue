@@ -93,6 +93,7 @@ const open = ref(false)
 const saving = ref(false)
 const kits = selectOptions(['audition', 'scale', 'custom'])
 const draft = reactive({ product_id: undefined as string | undefined, shoot_date: '', kit: 'custom' })
+const requestOpen = useGuardedClose(open, draft)
 
 function create() {
   Object.assign(draft, { product_id: product.value === 'all' ? undefined : product.value, shoot_date: '', kit: 'custom' })
@@ -230,7 +231,7 @@ async function save() {
         </p>
       </div>
 
-      <UModal v-model:open="open" title="New shoot">
+      <UModal :open="open" @update:open="requestOpen" title="New shoot">
         <template #body>
           <div class="space-y-4">
             <UAlert

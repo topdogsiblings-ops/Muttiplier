@@ -16,6 +16,7 @@ const plan = ref<ImportPlan | null>(null)
 const reading = ref(false)
 const importing = ref(false)
 const progress = ref(0)
+const requestOpen = useGuardedClose(open, () => ({ file: fileName.value, plan: plan.value }))
 
 const total = computed(() => (plan.value?.creates.length ?? 0) + (plan.value?.updates.length ?? 0))
 
@@ -95,7 +96,8 @@ const payLabel = (brand: { pay_model: string | null, flat_fee: number | null, co
   <UButton label="Import CSV" icon="i-lucide-file-up" color="neutral" variant="subtle" @click="open = true" />
 
   <UModal
-    v-model:open="open"
+    :open="open"
+    @update:open="requestOpen"
     title="Import brands from Scrybe"
     description="Upload a Scrybe brand export (CSV, format version 2). New brands are added as prospects."
     :ui="{ content: 'sm:max-w-3xl' }"
