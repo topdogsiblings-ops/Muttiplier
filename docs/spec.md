@@ -217,6 +217,10 @@ Snapshots matter: editing a template later must never change a shoot that's alre
 - `channel_id` — null; kept for older channel-specific rows
 - `sort_order int`
 
+**shoot_clips** — one row per deliverable with footage on some phone: a shoot item (`item:<id>`) or one required b-roll clip for one channel (`broll:<shot>:<channel>:<n>`)
+- `shoot_id`, `target text`, unique on both; `file_name`, `size`, `state` (`saved` | `uploaded`), `path` (in Dropbox, once uploaded); `created_by` = whose phone it's on
+- Live over Supabase Realtime, so every phone sees a clip as soon as it's added anywhere. The clip itself stays on the phone that added it until it's uploaded.
+
 ### Reserved for later (do not build yet; keep names free)
 
 `clips`, `recipes`, `jobs`, `submissions`, `template_stats`.
@@ -341,7 +345,9 @@ Route: `/shoots/[code]/sheet?person=[slug]&show=[hook|cta|body|broll]`. Both fil
   - Video: aspect ratio (default 9:16 vertical), resolution (default at least 1080×1920) and frame rate (default 24–60 fps, measured by playing the clip briefly; skipped if the browser can't measure it).
   - VO recordings and VO CTAs: length against the script's estimated reading time at the speech pace (default 60%–175% of it); under a second counts as empty.
   - Anything off shows the problems and asks **Save anyway** or cancel. The clip card shows what was measured (e.g. `1080×1920 · 9:16 · 30 fps` or `0:42 · script ~0:38`) and how many checks failed.
-- **Clips are saved on the phone first** (IndexedDB, with persistent storage requested), so they survive reloads, closing the app and a flat battery. Nothing uploads during the shoot. **Ending the shoot** from the checklist uploads every clip saved on that phone, one at a time, with progress (keep the app open); each clip is deleted from the phone once its upload is confirmed. Failed uploads stay on the phone and an **Upload** button retries them, also for a shoot ended elsewhere.
+- **Every phone sees every clip.** A clip added on one phone ticks its slot off on every other phone straight away ("Added", with whose phone it's on), so nobody films the same thing twice. Adding one anyway asks first ("Already added on Joe's phone") and takes over the slot. B-roll counts come from which slots have footage on any phone.
+- **Clips are saved on the phone first** (IndexedDB, with persistent storage requested), so they survive reloads, closing the app and a flat battery. Nothing uploads automatically. Once the shoot is ended, anyone presses **Upload all phones** in the checklist (`shoots.upload_requested_at` / `upload_requested_by`); every phone with the checklist open, or that opens it later, then uploads its own clips by itself, one at a time with progress (keep the app open). Each clip is deleted from the phone once its upload is confirmed. The checklist lists each phone's progress (e.g. Joe 3/7 uploaded) from `shoot_clips`. Failed uploads stay on the phone and **Try again** retries them.
+- **Live on every phone:** `shoots`, `shoot_items`, `broll_shots` and `shoot_clips` are on Supabase Realtime, so ticks, skips, b-roll counts, starting/ending and the upload request show without reloading; coming back to the app reloads the checklist (iOS drops the connection in the background).
 - Until Dropbox is connected (§12) uploads run in **test mode**: the upload is simulated and the clip is labelled "test mode, not really sent".
 - No notes: every clip is treated as the final take. No print view.
 - When everything is ticked off, a toast offers to end the shoot.

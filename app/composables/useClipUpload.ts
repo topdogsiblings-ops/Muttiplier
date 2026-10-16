@@ -1,9 +1,9 @@
-// Clips filmed on set are saved on the phone first and only sent to Dropbox once the shoot
-// is ended (spec §12). Saving a clip is what ticks a deliverable off. Saved clips live in
-// IndexedDB, so they survive reloads, closing the app and a flat battery; each one is
-// deleted from the phone once its upload is confirmed.
+// Clips added on set are saved on the phone first and only sent to Dropbox when someone
+// presses Upload after the shoot is ended (spec §12). Saving a clip is what ticks a
+// deliverable off. Saved clips live in IndexedDB, so they survive reloads, closing the app
+// and a flat battery; each one is deleted from the phone once its upload is confirmed.
 
-/** saved: on this phone, waiting for the shoot to end. failed: the upload didn't go through; retried with the rest. */
+/** saved: on this phone, waiting to be uploaded. failed: the upload didn't go through; retried with the rest. */
 export type ClipState = 'saved' | 'uploading' | 'uploaded' | 'failed'
 
 export interface AttachedClip {
@@ -106,21 +106,101 @@ function toStored(target: string, clip: AttachedClip): StoredClip {
 const clips = shallowReactive(new Map<string, AttachedClip>())
 const loadedShoots = new Set<string>()
 
+// --- shared with every phone (public.shoot_clips) ---------------------------------------
+// Which deliverables have footage, and on whose phone, so nobody films one twice. Kept live
+// over Supabase Realtime while the checklist is open.
+
+export interface SharedClip {
+  shootId: string
+  fileName: string
+  state: string
+  /** who added it, i.e. whose phone it's on */
+  byId: string | null
+  by: string | null
+}
+
+const shared = shallowReactive(new Map<string, SharedClip>())
+/** shoot code -> id, for the shared rows */
+const shootIds = new Map<string, string>()
+const names = new Map<string, string>()
+
 /** The end-of-shoot upload, for the progress panel. */
 const uploadRun = reactive({ active: false, shoot: '', total: 0, done: 0, failed: 0 })
 
 export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
-  /** Bring back the clips saved on this phone for a shoot (once per session). */
-  async function load(shoot: string) {
+  const db = useDb()
+
+  type SharedRow = { target: string, shoot_id: string, file_name: string, state: string, created_by: string | null }
+  const setShared = (row: SharedRow) => shared.set(row.target, {
+    shootId: row.shoot_id,
+    fileName: row.file_name,
+    state: row.state,
+    byId: row.created_by,
+    by: row.created_by ? names.get(row.created_by) ?? null : null
+  })
+
+  /** (Re)load which deliverables of a shoot have footage on any phone. */
+  async function fetchShared(shoot: { code: string, id: string }) {
+    const [profiles, rows] = await Promise.all([
+      db.from('profiles').select('id, full_name, email'),
+      db.from('shoot_clips').select('target, shoot_id, file_name, state, created_by').eq('shoot_id', shoot.id)
+    ])
+    for (const profile of profiles.data ?? []) names.set(profile.id, profile.full_name?.split(' ')[0] || profile.email || 'someone')
+    if (rows.error) return
+    for (const [target, clip] of shared) if (clip.shootId === shoot.id) shared.delete(target)
+    for (const row of rows.data ?? []) setShared(row)
+    // clips saved while offline get their shared row now
+    for (const [target, clip] of clips) {
+      if (clip.shoot === shoot.code && !shared.has(target)) share(target, clip).catch(() => {})
+    }
+  }
+
+  /**
+   * Bring back the clips saved on this phone for a shoot (once per session), load which
+   * deliverables have footage on any phone, and keep that live. `onRemoteChange` runs when
+   * another phone adds, removes or uploads a clip. Returns a function to stop listening.
+   */
+  async function load(shoot: { code: string, id: string }, onRemoteChange?: () => void) {
     // ask iOS to keep the clips rather than clear them when space runs low
     navigator.storage?.persist?.().catch(() => {})
-    if (loadedShoots.has(shoot)) return
-    loadedShoots.add(shoot)
-    const stored = await inStore<StoredClip[]>('readonly', store => store.index('shoot').getAll(shoot))
-    for (const { target, ...clip } of stored) {
-      if (clips.has(target)) continue
-      clips.set(target, reactive<AttachedClip>({ ...clip, url: clip.file ? URL.createObjectURL(clip.file) : '', progress: clip.state === 'uploaded' ? 1 : 0 }))
+    shootIds.set(shoot.code, shoot.id)
+    if (!loadedShoots.has(shoot.code)) {
+      loadedShoots.add(shoot.code)
+      const stored = await inStore<StoredClip[]>('readonly', store => store.index('shoot').getAll(shoot.code))
+      for (const { target, ...clip } of stored) {
+        if (clips.has(target)) continue
+        clips.set(target, reactive<AttachedClip>({ ...clip, url: clip.file ? URL.createObjectURL(clip.file) : '', progress: clip.state === 'uploaded' ? 1 : 0 }))
+      }
     }
+
+    await fetchShared(shoot)
+
+    const channel = db.channel(`shoot-clips-${shoot.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shoot_clips', filter: `shoot_id=eq.${shoot.id}` }, (payload) => {
+        const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as Partial<SharedRow>
+        if (!row.target) return
+        if (payload.eventType === 'DELETE') shared.delete(row.target)
+        else setShared(row as SharedRow)
+        // our own changes come back too; only another phone's need the checklist reloaded
+        if (!clips.has(row.target)) onRemoteChange?.()
+      })
+      .subscribe()
+    return () => {
+      db.removeChannel(channel)
+    }
+  }
+
+  /** Tell every phone this target has footage here (replacing anyone else's claim). */
+  async function share(target: string, clip: AttachedClip) {
+    const shootId = shootIds.get(clip.shoot)
+    if (!shootId) return
+    // delete + insert rather than upsert, so the row is stamped with whoever added it now
+    must(await db.from('shoot_clips').delete().eq('shoot_id', shootId).eq('target', target))
+    const row = must(await db.from('shoot_clips')
+      .insert({ shoot_id: shootId, target, file_name: clip.name, size: clip.size, state: clip.state === 'uploaded' ? 'uploaded' : 'saved', path: clip.path })
+      .select('target, shoot_id, file_name, state, created_by')
+      .single())
+    if (row) setShared(row)
   }
 
   async function remove(target: string) {
@@ -129,6 +209,9 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
     if (clip.url) URL.revokeObjectURL(clip.url)
     clips.delete(target)
     await inStore('readwrite', store => store.delete(target))
+    shared.delete(target)
+    const shootId = shootIds.get(clip.shoot)
+    if (shootId) await db.from('shoot_clips').delete().eq('shoot_id', shootId).eq('target', target)
   }
 
   /** Save a clip for a target on this phone, replacing any earlier one. Throws if the phone can't store it. */
@@ -152,6 +235,8 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
     if (previous?.url) URL.revokeObjectURL(previous.url)
     clip.url = URL.createObjectURL(file)
     clips.set(target, clip)
+    // offline: the clip is still saved here, and shared the next time the checklist loads
+    await share(target, clip).catch(() => {})
     return clip
   }
 
@@ -171,6 +256,8 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
       clip.state = 'uploaded'
       clip.file = null // off the phone; the preview's object URL keeps it viewable this session
       await inStore('readwrite', store => store.put(toStored(target, clip)))
+      const shootId = shootIds.get(clip.shoot)
+      if (shootId) await db.from('shoot_clips').update({ state: 'uploaded', path: clip.path }).eq('shoot_id', shootId).eq('target', target)
     } catch {
       if (current()) clip.state = 'failed'
     }
@@ -199,6 +286,20 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
     }
   }
 
+  /** Each phone's clips for a shoot (by whoever added them), for the upload progress. */
+  function phones(shootId: string) {
+    const byPhone = new Map<string, { name: string, total: number, uploaded: number }>()
+    for (const clip of shared.values()) {
+      if (clip.shootId !== shootId) continue
+      const key = clip.byId ?? 'unknown'
+      const phone = byPhone.get(key) ?? { name: clip.by ?? 'Someone', total: 0, uploaded: 0 }
+      phone.total++
+      if (clip.state === 'uploaded') phone.uploaded++
+      byPhone.set(key, phone)
+    }
+    return [...byPhone.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }
+
   /** Clips of a shoot on this phone still to upload. */
   const waiting = (shoot: string) =>
     [...clips.values()].filter(clip => clip.shoot === shoot && clip.state !== 'uploaded')
@@ -206,7 +307,13 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
   return {
     connected: uploader.connected,
     clipFor: (target: string) => clips.get(target) ?? null,
+    /** a clip added on another phone for this target, if there's none on this one */
+    elsewhere: (target: string) => clips.has(target) ? null : shared.get(target) ?? null,
+    /** whether a target has footage on any phone (this one included) */
+    taken: (target: string) => clips.has(target) || shared.has(target),
     load,
+    resync: fetchShared,
+    phones,
     save,
     remove,
     uploadShoot,

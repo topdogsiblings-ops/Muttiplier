@@ -1,8 +1,10 @@
 <script setup lang="ts">
 // Add a clip for one checklist target from the phone (Photos or Files) and save it on the
-// phone through useClipUpload; saved clips go to Dropbox when the shoot is ended (spec §12).
+// phone through useClipUpload; saved clips go to Dropbox when Upload is pressed after the shoot (spec §12).
 // Clips are filmed and recorded in the phone's own apps: iOS compresses anything its camera
 // hands straight to a web page (to 480×360), so the app doesn't film or record itself.
+// A clip added on another phone shows here too (ticked, with whose phone it's on), so nobody
+// adds the same one twice; adding one anyway asks first and takes over the slot.
 // Every clip is sanity-checked first (clipChecks.ts, presets in Settings); anything off asks
 // before saving.
 //
@@ -31,10 +33,14 @@ const props = withDefaults(defineProps<{
 // `removed` when it loses it.
 const emit = defineEmits<{ saved: [], removed: [] }>()
 
-const { connected, clipFor, save, remove } = useClipUpload()
+const { connected, clipFor, elsewhere, save, remove } = useClipUpload()
 const { confirmDialog } = useConfirm()
 const toast = useToast()
 const clip = computed(() => clipFor(props.target))
+/** the clip for this target on another phone, when there's none on this one */
+const other = computed(() => elsewhere(props.target))
+const otherPhone = computed(() => other.value?.by ? `${other.value.by}'s phone` : 'another phone')
+const done = computed(() => !!clip.value || !!other.value)
 const audio = computed(() => props.media === 'audio')
 const showActions = computed(() => props.part !== 'clip')
 const showClip = computed(() => props.part !== 'actions')
@@ -53,6 +59,12 @@ async function check(file: File) {
 }
 
 async function send(file: File) {
+  // the file is picked first (iOS only opens the picker straight from a tap), then this asks
+  if (other.value && !(await confirmDialog({
+    title: `Already added on ${otherPhone.value}`,
+    description: `Use this clip instead? The one on ${otherPhone.value} will no longer count.`,
+    confirmLabel: 'Use this clip'
+  }))) return
   checking.value = true
   const checked = await check(file).finally(() => (checking.value = false))
   if (checked.issues.length && !(await confirmDialog({
@@ -107,7 +119,7 @@ const badge = computed(() => {
 </script>
 
 <template>
-  <div v-if="showActions || clip" :class="props.part === 'all' ? 'space-y-2' : undefined">
+  <div v-if="showActions || clip || other" :class="props.part === 'all' ? 'space-y-2' : undefined">
     <template v-if="showActions">
       <input
         ref="pickInput"
@@ -118,29 +130,37 @@ const badge = computed(() => {
       >
       <UButton
         v-if="props.buttonLabel"
-        :icon="clip ? 'i-lucide-check' : 'i-lucide-plus'"
+        :icon="done ? 'i-lucide-check' : 'i-lucide-plus'"
         :label="props.buttonLabel"
-        :color="clip ? 'success' : 'primary'"
+        :color="done ? 'success' : 'primary'"
         variant="soft"
         :size="props.size"
         :loading="checking"
-        :aria-label="`${clip ? 'Replace the clip' : 'Add a clip'} for ${props.label}`"
+        :aria-label="clip ? `Replace the clip for ${props.label}` : other ? `${props.label}: added on ${otherPhone}` : `Add a clip for ${props.label}`"
         @click="pickInput?.click()"
       />
       <!-- icon only on phones; label from sm up -->
       <UButton
         v-else
-        :icon="clip ? 'i-lucide-replace' : 'i-lucide-plus'"
-        :color="clip ? 'neutral' : 'primary'"
+        :icon="clip ? 'i-lucide-replace' : other ? 'i-lucide-check' : 'i-lucide-plus'"
+        :color="clip ? 'neutral' : other ? 'success' : 'primary'"
         :variant="clip ? 'ghost' : 'soft'"
         :size="props.size"
         :loading="checking"
-        :aria-label="`${clip ? 'Replace the clip' : 'Add a clip'} for ${props.label}`"
+        :aria-label="clip ? `Replace the clip for ${props.label}` : other ? `${props.label}: added on ${otherPhone}` : `Add a clip for ${props.label}`"
         @click="pickInput?.click()"
       >
-        <span class="hidden sm:inline">{{ clip ? 'Replace' : 'Add clip' }}</span>
+        <span class="hidden sm:inline">{{ clip ? 'Replace' : other ? 'Added' : 'Add clip' }}</span>
       </UButton>
     </template>
+
+    <!-- added on another phone: just who has it -->
+    <p v-if="showClip && !clip && other" class="flex items-center gap-1.5 rounded-md border border-default px-2 py-1.5 text-sm text-muted">
+      <UIcon name="i-lucide-smartphone" class="size-4 shrink-0" />
+      <span class="min-w-0 truncate">
+        {{ other.fileName }} · on {{ otherPhone }}{{ other.state === 'uploaded' ? ' · uploaded' : '' }}
+      </span>
+    </p>
 
     <div v-if="showClip && clip" class="space-y-2 rounded-md border border-default p-2">
       <div class="flex items-center gap-2">

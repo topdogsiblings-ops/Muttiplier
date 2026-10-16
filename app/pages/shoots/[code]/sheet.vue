@@ -168,6 +168,8 @@ const clipCount = (shot: Row<'broll_shots'>) => Math.max(1, shot.min_clips)
 const allBrollChannels = (shot: Row<'broll_shots'>) =>
   shot.channel_id ? 1 : Math.max(1, bundle.value.channels.length)
 const requiredClips = (shot: Row<'broll_shots'>) => clipCount(shot) * allBrollChannels(shot)
+const allChannelIds = (shot: Row<'broll_shots'>): (string | null)[] =>
+  shot.channel_id ? [shot.channel_id] : bundle.value.channels.length ? bundle.value.channels.map(channel => channel.id) : [null]
 async function saveBroll(shot: Row<'broll_shots'>, patch: { status: string, clips_filmed: number }) {
   const ok = await run(async () => {
     must(await db.from('broll_shots').update(patch).eq('id', shot.id))
@@ -176,15 +178,20 @@ async function saveBroll(shot: Row<'broll_shots'>, patch: { status: string, clip
   if (ok) await afterTick(patch.status)
 }
 
-/** Each saved clip counts (removing one uncounts it); the shot is filmed once every channel's clips are in. */
-function brollClipChanged(shot: Row<'broll_shots'>, change: 1 | -1) {
-  const next = Math.min(requiredClips(shot), Math.max(0, Math.min(shot.clips_filmed, requiredClips(shot)) + change))
+/**
+ * After a clip is added or removed: count the shot's clip slots with footage on any phone
+ * (every channel, on screen or not); the shot is filmed once all of them are in.
+ */
+function brollClipChanged(shot: Row<'broll_shots'>) {
+  const slots = allChannelIds(shot).flatMap(channelId =>
+    Array.from({ length: clipCount(shot) }, (_, index) => clipTarget.broll(shot.id, channelId, index)))
+  const next = slots.filter(target => taken(target)).length
   const status = shot.status === 'skipped' ? 'skipped' : next >= requiredClips(shot) ? 'filmed' : 'planned'
   saveBroll(shot, { clips_filmed: next, status })
 }
 
-// Clips filmed or picked on set are saved on the phone and go to Dropbox once the shoot is
-// ended (spec §12); the uploader is in test mode until Dropbox is connected.
+// Clips added on set are saved on the phone; once the shoot is ended, Upload sends them to
+// Dropbox (spec §12); the uploader is in test mode until Dropbox is connected.
 // Open question (§12 Q2): raw/ vs edited/. For now clips go to the export folders, which use edited/.
 const itemClipFolder = (item: BundleItem) => itemFolder(bundle.value, item)
 /** VOs and VO CTAs are audio recordings; everything else is video. */
@@ -208,18 +215,67 @@ const brollClipFolder = (shot: Row<'broll_shots'>, channelId: string | null) =>
   brollFolder(bundle.value, { channel_id: channelId, beat: shot.beat })
 
 /** Clips added for a b-roll shot or an everyone-view item, to show their clip cards. */
-const { clipFor, load: loadClips, waiting, uploadShoot, uploadRun, connected } = useClipUpload()
-onMounted(() => loadClips(shoot.value.code).catch(() => {}))
+const { clipFor, taken, load: loadClips, resync, phones, waiting, uploadShoot, uploadRun, connected } = useClipUpload()
 
-/** Clips on this phone still to go to Dropbox; they go once the shoot is ended. */
+// The checklist is live on every phone: clips added elsewhere, ticks, skips, b-roll counts,
+// starting / ending the shoot and the upload request all reload it. Coming back to the app
+// (iOS drops the connection in the background) reloads it too.
+let reloadTimer: ReturnType<typeof setTimeout> | undefined
+const reloadSoon = () => {
+  clearTimeout(reloadTimer)
+  reloadTimer = setTimeout(() => refresh().catch(() => {}), 400)
+}
+const shootRef = () => ({ code: shoot.value.code, id: shoot.value.id })
+function onVisible() {
+  if (document.visibilityState !== 'visible') return
+  reloadSoon()
+  resync(shootRef()).catch(() => {})
+}
+let stopClips: (() => void) | undefined
+let live: ReturnType<typeof db.channel> | undefined
+onMounted(async () => {
+  const id = shoot.value.id
+  live = db.channel(`shoot-${id}`)
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'shoots', filter: `id=eq.${id}` }, reloadSoon)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'shoot_items', filter: `shoot_id=eq.${id}` }, reloadSoon)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'broll_shots', filter: `shoot_id=eq.${id}` }, reloadSoon)
+    .subscribe()
+  document.addEventListener('visibilitychange', onVisible)
+  stopClips = await loadClips(shootRef(), reloadSoon).catch(() => undefined)
+})
+onBeforeUnmount(() => {
+  stopClips?.()
+  if (live) db.removeChannel(live)
+  document.removeEventListener('visibilitychange', onVisible)
+  clearTimeout(reloadTimer)
+})
+
+/** Clips on this phone still to go to Dropbox; Upload sends them once the shoot is ended. */
 const waitingClips = computed(() => waiting(shoot.value.code))
 const waitingSize = computed(() => formatFileSize(waitingClips.value.reduce((total, clip) => total + clip.size, 0)))
 const shootEnded = computed(() => !['draft', 'planned', 'shooting'].includes(shoot.value.status))
 const uploadingThisShoot = computed(() => uploadRun.active && uploadRun.shoot === shoot.value.code)
 const uploadClips = () => uploadShoot(shoot.value.code)
-// Ending the shoot here sends everything saved on this phone.
-watch(() => shoot.value.status, (next, previous) => {
-  if (previous === 'shooting' && next === 'filmed') uploadClips()
+
+// One Upload for the whole shoot: asking once (on any phone) sets it on the shoot, and every
+// phone with the checklist open, or that opens it later, uploads its own clips by itself.
+const uploadRequested = computed(() => !!shoot.value.upload_requested_at)
+const phoneProgress = computed(() => phones(shoot.value.id))
+const requesting = ref(false)
+async function requestUploadAll() {
+  requesting.value = true
+  const { data } = await db.auth.getUser()
+  const ok = await run(async () => {
+    must(await db.from('shoots')
+      .update({ upload_requested_at: new Date().toISOString(), upload_requested_by: data.user?.id ?? null })
+      .eq('id', shoot.value.id))
+    shoot.value.upload_requested_at = new Date().toISOString()
+  })
+  requesting.value = false
+  if (ok) uploadClips()
+}
+watch(() => [uploadRequested.value, shootEnded.value, waitingClips.value.length] as const, ([requested, ended, count]) => {
+  if (requested && ended && count && !uploadRun.active) uploadClips()
 })
 const attachedGroupClips = (group: ShotGroup) => group.items.filter(item => clipFor(clipTarget.item(item.id))).length
 
@@ -320,10 +376,10 @@ function skipBroll(shot: Row<'broll_shots'>) {
     />
 
 
-    <!-- clips saved on this phone, waiting for the end of the shoot -->
+    <!-- clips saved on this phone, and once the shoot is ended, every phone's upload -->
     <div
-      v-if="uploadingThisShoot || waitingClips.length"
-      class="mt-4 space-y-2 rounded-lg border p-3"
+      v-if="uploadingThisShoot || waitingClips.length || (shootEnded && phoneProgress.length)"
+      class="mt-4 space-y-3 rounded-lg border p-3"
       :class="shootEnded ? 'border-primary/40 bg-primary/5' : 'border-default'"
     >
       <div class="flex items-center gap-2">
@@ -335,38 +391,66 @@ function skipBroll(shot: Row<'broll_shots'>) {
         <div class="min-w-0 flex-1 text-sm">
           <template v-if="uploadingThisShoot">
             <p class="font-medium text-highlighted">
-              Uploading {{ Math.min(uploadRun.done + 1, uploadRun.total) }} of {{ uploadRun.total }}{{ connected ? '' : ' · test mode' }}
+              This phone: uploading {{ Math.min(uploadRun.done + 1, uploadRun.total) }} of {{ uploadRun.total }}{{ connected ? '' : ' · test mode' }}
             </p>
             <p class="text-muted">
               Keep the app open until it's done.
             </p>
           </template>
-          <template v-else>
+          <template v-else-if="waitingClips.length">
             <p class="font-medium text-highlighted">
               {{ waitingClips.length }} clip{{ waitingClips.length === 1 ? '' : 's' }} saved on this phone · {{ waitingSize }}
             </p>
             <p class="text-muted">
               <template v-if="!shootEnded">
-                They upload to Dropbox when the shoot is ended.
+                Upload them to Dropbox once the shoot is ended.
               </template>
               <template v-else-if="waitingClips.some(clip => clip.state === 'failed')">
                 Some uploads didn't go through. Try again on a good connection.
               </template>
-              <template v-else>
-                Ready to upload. Keep the app open while it runs.
+              <template v-else-if="uploadRequested">
+                Uploading starts by itself. Keep the app open while it runs.
               </template>
+              <template v-else>
+                Upload sends every phone's clips. Each phone needs the app open while it runs.
+              </template>
+            </p>
+          </template>
+          <template v-else>
+            <p class="font-medium text-highlighted">
+              {{ uploadRequested ? 'Uploading from every phone' : 'Clips on everyone\'s phones' }}
+            </p>
+            <p class="text-muted">
+              Nothing left to upload on this phone.
             </p>
           </template>
         </div>
         <UButton
-          v-if="shootEnded && !uploadingThisShoot"
-          label="Upload"
+          v-if="shootEnded && !uploadingThisShoot && (!uploadRequested || waitingClips.some(clip => clip.state === 'failed'))"
+          :label="uploadRequested ? 'Try again' : 'Upload all phones'"
           icon="i-lucide-cloud-upload"
           size="sm"
-          @click="uploadClips"
+          :loading="requesting"
+          @click="uploadRequested ? uploadClips() : requestUploadAll()"
         />
       </div>
       <UProgress v-if="uploadingThisShoot" :model-value="uploadRun.done" :max="uploadRun.total" size="sm" />
+
+      <!-- each phone's progress: whose clips are still to go -->
+      <ul v-if="shootEnded && phoneProgress.length" class="space-y-1.5 border-t border-default pt-2 text-sm">
+        <li v-for="phone in phoneProgress" :key="phone.name" class="flex items-center gap-2">
+          <UIcon
+            :name="phone.uploaded === phone.total ? 'i-lucide-circle-check' : 'i-lucide-smartphone'"
+            class="size-4 shrink-0"
+            :class="phone.uploaded === phone.total ? 'text-success' : 'text-muted'"
+          />
+          <span class="min-w-0 flex-1 truncate text-highlighted">{{ phone.name }}</span>
+          <span class="text-muted tabular-nums">{{ phone.uploaded }}/{{ phone.total }} uploaded</span>
+        </li>
+        <li v-if="uploadRequested && phoneProgress.some(phone => phone.uploaded < phone.total)" class="text-xs text-muted">
+          Anyone still to go just needs to open this checklist and keep the app open.
+        </li>
+      </ul>
     </div>
 
     <section v-for="section in sections" :key="section.title" class="mt-6">
@@ -626,8 +710,8 @@ function skipBroll(shot: Row<'broll_shots'>) {
                   :folder="brollClipFolder(shot, channel.id)"
                   :rules="clipRules"
                   :label="brollClipLabel(shot, channel.name, index)"
-                  @saved="brollClipChanged(shot, 1)"
-                  @removed="brollClipChanged(shot, -1)"
+                  @saved="brollClipChanged(shot)"
+                  @removed="brollClipChanged(shot)"
                 />
               </div>
               <ClipCapture
@@ -639,7 +723,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
                 :target="clipTarget.broll(shot.id, channel.id, index)"
                 :folder="brollClipFolder(shot, channel.id)"
                 :label="brollClipLabel(shot, channel.name, index)"
-                @removed="brollClipChanged(shot, -1)"
+                @removed="brollClipChanged(shot)"
               />
             </div>
           </div>

@@ -740,6 +740,60 @@ export type Database = {
           },
         ]
       }
+      shoot_clips: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          file_name: string
+          id: string
+          path: string | null
+          shoot_id: string
+          size: number
+          state: string
+          target: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          file_name: string
+          id?: string
+          path?: string | null
+          shoot_id: string
+          size: number
+          state?: string
+          target: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          file_name?: string
+          id?: string
+          path?: string | null
+          shoot_id?: string
+          size?: number
+          state?: string
+          target?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shoot_clips_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shoot_clips_shoot_id_fkey"
+            columns: ["shoot_id"]
+            isOneToOne: false
+            referencedRelation: "shoots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shoot_formats: {
         Row: {
           format_id: string
@@ -933,6 +987,8 @@ export type Database = {
           status: string
           submission_rate: number
           updated_at: string
+          upload_requested_at: string | null
+          upload_requested_by: string | null
         }
         Insert: {
           broll_variations?: number
@@ -954,6 +1010,8 @@ export type Database = {
           status?: string
           submission_rate?: number
           updated_at?: string
+          upload_requested_at?: string | null
+          upload_requested_by?: string | null
         }
         Update: {
           broll_variations?: number
@@ -975,6 +1033,8 @@ export type Database = {
           status?: string
           submission_rate?: number
           updated_at?: string
+          upload_requested_at?: string | null
+          upload_requested_by?: string | null
         }
         Relationships: [
           {
@@ -982,6 +1042,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shoots_upload_requested_by_fkey"
+            columns: ["upload_requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
