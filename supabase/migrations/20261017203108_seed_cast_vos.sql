@@ -1,27 +1,10 @@
 -- Starter VOs written for each person on the cast: one per starter format (F01–F05) for
 -- Mak, Bren and Joe. Universal (no products), dog-neutral, built-in slots only, no claims.
-
--- The cast, if they aren't in Settings → People yet (matched by slug or name).
-insert into public.people (name, slug)
-select v.name, v.slug
-from (values ('Mak', 'mak'), ('Bren', 'bren'), ('Joe', 'joe')) as v(name, slug)
-where not exists (select 1 from public.people p where p.slug = v.slug or lower(p.name) = v.slug);
-
--- The beats below are written for the starter formats. Stop rather than save mismatched beats
--- if a format has been changed since.
-do $$
-declare
-  expected constant jsonb := '{"F01":["problem","product","result"],"F02":["problem","product","result"],"F03":["setup","demo","result"],"F04":["before","product","after"],"F05":["tip","product","payoff"]}';
-  format_code text;
-begin
-  for format_code in select jsonb_object_keys(expected) loop
-    if not exists (
-      select 1 from public.formats f where f.code = format_code and to_jsonb(f.beats) = expected -> format_code
-    ) then
-      raise exception 'Format % is missing or no longer has the beats %', format_code, expected -> format_code;
-    end if;
-  end loop;
-end $$;
+--
+-- Uses the people already in Settings → People and never adds any: each VO goes to the person
+-- whose slug or name is, or starts with, mak / bren / joe (e.g. Makayla, Brennen); a VO with no
+-- such person is skipped. The beats below are written for the starter formats, so a format whose
+-- beats have been changed since is skipped too, rather than saving mismatched beats.
 
 insert into public.body_templates (format_id, person_id, title, angle_id, beats, est_seconds, tags)
 select f.id, p.id, v.title, a.id, v.beats::jsonb,
@@ -81,10 +64,13 @@ from (values
     '{tips,routine}')
 ) as v(person, format_code, title, angle, beats, tags)
 join public.formats f on f.code = v.format_code
+  and f.beats = (select array_agg(beat ->> 'beat' order by n) from jsonb_array_elements(v.beats::jsonb) with ordinality as b(beat, n))
 join lateral (
   select p.id from public.people p
   where p.slug = v.person or lower(p.name) = v.person
-  order by (p.slug = v.person) desc
+     or p.slug like v.person || '%' or lower(p.name) like v.person || '%'
+  -- an exact slug, then an exact name, then the closest prefix match; active people first
+  order by (p.slug = v.person) desc, (lower(p.name) = v.person) desc, p.active desc, length(p.name)
   limit 1
 ) p on true
 left join public.angles a on lower(a.name) = lower(v.angle)
