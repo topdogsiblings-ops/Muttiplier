@@ -56,6 +56,8 @@ export interface BundleItem {
 export interface BundleBroll {
   id?: string
   channel_id: string | null
+  /** null = a general product shot */
+  format_id?: string | null
   beat: string
   description: string
   product_visible: boolean
@@ -246,6 +248,16 @@ export function planSnapshots(bundle: ShootBundle): {
 
 const KIND_FOLDER: Record<ItemKind, string> = { hook: 'hooks', body: 'vo', cta: 'ctas' }
 
+/**
+ * Everything from a shoot lives in its shoot folder. `raw/` and `edited/` have the same tree:
+ * Muttiplier uploads clips into raw/, and editors put each edited clip in the same place under
+ * edited/ (same name; the extension can differ). Hooks, VOs and CTAs are files named by code,
+ * so their paths here have no extension; captions sit next to their clip under the same name.
+ * B-roll is loose footage: clips go straight into their beat folder under their own names.
+ * Renders go in the shoot's renders/.
+ */
+export type ClipStage = 'raw' | 'edited'
+
 /** Paths are relative to the Dropbox `topdogugc/` root. */
 export function productFolder(bundle: Pick<ShootBundle, 'brand' | 'product'>): string {
   return `${bundle.brand.slug}/${bundle.product.slug}`
@@ -255,29 +267,35 @@ export function shootFolder(bundle: Pick<ShootBundle, 'brand' | 'product' | 'sho
   return `${productFolder(bundle)}/shoots/${bundle.shoot.code}_${bundle.shoot.shoot_date ?? 'undated'}`
 }
 
-/** Universal clips are identified by template across products, not by shoot. */
-export function universalFolderName(templateId: string): string {
-  return `U${templateId.replace(/-/g, '').slice(0, 8)}`
-}
-
-export function itemFolder(bundle: ShootBundle, item: BundleItem): string {
+/** A hook, VO or CTA, as a file without extension: `<kind>/<person>/<code>` (universal hooks too, by their U code). */
+export function itemPath(bundle: ShootBundle, item: BundleItem, stage: ClipStage = 'raw'): string {
   const person = bundle.people.find(p => p.id === item.person_id)?.slug ?? 'unknown'
-  if (item.kind === 'hook' && item.universal) return `universal/hooks/${person}/${universalFolderName(item.template_id)}`
-  return `${shootFolder(bundle)}/edited/${KIND_FOLDER[item.kind]}/${person}/${item.code}`
+  return `${shootFolder(bundle)}/${stage}/${KIND_FOLDER[item.kind]}/${person}/${item.code}`
 }
 
-/** B-roll is shared by every channel (b-roll/shared/<beat>); older channel-specific shots keep their channel folder. */
-export function brollFolder(bundle: ShootBundle, shot: Pick<BundleBroll, 'channel_id' | 'beat'>): string {
-  const beat = slugify(shot.beat) || 'misc'
-  const channel = bundle.channels.find(c => c.id === shot.channel_id)
-  if (!channel) return `${productFolder(bundle)}/b-roll/shared/${beat}`
-  return `${productFolder(bundle)}/b-roll/${channel.folder_slug}/${beat}`
+/**
+ * A b-roll shot's folder for one channel, each channel filming its own:
+ * `b-roll/<channel>/<beat>` for a format's shots (beats are filed by name, so the same beat in
+ * different formats shares a folder) and `b-roll/<channel>/general` for general product shots.
+ * `shared` stands in for the channel only when the shoot has none.
+ */
+export function brollFolder(bundle: ShootBundle, shot: Pick<BundleBroll, 'format_id' | 'beat'>, channelId: string | null, stage: ClipStage = 'raw'): string {
+  const section = shot.format_id ? slugify(shot.beat) || 'misc' : 'general'
+  const channel = bundle.channels.find(c => c.id === channelId)?.folder_slug ?? 'shared'
+  return `${shootFolder(bundle)}/${stage}/b-roll/${channel}/${section}`
 }
+
+
 
 // --- exports ---------------------------------------------------------------
 
 function sortedItems(bundle: ShootBundle): BundleItem[] {
   return [...bundle.items].sort((a, b) => a.code.localeCompare(b.code, 'en', { numeric: true }))
+}
+
+/** A shared shot (no channel) is filmed by every channel, into each channel's folder. */
+function brollChannelIds(bundle: ShootBundle, shot: Pick<BundleBroll, 'channel_id'>): (string | null)[] {
+  return shot.channel_id || !bundle.channels.length ? [shot.channel_id] : bundle.channels.map(channel => channel.id)
 }
 
 function channelSlug(bundle: ShootBundle, channelId: string | null): string | null {
@@ -319,28 +337,34 @@ export function buildShootsheet(bundle: ShootBundle) {
         channel: channelSlug(bundle, item.channel_id),
         template_id: item.template_id
       }
-      const folder = itemFolder(bundle, item)
+      // the clip as a file without extension: file = the edited clip, which the worker reads;
+      // raw_file = where it was uploaded
+      const folders = { file: itemPath(bundle, item, 'edited'), raw_file: itemPath(bundle, item, 'raw') }
       if (item.kind === 'hook') {
         const caption = item.caption ? renderScript(item.caption, itemSlotContext(bundle, item.channel_id)).text : null
-        return { ...base, angle: item.angle, universal: item.universal, script: script.text ?? '', caption, folder }
+        return { ...base, angle: item.angle, universal: item.universal, script: script.text ?? '', caption, ...folders }
       }
-      if (item.kind === 'body') return { ...base, format: item.format?.code ?? null, angle: item.angle, beats: script.beats ?? [], folder }
-      return { ...base, cta_mode: item.cta_mode, script: script.text ?? '', folder }
+      if (item.kind === 'body') return { ...base, format: item.format?.code ?? null, angle: item.angle, beats: script.beats ?? [], ...folders }
+      return { ...base, cta_mode: item.cta_mode, script: script.text ?? '', ...folders }
     }),
-    broll: bundle.broll.filter(shot => shot.status !== 'skipped').map(shot => ({
-      channel: channelSlug(bundle, shot.channel_id),
-      beat: shot.beat,
-      description: shot.description,
-      product_visible: shot.product_visible,
-      min_clips: shot.min_clips,
-      folder: brollFolder(bundle, shot)
-    }))
+    // one entry per shot per channel; its clips go loose into the folder, under their own names
+    broll: bundle.broll.filter(shot => shot.status !== 'skipped').flatMap(shot =>
+      brollChannelIds(bundle, shot).map(channelId => ({
+        channel: channelSlug(bundle, channelId),
+        general: !shot.format_id,
+        beat: shot.beat,
+        description: shot.description,
+        product_visible: shot.product_visible,
+        min_clips: shot.min_clips,
+        folder: brollFolder(bundle, shot, channelId, 'edited'),
+        raw_folder: brollFolder(bundle, shot, channelId, 'raw')
+      })))
   }
 }
 
 export type Shootsheet = ReturnType<typeof buildShootsheet>
 
-export const CSV_COLUMNS = ['shoot', 'person', 'kind', 'code', 'channel', 'angle', 'cta_mode', 'location', 'script', 'status', 'folder_path'] as const
+export const CSV_COLUMNS = ['shoot', 'person', 'kind', 'code', 'channel', 'angle', 'cta_mode', 'location', 'script', 'status', 'raw_path'] as const
 
 function csvCell(value: unknown): string {
   const text = value === null || value === undefined ? '' : String(value)
@@ -362,50 +386,47 @@ export function buildCsv(bundle: ShootBundle): string {
       item.location ?? '',
       scriptAsText(resolveItemScript(bundle, item)),
       item.status,
-      itemFolder(bundle, item)
+      itemPath(bundle, item, 'raw')
     ])
   }
   for (const shot of bundle.broll) {
-    rows.push([
-      bundle.shoot.code,
-      '',
-      'broll',
-      '',
-      channelSlug(bundle, shot.channel_id) ?? '',
-      '',
-      '',
-      '',
-      `[${shot.beat}] ${shot.description}`,
-      shot.status,
-      brollFolder(bundle, shot)
-    ])
+    for (const channelId of brollChannelIds(bundle, shot)) {
+      rows.push([
+        bundle.shoot.code,
+        '',
+        'broll',
+        '',
+        channelSlug(bundle, channelId) ?? '',
+        '',
+        '',
+        '',
+        `[${shot.format_id ? shot.beat : 'general'}] ${shot.description}`,
+        shot.status,
+        brollFolder(bundle, shot, channelId, 'raw')
+      ])
+    }
   }
   return rows.map(row => row.map(csvCell).join(',')).join('\r\n') + '\r\n'
 }
 
+const parentFolder = (path: string) => path.slice(0, path.lastIndexOf('/'))
+
 /**
- * Every folder in the skeleton zip, relative to the `topdogugc/` root. A superset of the
- * folders named in shootsheet.json, plus the fixed structure from spec §10d.
+ * Every folder in the skeleton zip, relative to the `topdogugc/` root: the folder of every clip
+ * in shootsheet.json under both raw/ and edited/, plus the shoot's renders/ (spec §10d).
  */
 export function skeletonFolders(bundle: ShootBundle): string[] {
   const sheet = buildShootsheet(bundle)
-  const product = productFolder(bundle)
   const shoot = shootFolder(bundle)
-  const beats = new Set(DEFAULT_BEATS)
-  for (const item of bundle.items) for (const beat of item.format?.beats ?? []) beats.add(slugify(beat))
-
-  const folders = new Set<string>([
-    `${product}/b-roll/shared/product`,
-    `${shoot}/raw`,
-    `${shoot}/edited`,
-    `${shoot}/captions`,
-    `${product}/renders`
-  ])
-  for (const channel of bundle.channels) {
-    for (const beat of beats) if (beat) folders.add(`${product}/b-roll/${channel.folder_slug}/${beat}`)
+  const folders = new Set<string>([`${shoot}/raw`, `${shoot}/edited`, `${shoot}/renders`])
+  for (const item of sheet.items) {
+    folders.add(parentFolder(item.file))
+    folders.add(parentFolder(item.raw_file))
   }
-  for (const item of sheet.items) folders.add(item.folder)
-  for (const shot of sheet.broll) folders.add(shot.folder)
+  for (const shot of sheet.broll) {
+    folders.add(shot.folder)
+    folders.add(shot.raw_folder)
+  }
   return [...folders].sort()
 }
 

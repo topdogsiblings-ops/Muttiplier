@@ -192,8 +192,9 @@ function brollClipChanged(shot: Row<'broll_shots'>) {
 
 // Clips added on set are saved on the phone; once the shoot is ended, Upload sends them to
 // Dropbox (spec §12); the uploader is in test mode until Dropbox is connected.
-// Open question (§12 Q2): raw/ vs edited/. For now clips go to the export folders, which use edited/.
-const itemClipFolder = (item: BundleItem) => itemFolder(bundle.value, item)
+// Clips go to the shoot's raw/ folder: hooks, VOs and CTAs as files named by code (H01.mov),
+// b-roll loose in its beat folder under its own name. Editors mirror it under edited/.
+const itemClipPath = (item: BundleItem) => itemPath(bundle.value, item)
 /** VOs and VO CTAs are audio recordings; everything else is video. */
 const clipMedia = (item: BundleItem) => item.kind === 'body' || (item.kind === 'cta' && item.cta_mode === 'vo') ? 'audio' as const : 'video' as const
 
@@ -210,9 +211,9 @@ const expectedSeconds = (item: BundleItem) => {
 }
 const brollClipLabel = (shot: Row<'broll_shots'>, channelName: string | null, index: number) =>
   `${channelName ? `${channelName} ` : ''}clip ${index + 1} of ${shot.description || 'this shot'}`
-/** Each channel's clips go to that channel's b-roll folder. */
+/** Each channel's clips go loose into that channel's b-roll folder (the trailing / keeps their own names). */
 const brollClipFolder = (shot: Row<'broll_shots'>, channelId: string | null) =>
-  brollFolder(bundle.value, { channel_id: channelId, beat: shot.beat })
+  `${brollFolder(bundle.value, shot, channelId)}/`
 
 /** Clips added for a b-roll shot or an everyone-view item, to show their clip cards. */
 const { clipFor, taken, load: loadClips, resync, phones, waiting, uploadShoot, uploadRun, connected } = useClipUpload()
@@ -511,7 +512,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
                     part="actions"
                     class="ml-auto"
                     :target="clipTarget.item(item.id)"
-                    :folder="itemClipFolder(item)"
+                    :path="itemClipPath(item)"
                     :label="item.code"
                     :media="clipMedia(item)"
                     :rules="clipRules"
@@ -542,7 +543,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
                   :shoot="shoot.code"
                   part="clip"
                   :target="clipTarget.item(item.id)"
-                  :folder="itemClipFolder(item)"
+                  :path="itemClipPath(item)"
                   :label="item.code"
                   :media="clipMedia(item)"
                   @removed="itemClipRemoved(item)"
@@ -618,7 +619,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
                   part="actions"
                   :shoot="shoot.code"
                   :target="clipTarget.item(item.id)"
-                  :folder="itemClipFolder(item)"
+                  :path="itemClipPath(item)"
                   :label="`${group.code} for ${personName(item.person_id)}`"
                   :button-label="group.kind === 'body' ? undefined : personName(item.person_id)"
                   :size="group.kind === 'body' ? 'sm' : 'md'"
@@ -641,7 +642,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
                     part="clip"
                     :shoot="shoot.code"
                     :target="clipTarget.item(item.id)"
-                    :folder="itemClipFolder(item)"
+                    :path="itemClipPath(item)"
                     :label="`${group.code} for ${personName(item.person_id)}`"
                     :media="clipMedia(item)"
                     @removed="itemClipRemoved(item)"
@@ -707,7 +708,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
                   part="actions"
                   :shoot="shoot.code"
                   :target="clipTarget.broll(shot.id, channel.id, index)"
-                  :folder="brollClipFolder(shot, channel.id)"
+                  :path="brollClipFolder(shot, channel.id)"
                   :rules="clipRules"
                   :label="brollClipLabel(shot, channel.name, index)"
                   @saved="brollClipChanged(shot)"
@@ -721,7 +722,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
                 class="mt-2"
                 :shoot="shoot.code"
                 :target="clipTarget.broll(shot.id, channel.id, index)"
-                :folder="brollClipFolder(shot, channel.id)"
+                :path="brollClipFolder(shot, channel.id)"
                 :label="brollClipLabel(shot, channel.name, index)"
                 @removed="brollClipChanged(shot)"
               />

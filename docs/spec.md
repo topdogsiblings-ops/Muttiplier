@@ -94,7 +94,7 @@ Scripts use double-brace slots: `{{brand}}`, `{{product}}`, `{{dog}}`, plus any 
 
 ### Rules
 
-- **Universal hooks** (`is_universal = true`) work for any brand: they may only use `{{dog}}`. Enforced in the editor and by a database check. On a shoot they get `U` codes and a template-based folder (§10d) so the same clip can be reused across products.
+- **Universal hooks** (`is_universal = true`) work for any brand: they may only use `{{dog}}`. Enforced in the editor and by a database check. On a shoot they get `U` codes and are filed like any other hook, by code (§10d).
 - VOs should be written dog-neutral by default ("my dog", "my pup") so all channels can share them. Not enforced; soft warning if a VO uses `{{dog}}`.
 - Editor UI: highlight slots, show a live preview against a chosen product + channel.
 
@@ -357,7 +357,7 @@ Route: `/shoots/[code]/sheet?person=[slug]&show=[hook|cta|body|broll]`. Both fil
 
 ### b) CSV
 
-One row per shoot item and b-roll shot: `shoot, person, kind, code, channel, angle, cta_mode, location, script, status, folder_path`. For VOs, beats joined as `[problem] … [product] … [result] …`.
+One row per shoot item and b-roll shot (a shared shot gets a row per channel): `shoot, person, kind, code, channel, angle, cta_mode, location, script, status, raw_path`, where `raw_path` is where the clip is uploaded: the file (without extension) for hooks, VOs and CTAs, the folder for b-roll. For VOs, beats joined as `[problem] … [product] … [result] …`.
 
 ### c) `shootsheet.json`
 
@@ -384,7 +384,8 @@ The contract with the future worker. Download from the shoot page. Skipped items
       "template_id": "uuid", "angle": "curiosity", "universal": false,
       "script": "Nobody told me Calming Chews could do this…",
       "caption": "…",
-      "folder": "pawco/calming-chews/shoots/S014_2026-10-20/edited/hooks/joe/H01"
+      "file": "pawco/calming-chews/shoots/S014_2026-10-20/edited/hooks/joe/H01",
+      "raw_file": "pawco/calming-chews/shoots/S014_2026-10-20/raw/hooks/joe/H01"
     },
     {
       "code": "V01", "kind": "body", "person": "joe", "channel": null,
@@ -394,48 +395,54 @@ The contract with the future worker. Download from the shoot page. Skipped items
         { "beat": "product", "script": "…" },
         { "beat": "result", "script": "…" }
       ],
-      "folder": "pawco/calming-chews/shoots/S014_2026-10-20/edited/vo/joe/V01"
+      "file": "pawco/calming-chews/shoots/S014_2026-10-20/edited/vo/joe/V01",
+      "raw_file": "pawco/calming-chews/shoots/S014_2026-10-20/raw/vo/joe/V01"
     },
     {
       "code": "C01", "kind": "cta", "person": "joe", "channel": null,
       "template_id": "uuid", "cta_mode": "sync", "script": "…",
-      "folder": "pawco/calming-chews/shoots/S014_2026-10-20/edited/ctas/joe/C01"
+      "file": "pawco/calming-chews/shoots/S014_2026-10-20/edited/ctas/joe/C01",
+      "raw_file": "pawco/calming-chews/shoots/S014_2026-10-20/raw/ctas/joe/C01"
     }
   ],
   "broll": [
     {
-      "channel": null, "beat": "problem", "description": "anxious pacing",
+      "channel": "topdognix", "general": false, "beat": "problem", "description": "anxious pacing",
       "product_visible": false, "min_clips": 3,
-      "folder": "pawco/calming-chews/b-roll/shared/problem"
+      "folder": "pawco/calming-chews/shoots/S014_2026-10-20/edited/b-roll/nix/problem",
+      "raw_folder": "pawco/calming-chews/shoots/S014_2026-10-20/raw/b-roll/nix/problem"
     }
   ]
 }
 ```
 
-`people[].channels` lists the channels a person is linked to; recipes on those channels can mix their linked people's parts. `formats[].cta_modes` is legacy and can be ignored.
+Items: `file` is the edited clip (what the worker reads) and `raw_file` where Muttiplier uploads it, both without extension (the extension can differ between them). B-roll: `folder` / `raw_folder`, holding loose clips under their own names; `broll` has one entry per shot per channel (a shared shot is listed for every channel), `general` marks general product shots. `people[].channels` lists the channels a person is linked to; recipes on those channels can mix their linked people's parts. `formats[].cta_modes` is legacy and can be ignored.
 
 ### d) Folder skeleton (zip)
 
 Download a zip of empty folders (each with a `.keep` file) plus `shootsheet.json`, to unzip into the Dropbox `topdogugc/` root. §12 replaces this with direct Dropbox folder creation.
 
+Everything from a shoot lives in its shoot folder. `raw/` and `edited/` have exactly the same tree: Muttiplier only uploads to `raw/`; editors edit each clip and put it in the same place under `edited/`.
+
 ```
 topdogugc/
-  universal/
-    hooks/[person]/U[template short id]/   universal hooks, by template across products
   [brand]/[product]/
-    b-roll/
-      shared/[beat]/                       b-roll for every channel (incl. shared/product)
-      [nix|whiskey|both]/[beat]/           older channel-specific b-roll
     shoots/[S###_YYYY-MM-DD]/
       shootsheet.json
       raw/
-      edited/
-        hooks/[person]/H##/                one folder per hook; filenames don't matter
-        vo/[person]/V##/
-        ctas/[person]/C##/
-      captions/
-    renders/
+        hooks/[person]/H##.mov             one file per hook, named by code (universal hooks too, as U##)
+        vo/[person]/V##.m4a                with its captions alongside, e.g. V##.srt
+        ctas/[person]/C##.mov
+        b-roll/[channel]/[beat]/           each channel's own b-roll, loose under the clips' own names;
+                                           beats filed by name across formats
+        b-roll/[channel]/general/          general product shots
+      edited/                              same tree as raw/
+      renders/                             everything rendered from this shoot
 ```
+
+- **Hooks, VOs and CTAs are files named by code**, keeping their own extension. Re-adding one replaces the file. Editors save the edited clip under the same name in `edited/` (the extension can differ).
+- **Captions** sit next to their clip under the same name (e.g. `V01.srt` beside `V01.m4a`), in `raw/` and `edited/` alike; there's no separate captions folder.
+- **B-roll** is per shoot and loose: any clip in a beat folder can go under any VO with that beat, so clips keep their own names and a clash gets a number rather than overwriting. Beats are filed by name, so the same beat in two formats (e.g. `product`) shares a folder; general product shots go in `general/`. `shared` stands in for the channel only when a shoot has no channels.
 
 All slugs lowercase kebab-case; generate once and never change after a shoot is planned.
 
@@ -461,14 +468,14 @@ Goal: clips go straight from the shoot into the right Dropbox folders (§10d), s
 Proposed design, to confirm:
 
 - A Dropbox app (App Console) with its app key/secret in env vars; each person connects their Dropbox once (OAuth), or the agency connects one team folder.
-- Planning a shoot creates its folder structure in Dropbox instead of (or as well as) the zip.
-- In the checklist, each item and b-roll shot gets an **Upload** action: the clip uploads from the phone straight into that item's folder (e.g. `…/edited/hooks/bren/H03/`), and uploading ticks it off (for b-roll, one clip per box).
+- Clips upload into `raw/` (§10d), e.g. `…/raw/hooks/bren/H03.mov`; Dropbox creates missing folders on upload. Optionally, planning a shoot creates its whole tree (raw and edited) up front instead of the zip.
+- Uploading is triggered from the checklist once the shoot is ended (**Upload all phones**, §10a).
 
 Open questions:
 
 1. **Account:** a Dropbox Business team folder everyone shares, or one personal Dropbox?
-2. **What gets uploaded:** raw clips straight from phones during the shoot, or edited clips afterwards (`raw/` vs `edited/`)?
-3. **Who uploads:** each person from their own phone, or one person collecting everything?
+2. ~~What gets uploaded~~ — decided: raw clips from phones into `raw/`; editors fill `edited/`.
+3. ~~Who uploads~~ — decided: each phone uploads its own clips, started for everyone from one button.
 
 ---
 
@@ -496,7 +503,7 @@ Open questions:
 
 **Phase 5 — Checklist and exports** ✔
 - Checklist (mobile, live ticks, filters, per-clip b-roll), CSV, `shootsheet.json`, folder skeleton zip.
-- ✅ Unzipping the skeleton gives exactly the folder paths listed in `shootsheet.json` (plus the fixed structure).
+- ✅ Unzipping the skeleton gives the folder of every clip in `shootsheet.json`, under both `raw/` and `edited/`, plus the shoot's `renders/`.
 
 **Phase 6 — AI drafting** ✔ per §11.
 

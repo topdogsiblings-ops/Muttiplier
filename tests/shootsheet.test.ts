@@ -48,7 +48,7 @@ function bundle(): ShootBundle {
       }
     ],
     broll: [
-      { channel_id: 'c1', beat: 'problem', description: 'anxious pacing', product_visible: false, min_clips: 3, status: 'planned' },
+      { channel_id: 'c1', format_id: 'f2', beat: 'problem', description: 'anxious pacing', product_visible: false, min_clips: 3, status: 'planned' },
       { channel_id: null, beat: 'product', description: 'pack shot', product_visible: true, min_clips: 2, status: 'planned' }
     ]
   }
@@ -89,18 +89,27 @@ describe('shared shot list', () => {
     expect(unfilledItems(b)).toEqual([{ code: 'H01', slots: ['dog'] }])
   })
 
-  it('keeps each person in their own folder under the shared code', () => {
+  it('files each person\'s clip under the shared code, as a file named by the code', () => {
     const b = twoPeople()
-    expect(buildShootsheet(b).items.filter(item => item.code === 'H01').map(item => item.folder)).toEqual([
+    expect(buildShootsheet(b).items.filter(item => item.code === 'H01').map(item => item.file)).toEqual([
       'pawco/calming-chews/shoots/S014_2026-10-20/edited/hooks/joe/H01',
       'pawco/calming-chews/shoots/S014_2026-10-20/edited/hooks/sam/H01'
     ])
   })
 
-  it('puts shared b-roll in b-roll/shared/<beat>', () => {
+  it('files a shared b-roll shot under every channel, by beat for a format\'s shots', () => {
     const b = bundle()
-    b.broll.push({ channel_id: null, beat: 'result', description: 'happy dog', product_visible: false, min_clips: 2, status: 'planned' })
-    expect(buildShootsheet(b).broll.map(shot => shot.folder)).toContain('pawco/calming-chews/b-roll/shared/result')
+    b.broll.push({ channel_id: null, format_id: 'f2', beat: 'result', description: 'happy dog', product_visible: false, min_clips: 2, status: 'planned' })
+    expect(buildShootsheet(b).broll.map(shot => shot.raw_folder)).toEqual(expect.arrayContaining([
+      'pawco/calming-chews/shoots/S014_2026-10-20/raw/b-roll/nix/result',
+      'pawco/calming-chews/shoots/S014_2026-10-20/raw/b-roll/whiskey/result'
+    ]))
+  })
+
+  it('uses b-roll/shared/ only when the shoot has no channels', () => {
+    const b = bundle()
+    b.channels = []
+    expect(buildShootsheet(b).broll.map(shot => shot.raw_folder)).toContain('pawco/calming-chews/shoots/S014_2026-10-20/raw/b-roll/shared/general')
   })
 })
 
@@ -160,23 +169,27 @@ describe('buildShootsheet', () => {
     expect(sheet.shoot).toMatchObject({ code: 'S014', date: '2026-10-20', hook_allocation: 'split', broll_variations: 3, submission_rate: 0.15 })
     expect(sheet.channels[0]).toEqual({ slug: 'topdognix', folder_slug: 'nix', dogs: ['nix'] })
     expect(sheet.formats).toEqual([format])
-    expect(sheet.items.map(item => [item.code, item.folder])).toEqual([
+    expect(sheet.items.map(item => [item.code, item.file])).toEqual([
       ['C01', 'pawco/calming-chews/shoots/S014_2026-10-20/edited/ctas/joe/C01'],
       ['H01', 'pawco/calming-chews/shoots/S014_2026-10-20/edited/hooks/joe/H01'],
-      ['U01', 'universal/hooks/joe/U1a2b3c4d'],
+      // universal hooks are filed like any other hook, by their code
+      ['U01', 'pawco/calming-chews/shoots/S014_2026-10-20/edited/hooks/joe/U01'],
       ['V01', 'pawco/calming-chews/shoots/S014_2026-10-20/edited/vo/joe/V01']
     ])
     expect(sheet.items[1]).toEqual({
       code: 'H01', kind: 'hook', person: 'joe', channel: 'topdognix', template_id: 'aaaaaaaa-0000-0000-0000-000000000001',
       angle: 'curiosity', universal: false, script: 'Nobody told me Calming Chews could do this for my Doberman',
       caption: 'my Doberman and Calming Chews: calmer walks',
-      folder: 'pawco/calming-chews/shoots/S014_2026-10-20/edited/hooks/joe/H01'
+      file: 'pawco/calming-chews/shoots/S014_2026-10-20/edited/hooks/joe/H01',
+      raw_file: 'pawco/calming-chews/shoots/S014_2026-10-20/raw/hooks/joe/H01'
     })
     expect(sheet.items[3]).toMatchObject({ kind: 'body', channel: null, format: 'F02', angle: 'problem' })
     expect(sheet.items[0]).toMatchObject({ kind: 'cta', cta_mode: 'sync', channel: null })
+    // the shared pack shot (a general product shot) is listed once per channel
     expect(sheet.broll.map(shot => shot.folder)).toEqual([
-      'pawco/calming-chews/b-roll/nix/problem',
-      'pawco/calming-chews/b-roll/shared/product'
+      'pawco/calming-chews/shoots/S014_2026-10-20/edited/b-roll/nix/problem',
+      'pawco/calming-chews/shoots/S014_2026-10-20/edited/b-roll/nix/general',
+      'pawco/calming-chews/shoots/S014_2026-10-20/edited/b-roll/whiskey/general'
     ])
   })
 
@@ -188,18 +201,27 @@ describe('buildShootsheet', () => {
 })
 
 describe('skeleton zip', () => {
-  it('contains exactly the folders listed in shootsheet.json, plus the fixed structure', () => {
+  it('mirrors every clip folder under raw/ and edited/, with renders/ in the shoot', () => {
     const b = bundle()
     const files = skeletonFiles(b)
     const folders = Object.keys(files).filter(path => path.endsWith('/.keep')).map(path => path.slice(0, -'/.keep'.length))
     const sheet = buildShootsheet(b)
-    for (const entry of [...sheet.items, ...sheet.broll]) expect(folders).toContain(entry.folder)
+    const parent = (path: string) => path.slice(0, path.lastIndexOf('/'))
+    for (const item of sheet.items) {
+      expect(folders).toContain(parent(item.file))
+      expect(folders).toContain(parent(item.raw_file))
+      expect(item.raw_file.replace('/raw/', '/edited/')).toBe(item.file)
+    }
+    for (const shot of sheet.broll) {
+      expect(folders).toContain(shot.folder)
+      expect(folders).toContain(shot.raw_folder)
+      expect(shot.raw_folder.replace('/raw/', '/edited/')).toBe(shot.folder)
+    }
 
     const shoot = 'pawco/calming-chews/shoots/S014_2026-10-20'
-    expect(folders).toEqual(expect.arrayContaining([
-      `${shoot}/raw`, `${shoot}/captions`, 'pawco/calming-chews/renders',
-      'pawco/calming-chews/b-roll/whiskey/result', 'pawco/calming-chews/b-roll/shared/product'
-    ]))
+    expect(folders).toEqual(expect.arrayContaining([`${shoot}/raw`, `${shoot}/edited`, `${shoot}/renders`]))
+    // everything lives in the shoot folder
+    expect(folders.every(folder => folder.startsWith(shoot))).toBe(true)
     expect(JSON.parse(files[`${shoot}/shootsheet.json`]!)).toEqual(sheet)
   })
 })
@@ -207,10 +229,12 @@ describe('skeleton zip', () => {
 describe('buildCsv', () => {
   it('writes one row per item and b-roll shot, with bodies joined by beat', () => {
     const lines = buildCsv(bundle()).trimEnd().split('\r\n')
-    expect(lines[0]).toBe('shoot,person,kind,code,channel,angle,cta_mode,location,script,status,folder_path')
-    expect(lines).toHaveLength(1 + 4 + 2)
-    expect(lines[1]).toBe('S014,joe,cta,C01,,,sync,,"Grab Calming Chews, ""today""",planned,pawco/calming-chews/shoots/S014_2026-10-20/edited/ctas/joe/C01')
+    expect(lines[0]).toBe('shoot,person,kind,code,channel,angle,cta_mode,location,script,status,raw_path')
+    // the shared pack shot gets a row per channel
+    expect(lines).toHaveLength(1 + 4 + 3)
+    expect(lines[1]).toBe('S014,joe,cta,C01,,,sync,,"Grab Calming Chews, ""today""",planned,pawco/calming-chews/shoots/S014_2026-10-20/raw/ctas/joe/C01')
     expect(lines[4]).toContain('[problem] My dog pulled [product] PawCo Calming Chews [result] calmer walks')
-    expect(lines[5]).toBe('S014,,broll,,topdognix,,,,[problem] anxious pacing,planned,pawco/calming-chews/b-roll/nix/problem')
+    expect(lines[5]).toBe('S014,,broll,,topdognix,,,,[problem] anxious pacing,planned,pawco/calming-chews/shoots/S014_2026-10-20/raw/b-roll/nix/problem')
+    expect(lines[6]).toBe('S014,,broll,,topdognix,,,,[general] pack shot,planned,pawco/calming-chews/shoots/S014_2026-10-20/raw/b-roll/nix/general')
   })
 })

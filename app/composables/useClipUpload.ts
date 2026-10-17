@@ -16,7 +16,13 @@ export interface AttachedClip {
   file: Blob | null
   /** object URL for the preview; empty for a clip uploaded in an earlier session */
   url: string
-  folder: string
+  /**
+   * Where it goes in Dropbox, as a file without extension: `…/raw/hooks/joe/H01`, or for b-roll
+   * the clip's own name in its folder. Named clips replace what's there; b-roll never overwrites.
+   */
+  dest: string
+  /** b-roll: keep both if the name's taken (Dropbox adds a number) instead of replacing */
+  keepBoth?: boolean
   state: ClipState
   /** upload progress, 0 to 1 */
   progress: number
@@ -30,7 +36,11 @@ export interface AttachedClip {
 /** Where a clip goes. Swap the stub for a real Dropbox adapter once §12 is settled. */
 export interface ClipUploader {
   connected: boolean
-  upload(file: Blob, name: string, folder: string, onProgress: (fraction: number) => void): Promise<{ uploaded: boolean, path: string | null }>
+  /**
+   * `path` is the full Dropbox path, extension included. An existing file there is replaced,
+   * or with `keepBoth` kept, the upload getting a numbered name instead.
+   */
+  upload(file: Blob, path: string, keepBoth: boolean, onProgress: (fraction: number) => void): Promise<{ uploaded: boolean, path: string | null }>
 }
 
 /**
@@ -39,14 +49,14 @@ export interface ClipUploader {
  */
 const stubUploader: ClipUploader = {
   connected: false,
-  upload(_file, name, folder, onProgress) {
+  upload(_file, path, _keepBoth, onProgress) {
     return new Promise((resolve) => {
       let step = 0
       const timer = setInterval(() => {
         onProgress(++step / 10)
         if (step < 10) return
         clearInterval(timer)
-        resolve({ uploaded: true, path: `${folder}/${name}` })
+        resolve({ uploaded: true, path })
       }, 100)
     })
   }
@@ -56,6 +66,14 @@ const stubUploader: ClipUploader = {
 export const clipTarget = {
   item: (itemId: string) => `item:${itemId}`,
   broll: (shotId: string, channelId: string | null, index: number) => `broll:${shotId}:${channelId ?? 'shared'}:${index}`
+}
+
+/** The clip's own extension (".mov", ".m4a"…), kept when it's renamed to its code. */
+export function extensionOf(name: string, type: string) {
+  const dot = name.lastIndexOf('.')
+  if (dot > 0 && dot > name.length - 7) return name.slice(dot).toLowerCase()
+  const subtype = type.split('/')[1]?.split(';')[0]
+  return subtype === 'quicktime' ? '.mov' : subtype === 'mpeg' ? '.mp3' : subtype ? `.${subtype}` : ''
 }
 
 export function formatFileSize(bytes: number) {
@@ -169,7 +187,10 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
       const stored = await inStore<StoredClip[]>('readonly', store => store.index('shoot').getAll(shoot.code))
       for (const { target, ...clip } of stored) {
         if (clips.has(target)) continue
-        clips.set(target, reactive<AttachedClip>({ ...clip, url: clip.file ? URL.createObjectURL(clip.file) : '', progress: clip.state === 'uploaded' ? 1 : 0 }))
+        // saved before clips were named by code: keep their own name in the old folder
+        const legacy = clip as StoredClip & { folder?: string }
+        const dest = clip.dest ?? `${legacy.folder}/${clip.name.replace(/\.[^.]+$/, '')}`
+        clips.set(target, reactive<AttachedClip>({ ...clip, dest, url: clip.file ? URL.createObjectURL(clip.file) : '', progress: clip.state === 'uploaded' ? 1 : 0 }))
       }
     }
 
@@ -215,7 +236,10 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
   }
 
   /** Save a clip for a target on this phone, replacing any earlier one. Throws if the phone can't store it. */
-  async function save(target: string, shoot: string, folder: string, file: File, checked?: { details: string | null, issues: string[] }): Promise<AttachedClip> {
+  /** `path`: a file without extension, or a folder ending in `/` to keep the clip's own name. */
+  async function save(target: string, shoot: string, path: string, file: File, checked?: { details: string | null, issues: string[] }): Promise<AttachedClip> {
+    const keepBoth = path.endsWith('/')
+    const dest = keepBoth ? `${path}${file.name.replace(/\.[^.]+$/, '')}` : path
     const clip = reactive<AttachedClip>({
       shoot,
       name: file.name,
@@ -223,7 +247,8 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
       size: file.size,
       file,
       url: '',
-      folder,
+      dest,
+      keepBoth,
       state: 'saved',
       progress: 0,
       path: null,
@@ -247,7 +272,7 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
     // a clip replaced or removed mid-upload stops tracking its upload
     const current = () => clips.get(target) === clip
     try {
-      const result = await uploader.upload(clip.file, clip.name, clip.folder, (fraction) => {
+      const result = await uploader.upload(clip.file, `${clip.dest}${extensionOf(clip.name, clip.type)}`, !!clip.keepBoth, (fraction) => {
         if (current()) clip.progress = Math.min(1, Math.max(0, fraction))
       })
       if (!current()) return

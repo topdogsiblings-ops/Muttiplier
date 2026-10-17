@@ -15,8 +15,11 @@ const props = withDefaults(defineProps<{
   target: string
   /** the shoot code, so the clip uploads with its shoot */
   shoot: string
-  /** Dropbox folder under topdogugc/, from itemFolder() / brollFolder() */
-  folder: string
+  /**
+   * Where it goes in Dropbox: a file without extension, from itemPath() (e.g. `…/hooks/joe/H01`),
+   * or a folder ending in `/` to keep the clip's own name (b-roll)
+   */
+  path: string
   /** what the clip is for, for screen readers (e.g. "V03", "clip 2") */
   label: string
   media?: 'video' | 'audio'
@@ -75,7 +78,7 @@ async function send(file: File) {
 
   const hadClip = !!clip.value
   try {
-    await save(props.target, props.shoot, props.folder, file, checked)
+    await save(props.target, props.shoot, props.path, file, checked)
   } catch {
     toast.add({ title: 'Couldn\'t save the clip on this phone', description: 'The phone may be out of space. Free some up, then try again.', color: 'error', icon: 'i-lucide-hard-drive' })
     return
