@@ -15,6 +15,7 @@ const emit = defineEmits<{
     is_universal?: boolean
     mode?: string
     tags?: string[]
+    product_ids?: string[]
   }]
 }>()
 
@@ -68,7 +69,8 @@ async function generate() {
 function use(draft: { title?: string, script?: string, caption?: string, beats?: Beat[] }) {
   if (props.kind === 'hook') emit('use', { script: draft.script, caption: draft.caption, angle_id: form.angle_id, is_universal: form.universal, tags: [...form.tags] })
   else if (props.kind === 'cta') emit('use', { script: draft.script, mode: form.mode, tags: [...form.tags] })
-  else emit('use', { title: draft.title, beats: draft.beats, format_id: form.format_id, angle_id: form.angle_id })
+  // a VO drafted for a product is for that product
+  else emit('use', { title: draft.title, beats: draft.beats, format_id: form.format_id, angle_id: form.angle_id, product_ids: form.product_id ? [form.product_id] : [] })
   open.value = false
 }
 </script>

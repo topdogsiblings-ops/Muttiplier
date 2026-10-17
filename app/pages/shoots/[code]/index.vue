@@ -101,8 +101,10 @@ async function setPeople(next: string[]) {
   await run(async () => {
     if (added.length) {
       must(await db.from('shoot_people').insert(added.map(person_id => ({ shoot_id: shoot.value.id, person_id }))))
-      // everyone films the whole shot list
-      const rows = added.flatMap(person_id => groups.value.map(group => copyFor(group, person_id)))
+      // everyone films the whole shot list, apart from VOs someone else wrote for themselves
+      const rows = added.flatMap(person_id => groups.value
+        .filter(group => !group.items[0]!.writer_id || group.items[0]!.writer_id === person_id)
+        .map(group => copyFor(group, person_id)))
       if (rows.length) must(await db.from('shoot_items').insert(rows))
     }
     // items go with the person (cascade)
@@ -167,8 +169,8 @@ async function addItems(picked: PickedItems) {
     return next
   }
 
-  // one entry per template, then one item per person
-  const entries: Omit<Insert<'shoot_items'>, 'shoot_id' | 'person_id'>[] = []
+  // one entry per template, then one item per person (only the writer, for their own VOs)
+  const entries: (Omit<Insert<'shoot_items'>, 'shoot_id' | 'person_id'> & { writer_id?: string | null })[] = []
   // every hook is used for every channel
   for (const hook of picked.hooks.filter(hook => !existingTemplates.value.includes(hook.id))) entries.push({
     kind: 'hook',
@@ -179,15 +181,16 @@ async function addItems(picked: PickedItems) {
     sort_order: ++order
   })
   for (const body of picked.bodies.filter(body => !existingTemplates.value.includes(body.id))) {
-    entries.push({ kind: 'body', body_template_id: body.id, code: take('V'), script_snapshot: body.beats, sort_order: ++order })
+    entries.push({ kind: 'body', body_template_id: body.id, code: take('V'), script_snapshot: body.beats, sort_order: ++order, writer_id: body.person_id })
   }
   for (const cta of picked.ctas.filter(cta => !existingTemplates.value.includes(cta.id))) {
     entries.push({ kind: 'cta', cta_template_id: cta.id, code: take('C'), cta_mode: cta.mode, script_snapshot: cta.script, sort_order: ++order })
   }
   if (!entries.length) return
 
-  const rows = bundle.value.people.flatMap(person =>
-    entries.map(entry => ({ ...entry, shoot_id: shoot.value.id, person_id: person.id }) as Insert<'shoot_items'>))
+  const rows = bundle.value.people.flatMap(person => entries
+    .filter(entry => !entry.writer_id || entry.writer_id === person.id)
+    .map(({ writer_id: _writer, ...entry }) => ({ ...entry, shoot_id: shoot.value.id, person_id: person.id }) as Insert<'shoot_items'>))
   await run(async () => {
     must(await db.from('shoot_items').insert(rows))
     await refresh()
@@ -900,7 +903,14 @@ const exportItems: DropdownMenuItem[] = [
         </template>
       </UModal>
 
-      <PlannerItemPicker v-model:open="pickerOpen" :existing="existingTemplates" :format="pickerFormat" @add="addItems" />
+      <PlannerItemPicker
+        v-model:open="pickerOpen"
+        :existing="existingTemplates"
+        :format="pickerFormat"
+        :product-id="shoot.product_id"
+        :people-ids="personIds"
+        @add="addItems"
+      />
     </template>
   </UDashboardPanel>
 </template>

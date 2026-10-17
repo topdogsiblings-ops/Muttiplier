@@ -37,6 +37,8 @@ export interface BundleItem {
   /** hooks: suggested post caption, copied from the template like the script and frozen when planned */
   caption?: string | null
   title?: string | null
+  /** VOs: the person on the cast who wrote it; only they perform it. Null = anyone. */
+  writer_id?: string | null
   format: {
     code: string
     cta_modes: string[]

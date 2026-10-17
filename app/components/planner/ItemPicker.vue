@@ -2,28 +2,43 @@
 import type { Row } from '#shared/types/models'
 
 // Searchable multi-select over the Library. Picked items go on the shoot's shared shot list,
-// which everyone on the shoot films.
+// which everyone on the shoot films, except a VO someone on the cast wrote for themselves:
+// only they perform it. VOs show when they are universal or for the shoot's product, and
+// written by anyone or by someone on the shoot.
 export interface PickedItems {
   hooks: Row<'hook_templates'>[]
-  bodies: Row<'body_templates'>[]
+  bodies: BodyWithProducts[]
   ctas: Row<'cta_templates'>[]
 }
+type BodyWithProducts = Row<'body_templates'> & { products: { product_id: string }[] }
 
 const props = defineProps<{
   /** template ids already on the structure, so they can't be added twice */
   existing: string[]
   /** opened from a format: only that format's VOs */
   format?: { id: string, code: string, name: string } | null
+  /** the shoot's product: VOs for other products are left out */
+  productId: string
+  /** the shoot's people: VOs written by anyone else are left out */
+  peopleIds: string[]
 }>()
 const emit = defineEmits<{ add: [picked: PickedItems] }>()
 const open = defineModel<boolean>('open', { required: true })
 
 const db = useDb()
 const run = useAction()
-const { formats, angleName, angleOptions } = useRefData()
+const { formats, people, angleName, angleOptions } = useRefData()
+const personName = (id: string | null) => people.value.find(person => person.id === id)?.name ?? null
 
 const hooks = shallowRef<Row<'hook_templates'>[]>([])
-const bodies = shallowRef<Row<'body_templates'>[]>([])
+const allBodies = shallowRef<BodyWithProducts[]>([])
+const fitsShoot = (row: BodyWithProducts) =>
+  (!row.person_id || props.peopleIds.includes(row.person_id))
+  && (!row.products.length || row.products.some(link => link.product_id === props.productId))
+const bodies = computed(() => allBodies.value.filter(fitsShoot))
+/** VOs in this view left out because they are for another product or someone not on the shoot */
+const hiddenBodies = computed(() => allBodies.value.filter(row => !props.format || row.format_id === props.format.id).length
+  - bodies.value.filter(row => !props.format || row.format_id === props.format.id).length)
 const ctas = shallowRef<Row<'cta_templates'>[]>([])
 const loading = ref(false)
 
@@ -42,7 +57,7 @@ watch(open, async (isOpen) => {
   loading.value = true
   await run(async () => {
     hooks.value = must(await db.from('hook_templates').select('*').eq('archived', false).order('created_at', { ascending: false }))
-    bodies.value = must(await db.from('body_templates').select('*').eq('archived', false).order('title'))
+    allBodies.value = must(await db.from('body_templates').select('*, products:body_template_products(product_id)').eq('archived', false).order('title'))
     ctas.value = must(await db.from('cta_templates').select('*').eq('archived', false).order('created_at', { ascending: false }))
   })
   loading.value = false
@@ -82,7 +97,12 @@ const options = computed<Option[]>(() => {
       id: row.id,
       title: row.title,
       text: joinBeats(parseBeats(row.beats)),
-      badges: [formatOf(row.format_id)?.code ?? '?', ...(angleName(row.angle_id) ? [angleName(row.angle_id)!] : [])],
+      badges: [
+        formatOf(row.format_id)?.code ?? '?',
+        ...(personName(row.person_id) ? [`by ${personName(row.person_id)}`] : []),
+        ...(row.products.length ? ['this product'] : []),
+        ...(angleName(row.angle_id) ? [angleName(row.angle_id)!] : [])
+      ],
       tags: row.tags,
       angleId: row.angle_id
     }))
@@ -175,12 +195,15 @@ function add() {
             {{ loading ? 'Loading…' : 'Nothing in the Library matches.' }}
           </p>
         </div>
+        <p v-if="kind === 'body' && hiddenBodies" class="text-xs text-muted">
+          {{ hiddenBodies }} VO{{ hiddenBodies === 1 ? '' : 's' }} not shown: written for another product, or by someone who isn't on this shoot.
+        </p>
       </div>
     </template>
 
     <template #footer>
       <div class="flex w-full flex-wrap items-center justify-between gap-3">
-        <span class="text-sm text-muted">Everyone on the shoot films every item.</span>
+        <span class="text-sm text-muted">Everyone on the shoot films every item, except VOs written by one person.</span>
         <UButton
           class="ml-auto"
           :label="`Add ${selected.size} item${selected.size === 1 ? '' : 's'}`"

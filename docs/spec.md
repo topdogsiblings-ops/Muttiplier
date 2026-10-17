@@ -167,6 +167,9 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 - `beats jsonb` — ordered array: `[{ "beat": "problem", "script": "..." }, ...]`; beat names must match the format's `beats`
 - `est_seconds int` — **computed** from the word count ÷ `settings.words_per_second`, not typed in
 - `tags text[]`, `notes text`
+- `person_id` — optional: the person on the cast who wrote it. Only they perform it on a shoot; null = anyone can.
+
+**body_template_products** — `body_template_id`, `product_id`, pk on both. The products a VO is written for; none = universal (offered for every product).
 
 **hook_templates**
 - `script text`, `angle_id`, `is_universal boolean default false`, `est_seconds int`, `tags text[]`, `notes text`
@@ -238,7 +241,7 @@ Tabs: **Hooks, CTAs, Formats & VOs, Angles**.
   - Live preview: pick a product + channel → rendered script with slots filled; unfilled slots flagged.
   - Hooks: filming notes and suggested caption.
   - Validation rules from §5.
-- **Formats & VOs:** one collapsible panel per format (description, beats) listing its VOs, with **Add VO** inside the format. The format editor edits beats, each beat's description and its suggested b-roll shots. The VO editor has one block per beat and shows the estimated length (computed).
+- **Formats & VOs:** one collapsible panel per format (description, beats) listing its VOs, with **Add VO** inside the format. The format editor edits beats, each beat's description and its suggested b-roll shots. The VO editor has one block per beat and shows the estimated length (computed). Each VO can be given a writer from the cast (defaults to the signed-in user's person, so cast members can write their own) and products (none = universal); the list shows both and filters by writer.
 - Archive / unarchive (with confirm). No hard delete if referenced by a shoot.
 - Usage count per template ("used in 4 shoots").
 - Duplicate action.
@@ -271,7 +274,7 @@ Single page with a scrollable **calculator panel** (right side on desktop, drawe
 2. **Formats:** add or remove formats on the plan. Removing a format (confirmed) also removes its VOs and its b-roll.
 3. **Structure:** one shared shot list that **everyone films together**, one by one:
    - **Hooks** — used for every channel (no per-channel split).
-   - **Formats & VOs** — one collapsible panel per planned format, with an "Add F01 VOs" picker limited to that format.
+   - **Formats & VOs** — one collapsible panel per planned format, with an "Add F01 VOs" picker limited to that format. The picker only offers VOs that are universal or for the shoot's product, and written by anyone or by someone on the shoot. A VO with a writer goes on the shot list for that person only.
    - **CTAs.**
    - Every item shows its rendered script (slots filled; `{{dog}}` per §5). Edit inline to create a per-person override, or use AI to reword it per person. Captions on hooks are snapshotted.
 4. **B-roll:** one collapsible panel per planned format (name, description, clip count), a section per beat with its `?` description, plus **General product shots** (suggestions from Settings). Suggested shots can be added one at a time, per beat ("Add this beat's") or for the whole format ("Add all suggestions"), or written by hand; **Generate b-roll** asks the AI for shots for every section based on the brand, product, formats and beat descriptions. Each shot has `product_visible` and `min_clips`.

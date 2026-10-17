@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import type { Row } from '#shared/types/models'
+import type { BodyRow } from './BodyEditor.vue'
 
 // Formats & VOs: every format is a collapsible panel (collapsed to start) holding the VOs
 // written for it. Open a format to see its VOs and add new ones straight into it.
-const { angleName, angleOptions, load } = useRefData()
+const db = useDb()
+const run = useAction()
+const { angleName, angleOptions, people, productOptions, load } = useRefData()
 const formatsLib = useLibrary('formats', { text: row => `${row.code} ${row.name} ${row.description ?? ''}` })
 const vos = useLibrary('body_templates', {
   usageKind: 'body',
@@ -11,14 +14,38 @@ const vos = useLibrary('body_templates', {
 })
 
 const formatEditor = useTemplateRef<{ edit: (row?: Row<'formats'>, duplicate?: boolean) => void }>('formatEditor')
-const bodyEditor = useTemplateRef<{ edit: (row?: Partial<Omit<Row<'body_templates'>, 'beats'>> & { beats?: unknown }, duplicate?: boolean) => void }>('bodyEditor')
+const bodyEditor = useTemplateRef<{ edit: (row?: BodyRow, duplicate?: boolean) => void }>('bodyEditor')
+
+// --- who wrote each VO, and the products it is for (none = universal) ------------
+const productIds = ref<Record<string, string[]>>({})
+async function loadProducts() {
+  const links = must(await db.from('body_template_products').select('body_template_id, product_id'))
+  const byTemplate: Record<string, string[]> = {}
+  for (const link of links) (byTemplate[link.body_template_id] ??= []).push(link.product_id)
+  productIds.value = byTemplate
+}
+run(loadProducts)
+const productsOf = (row: Row<'body_templates'>) => productIds.value[row.id] ?? []
+const productLabel = (id: string) => productOptions.value.find(option => option.value === id)?.label ?? 'Unknown product'
+const personName = (id: string | null) => people.value.find(person => person.id === id)?.name ?? null
+const withProducts = (row: Row<'body_templates'>): BodyRow => ({ ...row, product_ids: productsOf(row) })
+
+async function onSaved() {
+  await Promise.all([vos.reload(), loadProducts()])
+}
 
 // --- filters (search, archived and sort come from the toolbar) -----------------
 const angle = ref('all')
 const tag = ref('all')
+const writer = ref('all')
+const writerFilter = computed(() => [
+  { label: 'Everyone', value: 'all' },
+  { label: 'Anyone can perform', value: 'anyone' },
+  ...people.value.filter(person => person.active).map(person => ({ label: person.name, value: person.id }))
+])
 const angleFilter = computed(() => [{ label: 'All angles', value: 'all' }, ...angleOptions.value])
 const term = computed(() => vos.search.value.trim().toLowerCase())
-const filtering = computed(() => !!term.value || angle.value !== 'all' || tag.value !== 'all')
+const filtering = computed(() => !!term.value || angle.value !== 'all' || tag.value !== 'all' || writer.value !== 'all')
 
 const voSorters: Record<string, (a: Row<'body_templates'>, b: Row<'body_templates'>) => number> = {
   newest: (a, b) => b.created_at.localeCompare(a.created_at),
@@ -32,7 +59,8 @@ const voText = (row: Row<'body_templates'>) => `${row.title} ${parseBeats(row.be
 const voPool = computed(() => vos.rows.value
   .filter(row => row.archived === vos.showArchived.value
     && (angle.value === 'all' || row.angle_id === angle.value)
-    && (tag.value === 'all' || row.tags.includes(tag.value)))
+    && (tag.value === 'all' || row.tags.includes(tag.value))
+    && (writer.value === 'all' || (row.person_id ?? 'anyone') === writer.value))
   .sort(voSorters[vos.sort.value] ?? voSorters.newest))
 
 const formatMatches = (format: Row<'formats'>) =>
@@ -51,13 +79,13 @@ const sections = computed(() => formatsLib.rows.value
     if (vos.showArchived.value) return format.archived || count > 0
     if (format.archived) return false
     if (!filtering.value) return true
-    return count > 0 || (formatMatches(format) && angle.value === 'all' && tag.value === 'all')
+    return count > 0 || (formatMatches(format) && angle.value === 'all' && tag.value === 'all' && writer.value === 'all')
   })
   .sort((a, b) => a.code.localeCompare(b.code))
   .map(format => ({ format, vos: vosFor(format) })))
 
 const pageSections = computed(() => sections.value.slice((vos.page.value - 1) * vos.pageSize, vos.page.value * vos.pageSize))
-watch([angle, tag], vos.resetPage)
+watch([angle, tag, writer], vos.resetPage)
 
 // --- collapsing: everything starts collapsed; filtering opens the matches ----------
 const open = ref<Set<string>>(new Set())
@@ -95,6 +123,7 @@ function addVo(format: Row<'formats'>) {
     >
       <USelect v-model="angle" :items="angleFilter" class="w-36" />
       <USelect v-model="tag" :items="tagOptions(vos.rows.value)" class="w-32" />
+      <USelect v-model="writer" :items="writerFilter" class="w-40" />
       <template #actions>
         <LibraryAiDrafts kind="body" @use="bodyEditor?.edit($event)" />
         <UButton label="New VO" aria-label="New VO" icon="i-lucide-plus" color="neutral" variant="subtle" :ui="ICON_ON_MOBILE" class="max-sm:px-1.5" @click="bodyEditor?.edit()" />
@@ -179,7 +208,7 @@ function addVo(format: Row<'formats'>) {
               v-for="row in formatVos"
               :key="row.id"
               class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-elevated/50"
-              @click="bodyEditor?.edit(row)"
+              @click="bodyEditor?.edit(withProducts(row))"
             >
               <div class="min-w-0 flex-1 space-y-1.5">
                 <p class="font-medium text-highlighted">
@@ -190,6 +219,8 @@ function addVo(format: Row<'formats'>) {
                   <ScriptPreview :text="beat.script" />
                 </p>
                 <div class="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                  <UBadge v-if="personName(row.person_id)" :label="personName(row.person_id)!" icon="i-lucide-user" color="primary" variant="subtle" size="sm" />
+                  <UBadge v-for="id in productsOf(row)" :key="id" :label="productLabel(id)" icon="i-lucide-package" color="info" variant="subtle" size="sm" />
                   <UBadge v-if="angleName(row.angle_id)" :label="angleName(row.angle_id)!" color="neutral" variant="subtle" size="sm" />
                   <UBadge v-for="t in row.tags" :key="t" :label="t" color="neutral" variant="outline" size="sm" />
                   <span v-if="row.est_seconds">{{ row.est_seconds }}s</span>
@@ -202,7 +233,7 @@ function addVo(format: Row<'formats'>) {
                 noun="VO"
                 :archived="row.archived"
                 duplicable
-                @duplicate="bodyEditor?.edit(row, true)"
+                @duplicate="bodyEditor?.edit(withProducts(row), true)"
                 @archive="vos.setArchived(row, $event)"
               />
             </div>
@@ -217,6 +248,6 @@ function addVo(format: Row<'formats'>) {
     <ListPager v-model:page="vos.page.value" :total="sections.length" :page-size="vos.pageSize" />
 
     <LibraryFormatEditor ref="formatEditor" @saved="formatsLib.reload()" />
-    <LibraryBodyEditor ref="bodyEditor" @saved="vos.reload()" />
+    <LibraryBodyEditor ref="bodyEditor" @saved="onSaved" />
   </div>
 </template>

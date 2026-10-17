@@ -25,6 +25,8 @@ const beats = computed(() => primary.value.kind === 'body' ? parseBeats(primary.
 const text = computed(() => typeof primary.value.script_snapshot === 'string' ? primary.value.script_snapshot : '')
 
 const personName = (id: string) => props.bundle.people.find(person => person.id === id)?.name ?? 'Unknown'
+/** a VO one person on the cast wrote for themselves: only they perform it */
+const writer = computed(() => primary.value.writer_id ? personName(primary.value.writer_id) : null)
 const overrides = computed(() => props.group.items.filter(item => item.script_override !== null && item.script_override !== undefined).length)
 const done = computed(() => props.group.items.filter(item => item.status !== 'planned').length)
 const unfilled = computed(() => {
@@ -85,6 +87,7 @@ function onDragStart(event: DragEvent) {
           <UBadge v-if="primary.universal" label="universal" color="primary" variant="outline" size="sm" />
           <UBadge v-if="primary.angle" :label="primary.angle" color="neutral" variant="subtle" size="sm" />
           <UBadge v-if="primary.format" :label="primary.format.code" color="info" variant="subtle" size="sm" />
+          <UBadge v-if="writer" :label="`${writer}'s own`" icon="i-lucide-user" color="primary" variant="subtle" size="sm" />
           <UBadge v-if="primary.cta_mode" :label="primary.cta_mode" color="info" variant="subtle" size="sm" />
           <UBadge
             v-if="unfilled.length"
@@ -140,7 +143,12 @@ function onDragStart(event: DragEvent) {
 
     <div v-if="expanded" class="mt-2 divide-y divide-default rounded-lg border border-default sm:ml-12">
       <p class="px-3 py-1.5 text-xs text-muted">
-        Everyone films this. Edit someone's line to give them their own wording.
+        <template v-if="writer">
+          Only {{ writer }} performs this: they wrote it.
+        </template>
+        <template v-else>
+          Everyone films this. Edit someone's line to give them their own wording.
+        </template>
       </p>
       <PlannerItemRow
         v-for="item in group.items"

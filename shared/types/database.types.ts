@@ -77,6 +77,36 @@ export type Database = {
         }
         Relationships: []
       }
+      body_template_products: {
+        Row: {
+          body_template_id: string
+          product_id: string
+        }
+        Insert: {
+          body_template_id: string
+          product_id: string
+        }
+        Update: {
+          body_template_id?: string
+          product_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "body_template_products_body_template_id_fkey"
+            columns: ["body_template_id"]
+            isOneToOne: false
+            referencedRelation: "body_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "body_template_products_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       body_templates: {
         Row: {
           angle_id: string | null
@@ -88,6 +118,7 @@ export type Database = {
           format_id: string
           id: string
           notes: string | null
+          person_id: string | null
           source_url: string | null
           tags: string[]
           title: string
@@ -103,6 +134,7 @@ export type Database = {
           format_id: string
           id?: string
           notes?: string | null
+          person_id?: string | null
           source_url?: string | null
           tags?: string[]
           title: string
@@ -118,6 +150,7 @@ export type Database = {
           format_id?: string
           id?: string
           notes?: string | null
+          person_id?: string | null
           source_url?: string | null
           tags?: string[]
           title?: string
@@ -136,6 +169,13 @@ export type Database = {
             columns: ["format_id"]
             isOneToOne: false
             referencedRelation: "formats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "body_templates_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "people"
             referencedColumns: ["id"]
           },
         ]

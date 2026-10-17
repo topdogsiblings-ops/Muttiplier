@@ -32,6 +32,7 @@ type ItemRow = Row<'shoot_items'> & {
   hook: { is_universal: boolean, filming_notes: string | null, angle: { name: string } | null } | null
   body: {
     title: string
+    person_id: string | null
     angle: { name: string } | null
     format: { id: string, code: string, name: string, description: string | null, cta_modes: string[], beats: string[], beat_descriptions: Record<string, string> | null, beat_broll: unknown } | null
   } | null
@@ -39,7 +40,7 @@ type ItemRow = Row<'shoot_items'> & {
 
 const ITEM_SELECT = `*,
   hook:hook_templates(is_universal, filming_notes, angle:angles(name)),
-  body:body_templates(title, angle:angles(name), format:formats(id, code, name, description, cta_modes, beats, beat_descriptions, beat_broll))`
+  body:body_templates(title, person_id, angle:angles(name), format:formats(id, code, name, description, cta_modes, beats, beat_descriptions, beat_broll))`
 
 function unwrap<T>(result: { data: T | null, error: { message: string } | null }): T {
   if (result.error) throw new Error(result.error.message)
@@ -66,6 +67,7 @@ function toBundleItem(row: ItemRow): BundleItem {
     filming_notes: row.hook?.filming_notes ?? null,
     caption: row.caption,
     title: row.body?.title ?? null,
+    writer_id: row.body?.person_id ?? null,
     format: row.body?.format ?? null
   }
 }

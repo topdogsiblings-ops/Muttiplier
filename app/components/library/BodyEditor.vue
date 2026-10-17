@@ -3,19 +3,28 @@ import type { Row } from '#shared/types/models'
 import type { Beat } from '#shared/utils/slots'
 
 // Slide-over editor for a VO (body template). Open it with `edit(row)`; pass `{ format_id }`
-// to start a new VO in a format.
+// to start a new VO in a format. A VO can belong to one person on the cast (only they perform
+// it) and to specific products; with no products it is universal.
+export type BodyRow = Partial<Omit<Row<'body_templates'>, 'beats'>> & { beats?: unknown, product_ids?: string[] }
 const emit = defineEmits<{ saved: [] }>()
 
 const db = useDb()
 const run = useAction()
 const { confirmDialog } = useConfirm()
-const { formats, angles, angleOptions, products, productOptions, settings } = useRefData()
+const { formats, angles, angleOptions, people, products, productOptions, settings } = useRefData()
+const { access } = useAccess()
 const { context } = usePreviewContext()
 
 const formatOptions = computed(() =>
   formats.value.filter(f => !f.archived).map(f => ({ label: `${f.code} — ${f.name}`, value: f.id }))
 )
 const formatOf = (id: string | undefined) => formats.value.find(f => f.id === id)
+
+const personOptions = computed(() => people.value
+  .filter(person => person.active || person.id === form.person_id)
+  .map(person => ({ label: person.name, value: person.id })))
+/** The person on the cast linked to the signed-in user, if any (Settings → People). */
+const me = computed(() => people.value.find(person => person.allowed_user_id && person.allowed_user_id === access.value?.id))
 
 const open = ref(false)
 const saving = ref(false)
@@ -24,6 +33,8 @@ const form = reactive({
   title: '',
   format_id: undefined as string | undefined,
   angle_id: undefined as string | undefined,
+  person_id: undefined as string | undefined,
+  product_ids: [] as string[],
   beats: [] as Beat[],
   tags: [] as string[],
   notes: '',
@@ -31,12 +42,15 @@ const form = reactive({
 })
 const requestOpen = useGuardedClose(open, form)
 
-function edit(row?: Partial<Omit<Row<'body_templates'>, 'beats'>> & { beats?: unknown }, duplicate = false) {
+function edit(row?: BodyRow, duplicate = false) {
   Object.assign(form, {
     id: duplicate ? '' : row?.id ?? '',
     title: row?.title ? (duplicate ? `${row.title} (copy)` : row.title) : '',
     format_id: row?.format_id ?? formatOptions.value[0]?.value,
     angle_id: row?.angle_id ?? undefined,
+    // a new VO is written by whoever is signed in, if they are on the cast
+    person_id: (row?.id || row?.person_id !== undefined ? row?.person_id : me.value?.id) ?? undefined,
+    product_ids: [...(row?.product_ids ?? [])],
     beats: parseBeats(row?.beats),
     tags: [...(row?.tags ?? [])],
     notes: row?.notes ?? '',
@@ -103,14 +117,24 @@ async function save() {
       title: form.title.trim(),
       format_id: form.format_id!,
       angle_id: form.angle_id ?? null,
+      person_id: form.person_id ?? null,
       beats: form.beats.map(beat => ({ beat: beat.beat, script: beat.script.trim() })),
       est_seconds: estSeconds.value || null,
       tags: form.tags,
       notes: form.notes.trim() || null,
       source_url: normalizeUrl(form.source_url)
     }
-    if (form.id) must(await db.from('body_templates').update(fields).eq('id', form.id))
-    else must(await db.from('body_templates').insert(fields))
+    const id = form.id
+      ? (must(await db.from('body_templates').update(fields).eq('id', form.id)), form.id)
+      : must(await db.from('body_templates').insert(fields).select('id').single()).id
+    // products: none means universal
+    const current = form.id
+      ? must(await db.from('body_template_products').select('product_id').eq('body_template_id', id)).map(link => link.product_id)
+      : []
+    const added = form.product_ids.filter(productId => !current.includes(productId))
+    const removed = current.filter(productId => !form.product_ids.includes(productId))
+    if (added.length) must(await db.from('body_template_products').insert(added.map(product_id => ({ body_template_id: id, product_id }))))
+    if (removed.length) must(await db.from('body_template_products').delete().eq('body_template_id', id).in('product_id', removed))
   }, 'VO saved')
   saving.value = false
   if (ok) {
@@ -133,6 +157,12 @@ async function save() {
           </UFormField>
           <UFormField label="Angle">
             <USelectMenu v-model="form.angle_id" :items="angleOptions" value-key="value" placeholder="None" class="w-full" />
+          </UFormField>
+          <UFormField label="Written by" :help="form.person_id ? 'Only they perform it on a shoot' : 'Anyone on a shoot can perform it'">
+            <USelectMenu v-model="form.person_id" :items="personOptions" value-key="value" placeholder="Anyone" clear class="w-full" />
+          </UFormField>
+          <UFormField label="Products" :help="form.product_ids.length ? 'Only offered on shoots for these products' : 'Universal: offered for every product'">
+            <USelectMenu v-model="form.product_ids" :items="productOptions" value-key="value" multiple placeholder="Universal" class="w-full" />
           </UFormField>
         </div>
 
