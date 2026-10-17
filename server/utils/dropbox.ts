@@ -80,3 +80,20 @@ export async function dropboxAccount(accessToken: string) {
 export async function revokeDropboxToken(accessToken: string) {
   await $fetch(`${API}/2/auth/token/revoke`, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` } }).catch(() => {})
 }
+
+/** A fresh access token and the root folder, from the team's stored connection. */
+export async function dropboxAccess(event: H3Event, db: Awaited<ReturnType<typeof serverSupabaseClient<Database>>>) {
+  const app = dropboxApp(event)
+  const { data } = await db.from('dropbox_connection').select('refresh_token_enc, root').maybeSingle()
+  if (!data) throw createError({ statusCode: 409, statusMessage: 'Dropbox isn\'t connected. An admin can connect it in Settings.' })
+  try {
+    const token = await dropboxToken(event, { grant_type: 'refresh_token', refresh_token: decryptToken(data.refresh_token_enc, app.secret) })
+    return { accessToken: token.access_token, expiresIn: token.expires_in, root: data.root }
+  } catch {
+    throw createError({ statusCode: 409, statusMessage: 'The Dropbox connection has stopped working. An admin needs to reconnect it in Settings.' })
+  }
+}
+
+/** Dropbox-API-Arg must be ASCII: escape anything else (e.g. accents in a folder name). */
+export const dropboxArg = (value: unknown) =>
+  JSON.stringify(value).replace(/[\u007f-\uffff]/g, char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`)

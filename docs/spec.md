@@ -386,8 +386,8 @@ The contract with the future worker. Download from the shoot page. Skipped items
       "template_id": "uuid", "angle": "curiosity", "universal": false,
       "script": "Nobody told me Calming Chews could do this…",
       "caption": "…",
-      "file": "pawco/calming-chews/shoots/S014_2026-10-20/edited/hooks/joe/H01",
-      "raw_file": "pawco/calming-chews/shoots/S014_2026-10-20/raw/hooks/joe/H01"
+      "file": "pawco/calming-chews/shoots/S014/edited/hooks/joe/H01",
+      "raw_file": "pawco/calming-chews/shoots/S014/raw/hooks/joe/H01"
     },
     {
       "code": "V01", "kind": "body", "person": "joe", "channel": null,
@@ -397,22 +397,22 @@ The contract with the future worker. Download from the shoot page. Skipped items
         { "beat": "product", "script": "…" },
         { "beat": "result", "script": "…" }
       ],
-      "file": "pawco/calming-chews/shoots/S014_2026-10-20/edited/vo/joe/V01",
-      "raw_file": "pawco/calming-chews/shoots/S014_2026-10-20/raw/vo/joe/V01"
+      "file": "pawco/calming-chews/shoots/S014/edited/vo/joe/V01",
+      "raw_file": "pawco/calming-chews/shoots/S014/raw/vo/joe/V01"
     },
     {
       "code": "C01", "kind": "cta", "person": "joe", "channel": null,
       "template_id": "uuid", "cta_mode": "sync", "script": "…",
-      "file": "pawco/calming-chews/shoots/S014_2026-10-20/edited/ctas/joe/C01",
-      "raw_file": "pawco/calming-chews/shoots/S014_2026-10-20/raw/ctas/joe/C01"
+      "file": "pawco/calming-chews/shoots/S014/edited/ctas/joe/C01",
+      "raw_file": "pawco/calming-chews/shoots/S014/raw/ctas/joe/C01"
     }
   ],
   "broll": [
     {
       "channel": "topdognix", "general": false, "beat": "problem", "description": "anxious pacing",
       "product_visible": false, "min_clips": 3,
-      "folder": "pawco/calming-chews/shoots/S014_2026-10-20/edited/b-roll/nix/problem",
-      "raw_folder": "pawco/calming-chews/shoots/S014_2026-10-20/raw/b-roll/nix/problem"
+      "folder": "pawco/calming-chews/shoots/S014/edited/b-roll/nix/problem",
+      "raw_folder": "pawco/calming-chews/shoots/S014/raw/b-roll/nix/problem"
     }
   ]
 }
@@ -422,14 +422,14 @@ Items: `file` is the edited clip (what the worker reads) and `raw_file` where Mu
 
 ### d) Folder skeleton (zip)
 
-Download a zip of empty folders (each with a `.keep` file) plus `shootsheet.json`, to unzip into the Dropbox `UGC/` root folder. §12 replaces this with direct Dropbox folder creation.
+Download a zip of empty folders (each with a `.keep` file) plus `shootsheet.json`, to unzip into the Dropbox `UGC/` root folder. With Dropbox connected, the same tree is created directly in Dropbox instead (§12).
 
 Everything from a shoot lives in its shoot folder. `raw/` and `edited/` have exactly the same tree: Muttiplier only uploads to `raw/`; editors edit each clip and put it in the same place under `edited/`.
 
 ```
 UGC/
   [brand]/[product]/
-    shoots/[S###_YYYY-MM-DD]/
+    shoots/[S###]/                         named by the shoot code
       shootsheet.json
       raw/
         hooks/[person]/H##.mov             one file per hook, named by code (universal hooks too, as U##)
@@ -473,7 +473,7 @@ Goal: clips go straight from the shoot into the right Dropbox folders (§10d), s
 - **Server routes** (`/api/dropbox/…`): `connect`, `callback`, `status`, `folders` (admins), `disconnect` (admins), and `token`, which hands a signed-in, allowlisted phone a short-lived access token (about 4 hours). The refresh token never leaves the server.
 - **Uploads go from the phone straight to Dropbox** (not through Vercel), into `<root>/<path>` (§10d), in 8 MB pieces through an upload session (one request for small files), each piece retried on dropped connections, rate limits and server errors; an expired token is renewed. Hooks, VOs and CTAs overwrite (re-added clips replace the file); b-roll is added with autorename, never overwriting. Dropbox creates missing folders on upload.
 - Uploading is triggered from the checklist once the shoot is ended (**Upload all phones**, §10a). Until Dropbox is connected, uploads run in test mode.
-- Later, maybe: create a shoot's whole tree (raw and edited) in Dropbox when it's planned, instead of the skeleton zip.
+- **The shoot's whole tree is built in Dropbox** (`/api/dropbox/tree`): every clip folder under `raw/` and `edited/`, `renders/`, and the current `shootsheet.json` (overwritten each time so it matches the plan). It runs when a shoot is marked as planned, at the start of every Upload all phones, and from **Export → Create folders in Dropbox**. Folders are created with autorename off, so ones that already exist are left exactly as they are and only missing ones are added; safe to run again and again. Not for drafts, whose codes can still change. The skeleton zip still works without Dropbox.
 
 ---
 

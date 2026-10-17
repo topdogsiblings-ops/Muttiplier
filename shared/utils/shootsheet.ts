@@ -265,8 +265,9 @@ export function productFolder(bundle: Pick<ShootBundle, 'brand' | 'product'>): s
   return `${bundle.brand.slug}/${bundle.product.slug}`
 }
 
+/** Named by the shoot code alone (e.g. `S014`), so it never changes if the date moves. */
 export function shootFolder(bundle: Pick<ShootBundle, 'brand' | 'product' | 'shoot'>): string {
-  return `${productFolder(bundle)}/shoots/${bundle.shoot.code}_${bundle.shoot.shoot_date ?? 'undated'}`
+  return `${productFolder(bundle)}/shoots/${bundle.shoot.code}`
 }
 
 /** A hook, VO or CTA, as a file without extension: `<kind>/<person>/<code>` (universal hooks too, by their U code). */

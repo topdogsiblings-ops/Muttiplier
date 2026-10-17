@@ -380,7 +380,7 @@ const calculatorOpen = ref(false)
 // --- status ----------------------------------------------------------------
 const blockers = computed(() => {
   const list: string[] = []
-  if (!shoot.value.shoot_date) list.push('Set a shoot date (it names the shoot folder)')
+  if (!shoot.value.shoot_date) list.push('Set a shoot date')
   if (!bundle.value.people.length) list.push('Add at least one person')
   if (!bundle.value.channels.length) list.push('Add at least one channel')
   if (!bundle.value.items.length) list.push('Add items from the Library')
@@ -422,10 +422,41 @@ async function backToDraft() {
 
 const confirmPlan = ref(false)
 
+// The shoot's whole folder tree in Dropbox (raw/, edited/, renders/ and shootsheet.json), made
+// once it's planned and again before uploads. Folders already there are left as they are.
+const dropbox = useDropbox()
+const buildingTree = ref(false)
+async function createDropboxFolders(quiet = false) {
+  const status = await dropbox.ensure()
+  if (!status?.connected) {
+    if (!quiet) toast.add({ title: 'Dropbox isn\'t connected', description: 'An admin can connect it in Settings → Dropbox.', color: 'warning', icon: 'i-lucide-cloud-off' })
+    return
+  }
+  buildingTree.value = true
+  try {
+    const result = await $fetch('/api/dropbox/tree', { method: 'POST', body: { shootCode: shoot.value.code } })
+    toast.add({
+      title: result.created ? `Created ${result.created} folder${result.created === 1 ? '' : 's'} in Dropbox` : 'Dropbox folders are up to date',
+      description: result.failed ? `${result.failed} couldn't be created. Try again.` : result.root,
+      color: result.failed ? 'warning' : 'success',
+      icon: 'i-simple-icons-dropbox'
+    })
+  } catch (error) {
+    toast.add({
+      title: 'Couldn\'t create the Dropbox folders',
+      description: (error as { data?: { statusMessage?: string } }).data?.statusMessage ?? 'Try again from Export → Create folders in Dropbox.',
+      color: 'error',
+      icon: 'i-lucide-cloud-alert'
+    })
+  } finally {
+    buildingTree.value = false
+  }
+}
+
 async function markPlanned() {
   if (blockers.value.length) return
   busy.value = true
-  await run(async () => {
+  const planned = await run(async () => {
     // Freeze the filled scripts into the snapshots so later template or product edits can't change this shoot.
     const frozen = planSnapshots(bundle.value)
     for (let i = 0; i < frozen.length; i += 20) {
@@ -443,6 +474,7 @@ async function markPlanned() {
   }, 'Shoot planned. Exports are ready.')
   busy.value = false
   confirmPlan.value = false
+  if (planned) createDropboxFolders(true)
 }
 
 /** Shots still to film: items and b-roll that are neither filmed nor skipped. */
@@ -460,11 +492,22 @@ function download(format: string) {
   window.location.assign(`/api/shoots/${shoot.value.code}/export?format=${format}`)
 }
 
-const exportItems: DropdownMenuItem[] = [
-  { label: 'shootsheet.json', icon: 'i-lucide-braces', onSelect: () => download('json') },
-  { label: 'CSV', icon: 'i-lucide-table', onSelect: () => download('csv') },
-  { label: 'Folder skeleton (zip)', icon: 'i-lucide-folder-archive', onSelect: () => download('zip') }
-]
+const exportItems = computed<DropdownMenuItem[][]>(() => [
+  [
+    { label: 'shootsheet.json', icon: 'i-lucide-braces', onSelect: () => download('json') },
+    { label: 'CSV', icon: 'i-lucide-table', onSelect: () => download('csv') },
+    { label: 'Folder skeleton (zip)', icon: 'i-lucide-folder-archive', onSelect: () => download('zip') }
+  ],
+  [
+    {
+      label: buildingTree.value ? 'Creating folders…' : 'Create folders in Dropbox',
+      description: 'Only adds what\'s missing',
+      icon: 'i-simple-icons-dropbox',
+      disabled: buildingTree.value,
+      onSelect: () => createDropboxFolders()
+    }
+  ]
+])
 </script>
 
 <template>

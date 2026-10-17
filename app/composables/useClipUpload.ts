@@ -319,6 +319,9 @@ export const useClipUpload = () => {
     Object.assign(uploadRun, { active: true, shoot, total: queue.length, done: 0, failed: 0, error: '' })
     await dropbox.refresh().catch(() => {})
     const uploader = connected.value ? dropboxUploader : stubUploader
+    // make sure the shoot's whole folder tree is there (only what's missing is added); uploads
+    // create their own folders anyway, so a failure here doesn't stop them
+    if (connected.value) await $fetch('/api/dropbox/tree', { method: 'POST', body: { shootCode: shoot } }).catch(() => {})
     let wakeLock: { release: () => Promise<void> } | null = null
     try {
       wakeLock = await (navigator as Navigator & { wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> } })
