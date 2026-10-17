@@ -216,7 +216,7 @@ const brollClipFolder = (shot: Row<'broll_shots'>, channelId: string | null) =>
   `${brollFolder(bundle.value, shot, channelId)}/`
 
 /** Clips added for a b-roll shot or an everyone-view item, to show their clip cards. */
-const { clipFor, taken, load: loadClips, resync, phones, waiting, uploadShoot, uploadRun, connected } = useClipUpload()
+const { clipFor, taken, load: loadClips, discardBefore, resync, phones, waiting, uploadShoot, uploadRun, connected } = useClipUpload()
 
 // The checklist is live on every phone: clips added elsewhere, ticks, skips, b-roll counts,
 // starting / ending the shoot and the upload request all reload it. Coming back to the app
@@ -226,7 +226,9 @@ const reloadSoon = () => {
   clearTimeout(reloadTimer)
   reloadTimer = setTimeout(() => refresh().catch(() => {}), 400)
 }
-const shootRef = () => ({ code: shoot.value.code, id: shoot.value.id })
+const shootRef = () => ({ code: shoot.value.code, id: shoot.value.id, revertedAt: shoot.value.reverted_at })
+// reverted (on any phone) while this one has the checklist open: drop the clips saved before
+watch(() => shoot.value.reverted_at, revertedAt => discardBefore(shoot.value.code, revertedAt).catch(() => {}))
 function onVisible() {
   if (document.visibilityState !== 'visible') return
   reloadSoon()
@@ -399,6 +401,9 @@ function skipBroll(shot: Row<'broll_shots'>) {
             </p>
           </template>
           <template v-else-if="waitingClips.length">
+            <p v-if="uploadRun.error && uploadRun.shoot === shoot.code" class="mb-1 font-medium text-error">
+              {{ uploadRun.error }}
+            </p>
             <p class="font-medium text-highlighted">
               {{ waitingClips.length }} clip{{ waitingClips.length === 1 ? '' : 's' }} saved on this phone · {{ waitingSize }}
             </p>

@@ -198,15 +198,16 @@ async function addItems(picked: PickedItems) {
 }
 
 /** Shared fields (channel, location) apply to everyone's item. */
-async function updateGroup(group: ShotGroup, patch: { channel_id?: string | null, location?: string | null }) {
+/** Shared by everyone filming a group: channel, location, or (edit for everyone) the shoot's own copy of the script. */
+async function updateGroup(group: ShotGroup, patch: { channel_id?: string | null, location?: string | null, script_snapshot?: string | Beat[] }) {
   await run(async () => {
-    must(await db.from('shoot_items').update(patch).in('id', group.items.map(item => item.id)))
+    must(await db.from('shoot_items').update(patch as Update<'shoot_items'>).in('id', group.items.map(item => item.id)))
     for (const item of group.items) Object.assign(item, patch)
   })
 }
 
 /** One person's own wording (override). */
-async function updateItem(item: BundleItem, patch: { channel_id?: string | null, location?: string | null, script_override?: string | Beat[] | null }) {
+async function updateItem(item: BundleItem, patch: { channel_id?: string | null, location?: string | null, script_override?: string | Beat[] | null, script_snapshot?: string | Beat[] }) {
   await run(async () => {
     must(await db.from('shoot_items').update(patch as Update<'shoot_items'>).eq('id', item.id))
     Object.assign(item, patch)
@@ -392,6 +393,22 @@ const blockers = computed(() => {
 // --- back to draft -------------------------------------------------------------
 // Only from planned (before the shoot starts): once filming begins, footage may already be
 // filed under these codes, so started or filmed shoots stay locked.
+// Revert: a shoot that's started (or ended) goes back to planned as if it never started, so it
+// can then go back to draft. Ticks, b-roll counts and clip records are cleared; phones drop the
+// clips they saved; anything already uploaded to Dropbox stays there.
+const confirmRevert = ref(false)
+async function revertShoot() {
+  busy.value = true
+  const ok = await run(async () => {
+    must(await db.rpc('revert_shoot', { p_shoot_id: shoot.value.id }))
+    // and forget which clips were on whose phone (the phones drop the clips themselves)
+    must(await db.from('shoot_clips').delete().eq('shoot_id', shoot.value.id))
+    await refresh()
+  }, 'Shoot reverted. It\'s planned again, as if it never started.')
+  busy.value = false
+  if (ok) confirmRevert.value = false
+}
+
 const confirmUnplan = ref(false)
 async function backToDraft() {
   busy.value = true
@@ -510,6 +527,17 @@ const exportItems: DropdownMenuItem[] = [
               variant="ghost"
               @click="confirmUnplan = true"
             />
+            <UButton
+              v-if="shoot.status === 'shooting' || shoot.status === 'filmed'"
+              label="Revert"
+              aria-label="Revert the shoot to planned"
+              :ui="ICON_ON_MOBILE"
+              class="max-sm:px-1.5"
+              icon="i-lucide-history"
+              color="neutral"
+              variant="ghost"
+              @click="confirmRevert = true"
+            />
             <ShootControls :shoot="shoot" :remaining="remaining" icon-on-mobile @changed="refresh" />
           </template>
         </template>
@@ -542,6 +570,8 @@ const exportItems: DropdownMenuItem[] = [
             title="Codes and scripts are frozen"
             :description="shoot.status === 'planned' ? 'Library and product edits no longer affect this shoot. You can still add per-person wording, locations and b-roll shots, or use Back to draft to change the plan.' : 'Library and product edits no longer affect this shoot. You can still add per-person wording, locations and b-roll shots.'"
           />
+          <!-- slots nothing fills yet: fill them here (drafts only; planning freezes the scripts) -->
+          <PlannerSlotFiller v-if="isDraft" :bundle="bundle" @changed="refresh" />
           <UAlert
             v-if="shoot.started_at"
             :color="shoot.status === 'shooting' ? 'warning' : 'success'"
@@ -867,6 +897,25 @@ const exportItems: DropdownMenuItem[] = [
           <div class="flex w-full justify-end gap-2">
             <UButton label="Cancel" color="neutral" variant="ghost" @click="close" />
             <UButton label="Mark as planned" icon="i-lucide-lock" :loading="busy" @click="markPlanned" />
+          </div>
+        </template>
+      </UModal>
+
+      <UModal v-model:open="confirmRevert" :title="`Revert ${shoot.code} to planned?`">
+        <template #body>
+          <div class="space-y-2 text-sm text-default">
+            <p>The shoot goes back to planned, as if it never started. You can then put it back to draft.</p>
+            <ul class="list-disc space-y-0.5 pl-4 text-muted">
+              <li>Every tick and skip is cleared, and b-roll counts go back to zero.</li>
+              <li>Clips saved on phones are discarded and won't upload.</li>
+              <li>Anything already uploaded to Dropbox stays there.</li>
+            </ul>
+          </div>
+        </template>
+        <template #footer="{ close }">
+          <div class="flex w-full justify-end gap-2">
+            <UButton label="Cancel" color="neutral" variant="ghost" @click="close" />
+            <UButton label="Revert shoot" icon="i-lucide-history" color="error" :loading="busy" @click="revertShoot" />
           </div>
         </template>
       </UModal>

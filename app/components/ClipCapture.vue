@@ -36,7 +36,7 @@ const props = withDefaults(defineProps<{
 // `removed` when it loses it.
 const emit = defineEmits<{ saved: [], removed: [] }>()
 
-const { connected, clipFor, elsewhere, save, remove } = useClipUpload()
+const { clipFor, elsewhere, save, remove } = useClipUpload()
 const { confirmDialog } = useConfirm()
 const toast = useToast()
 const clip = computed(() => clipFor(props.target))
@@ -112,7 +112,8 @@ async function removeClip() {
 const badge = computed(() => {
   switch (clip.value?.state) {
     case 'uploading': return { label: 'Uploading…', color: 'info' as const, icon: 'i-lucide-loader-circle' }
-    case 'uploaded': return connected
+    // real uploads have a full Dropbox path ("/UGC/…"); test-mode ones a relative one
+    case 'uploaded': return clip.value.path?.startsWith('/')
       ? { label: 'Uploaded to Dropbox', color: 'success' as const, icon: 'i-lucide-cloud-check' }
       : { label: 'Uploaded · test mode, not really sent', color: 'warning' as const, icon: 'i-lucide-flask-conical' }
     case 'failed': return { label: 'Upload failed · retried with the rest', color: 'error' as const, icon: 'i-lucide-cloud-alert' }

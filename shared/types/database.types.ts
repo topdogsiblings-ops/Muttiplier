@@ -424,6 +424,53 @@ export type Database = {
         }
         Relationships: []
       }
+      dropbox_connection: {
+        Row: {
+          account_email: string | null
+          account_id: string
+          account_name: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          refresh_token_enc: string
+          root: string
+          singleton: boolean
+          updated_at: string
+        }
+        Insert: {
+          account_email?: string | null
+          account_id: string
+          account_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          refresh_token_enc: string
+          root?: string
+          singleton?: boolean
+          updated_at?: string
+        }
+        Update: {
+          account_email?: string | null
+          account_id?: string
+          account_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          refresh_token_enc?: string
+          root?: string
+          singleton?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dropbox_connection_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       formats: {
         Row: {
           archived: boolean
@@ -1020,6 +1067,7 @@ export type Database = {
           location_notes: string | null
           notes: string | null
           product_id: string
+          reverted_at: string | null
           runway_target: number
           shoot_date: string | null
           started_at: string | null
@@ -1043,6 +1091,7 @@ export type Database = {
           location_notes?: string | null
           notes?: string | null
           product_id: string
+          reverted_at?: string | null
           runway_target?: number
           shoot_date?: string | null
           started_at?: string | null
@@ -1066,6 +1115,7 @@ export type Database = {
           location_notes?: string | null
           notes?: string | null
           product_id?: string
+          reverted_at?: string | null
           runway_target?: number
           shoot_date?: string | null
           started_at?: string | null
@@ -1106,6 +1156,7 @@ export type Database = {
     }
     Functions: {
       renumber_shoot_items: { Args: { p_shoot_id: string }; Returns: undefined }
+      revert_shoot: { Args: { p_shoot_id: string }; Returns: undefined }
     }
     Enums: {
       [_ in never]: never

@@ -32,7 +32,10 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? '',
-    anthropicModel: process.env.ANTHROPIC_MODEL ?? 'claude-opus-5-5'
+    anthropicModel: process.env.ANTHROPIC_MODEL ?? 'claude-opus-5-5',
+    // Dropbox app (spec §12); its redirect URIs are <origin>/api/dropbox/callback
+    dropboxAppKey: process.env.DROPBOX_APP_KEY ?? '',
+    dropboxAppSecret: process.env.DROPBOX_APP_SECRET ?? ''
   },
 
   compatibilityDate: '2026-10-01',

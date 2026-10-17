@@ -8,13 +8,15 @@ const { confirmDialog } = useConfirm()
 const { people, channels, settings, load } = useRefData()
 const { access } = useAccess()
 
-const tab = ref('people')
 const tabs = [
   { label: 'People', value: 'people', icon: 'i-lucide-users' },
   { label: 'Channels', value: 'channels', icon: 'i-lucide-tv' },
   { label: 'Allowlist', value: 'allowlist', icon: 'i-lucide-shield-check' },
-  { label: 'Defaults', value: 'defaults', icon: 'i-lucide-timer' }
+  { label: 'Defaults', value: 'defaults', icon: 'i-lucide-timer' },
+  { label: 'Dropbox', value: 'dropbox', icon: 'i-simple-icons-dropbox' }
 ]
+const route = useRoute()
+const tab = ref(tabs.some(t => t.value === route.query.tab) ? String(route.query.tab) : 'people')
 
 const allowed = ref<Row<'allowed_users'>[]>([])
 async function loadAllowed() {
@@ -350,6 +352,8 @@ async function saveDefaults() {
         </template>
 
         <!-- Defaults -->
+        <DropboxSettings v-else-if="tab === 'dropbox'" />
+
         <template v-else>
           <p class="text-sm text-muted">
             Used by the calculator's time estimates and as the starting submission rate for new shoots.

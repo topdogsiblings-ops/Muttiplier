@@ -27,7 +27,7 @@ This spec covers the Library, Brands and Planner. Ingest, rendering and submissi
 
 1. **Library** — reusable, brand-agnostic templates. *(this project)*
 2. **Planner** — build a shoot for one product, run it on set, export shot lists, `shootsheet.json` and folder skeleton. *(this project)*
-3. **Dropbox uploads** — clips land in the right shoot folders. *(next; see §12)*
+3. **Dropbox uploads** — clips land in the right shoot folders. *(built; see §12)*
 4. Ingest + conformance + captions — local worker. *(later)*
 5. Recipe generation, selection, rendering — local worker. *(later)*
 6. Submission queue + form-filling Chrome extension. *(later)*
@@ -91,6 +91,7 @@ Scripts use double-brace slots: `{{brand}}`, `{{product}}`, `{{dog}}`, plus any 
 - Custom slots (e.g. `{{benefit}}`, `{{price}}`, `{{offer}}`) are filled from the product's `slot_values`.
 - The script editor lists the available slots, and highlights recognised vs unrecognised slots as you type.
 - Unfilled slots are flagged in previews and block "Mark as planned".
+- On a draft shoot, a **Fill in slots** section in the planner lists every unfilled slot with the codes that use it (hooks and CTAs first). Custom slots are typed in there and saved to the product's `slot_values`, so its later shoots have them too; `{{dog}}` asks for the dog phrase of each channel on the shoot that has none (admins, saved to the channel). A line can still be overridden instead.
 
 ### Rules
 
@@ -276,13 +277,14 @@ Single page with a scrollable **calculator panel** (right side on desktop, drawe
    - **Hooks** — used for every channel (no per-channel split).
    - **Formats & VOs** — one collapsible panel per planned format, with an "Add F01 VOs" picker limited to that format. The picker only offers VOs that are universal or for the shoot's product, and written by anyone or by someone on the shoot. A VO with a writer goes on the shot list for that person only.
    - **CTAs.**
-   - Every item shows its rendered script (slots filled; `{{dog}}` per §5). Edit inline to create a per-person override, or use AI to reword it per person. Captions on hooks are snapshotted.
+   - Every item shows its rendered script (slots filled; `{{dog}}` per §5). One **Edit** menu per line: **For everyone** rewrites the shoot's own copy of a line (every person's snapshot) for this shoot only; the library isn't touched and per-person overrides stay on top. **Permanently** (hooks and CTAs) edits the Library template for later shoots and updates this shoot's copy to match (a planned shoot's copy with slots filled); other shoots keep their own copy, and universal hooks still only allow `{{dog}}`. **Per person** opens each person's own version. Or edit a person's line inline to create a per-person override, or use AI to reword it per person. Captions on hooks are snapshotted.
 4. **B-roll:** one collapsible panel per planned format (name, description, clip count), a section per beat with its `?` description, plus **General product shots** (suggestions from Settings). Suggested shots can be added one at a time, per beat ("Add this beat's") or for the whole format ("Add all suggestions"), or written by hand; **Generate b-roll** asks the AI for shots for every section based on the brand, product, formats and beat descriptions. Each shot has `product_visible` and `min_clips`.
 
 - **Codes:** assigned automatically when items are added (H/V/C/U, sequential within the shoot, shared per template). **Re-number** closes gaps while in draft.
 - **Status:**
   - Draft → **Planned** (confirm dialog; blocked by unfilled slots; freezes codes and snapshots, enables the checklist and exports).
   - Planned → **Back to draft** to keep editing.
+  - Shooting or filmed → **Revert** (confirmed) to planned, as if the shoot never started (`public.revert_shoot`, then the app removes the `shoot_clips` rows): every tick and skip cleared, b-roll counts back to zero, the clip records and the upload request removed, the start / end stamps cleared and `shoots.reverted_at` set. Phones drop clips they saved before `reverted_at`. Anything already uploaded to Dropbox stays. From planned it can then go back to draft.
   - Planned → **Shooting** (Start shoot, or automatically on the first tick) → **Filmed** (End shoot; asks first if shots are still unticked).
   - Filmed → **Resume shoot**, when shots are still unticked. A resumed shoot keeps its original start time.
   - Elapsed time is shown while shooting and once ended.
@@ -420,12 +422,12 @@ Items: `file` is the edited clip (what the worker reads) and `raw_file` where Mu
 
 ### d) Folder skeleton (zip)
 
-Download a zip of empty folders (each with a `.keep` file) plus `shootsheet.json`, to unzip into the Dropbox `topdogugc/` root. §12 replaces this with direct Dropbox folder creation.
+Download a zip of empty folders (each with a `.keep` file) plus `shootsheet.json`, to unzip into the Dropbox `UGC/` root folder. §12 replaces this with direct Dropbox folder creation.
 
 Everything from a shoot lives in its shoot folder. `raw/` and `edited/` have exactly the same tree: Muttiplier only uploads to `raw/`; editors edit each clip and put it in the same place under `edited/`.
 
 ```
-topdogugc/
+UGC/
   [brand]/[product]/
     shoots/[S###_YYYY-MM-DD]/
       shootsheet.json
@@ -461,21 +463,17 @@ Server routes calling the Anthropic API (`ANTHROPIC_MODEL`, default `claude-opus
 
 ---
 
-## 12. Dropbox uploads (next; not built)
+## 12. Dropbox uploads
 
 Goal: clips go straight from the shoot into the right Dropbox folders (§10d), so nobody sorts footage by hand.
 
-Proposed design, to confirm:
-
-- A Dropbox app (App Console) with its app key/secret in env vars; each person connects their Dropbox once (OAuth), or the agency connects one team folder.
-- Clips upload into `raw/` (§10d), e.g. `…/raw/hooks/bren/H03.mov`; Dropbox creates missing folders on upload. Optionally, planning a shoot creates its whole tree (raw and edited) up front instead of the zip.
-- Uploading is triggered from the checklist once the shoot is ended (**Upload all phones**, §10a).
-
-Open questions:
-
-1. **Account:** a Dropbox Business team folder everyone shares, or one personal Dropbox?
-2. ~~What gets uploaded~~ — decided: raw clips from phones into `raw/`; editors fill `edited/`.
-3. ~~Who uploads~~ — decided: each phone uploads its own clips, started for everyone from one button.
+- **One connection for the team**, to a personal Dropbox for now. A Dropbox app (App Console: scoped access, Full Dropbox, `files.metadata.*` and `files.content.*` scopes) with `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` in the env and redirect URIs `<origin>/api/dropbox/callback` (production and `http://localhost:3000`).
+- **Settings → Dropbox** (admins): **Connect Dropbox** signs in on Dropbox (`token_access_type=offline`) and comes back connected; **Choose folder** browses the Dropbox to pick the root folder everything goes under (default `/UGC`); **Disconnect** revokes and forgets it.
+- **`dropbox_connection`** (singleton): account id / name / email, `root`, and the refresh token **encrypted by the server** (AES-GCM, key derived from `DROPBOX_APP_SECRET`), so reading the row gives nobody Dropbox access. Readable by allowlisted users; written by admins.
+- **Server routes** (`/api/dropbox/…`): `connect`, `callback`, `status`, `folders` (admins), `disconnect` (admins), and `token`, which hands a signed-in, allowlisted phone a short-lived access token (about 4 hours). The refresh token never leaves the server.
+- **Uploads go from the phone straight to Dropbox** (not through Vercel), into `<root>/<path>` (§10d), in 8 MB pieces through an upload session (one request for small files), each piece retried on dropped connections, rate limits and server errors; an expired token is renewed. Hooks, VOs and CTAs overwrite (re-added clips replace the file); b-roll is added with autorename, never overwriting. Dropbox creates missing folders on upload.
+- Uploading is triggered from the checklist once the shoot is ended (**Upload all phones**, §10a). Until Dropbox is connected, uploads run in test mode.
+- Later, maybe: create a shoot's whole tree (raw and edited) in Dropbox when it's planned, instead of the skeleton zip.
 
 ---
 

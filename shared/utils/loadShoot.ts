@@ -29,18 +29,21 @@ export interface PlannedFormat {
 }
 
 type ItemRow = Row<'shoot_items'> & {
-  hook: { is_universal: boolean, filming_notes: string | null, angle: { name: string } | null } | null
+  hook: { is_universal: boolean, filming_notes: string | null, source_url: string | null, angle: { name: string } | null } | null
+  cta: { source_url: string | null } | null
   body: {
     title: string
     person_id: string | null
+    source_url: string | null
     angle: { name: string } | null
     format: { id: string, code: string, name: string, description: string | null, cta_modes: string[], beats: string[], beat_descriptions: Record<string, string> | null, beat_broll: unknown } | null
   } | null
 }
 
 const ITEM_SELECT = `*,
-  hook:hook_templates(is_universal, filming_notes, angle:angles(name)),
-  body:body_templates(title, person_id, angle:angles(name), format:formats(id, code, name, description, cta_modes, beats, beat_descriptions, beat_broll))`
+  hook:hook_templates(is_universal, filming_notes, source_url, angle:angles(name)),
+  cta:cta_templates(source_url),
+  body:body_templates(title, person_id, source_url, angle:angles(name), format:formats(id, code, name, description, cta_modes, beats, beat_descriptions, beat_broll))`
 
 function unwrap<T>(result: { data: T | null, error: { message: string } | null }): T {
   if (result.error) throw new Error(result.error.message)
@@ -68,6 +71,7 @@ function toBundleItem(row: ItemRow): BundleItem {
     caption: row.caption,
     title: row.body?.title ?? null,
     writer_id: row.body?.person_id ?? null,
+    source_url: row.hook?.source_url ?? row.body?.source_url ?? row.cta?.source_url ?? null,
     format: row.body?.format ?? null
   }
 }

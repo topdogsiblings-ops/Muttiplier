@@ -9,6 +9,8 @@ export type ClipState = 'saved' | 'uploading' | 'uploaded' | 'failed'
 export interface AttachedClip {
   /** the shoot code it was filmed for */
   shoot: string
+  /** when it was saved on this phone (ms); clips saved before the shoot was reverted are dropped */
+  savedAt?: number
   name: string
   type: string
   size: number
@@ -33,7 +35,7 @@ export interface AttachedClip {
   issues: string[]
 }
 
-/** Where a clip goes. Swap the stub for a real Dropbox adapter once §12 is settled. */
+/** Where a clip goes: Dropbox once it's connected (utils/dropboxUploader.ts), else the test-mode stub. */
 export interface ClipUploader {
   connected: boolean
   /**
@@ -143,10 +145,13 @@ const shootIds = new Map<string, string>()
 const names = new Map<string, string>()
 
 /** The end-of-shoot upload, for the progress panel. */
-const uploadRun = reactive({ active: false, shoot: '', total: 0, done: 0, failed: 0 })
+const uploadRun = reactive({ active: false, shoot: '', total: 0, done: 0, failed: 0, error: '' })
 
-export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
+export const useClipUpload = () => {
   const db = useDb()
+  const dropbox = useDropbox()
+  /** Dropbox is connected, so uploads are real (otherwise test mode) */
+  const connected = computed(() => !!dropbox.status.value?.connected)
 
   type SharedRow = { target: string, shoot_id: string, file_name: string, state: string, created_by: string | null }
   const setShared = (row: SharedRow) => shared.set(row.target, {
@@ -178,9 +183,10 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
    * deliverables have footage on any phone, and keep that live. `onRemoteChange` runs when
    * another phone adds, removes or uploads a clip. Returns a function to stop listening.
    */
-  async function load(shoot: { code: string, id: string }, onRemoteChange?: () => void) {
+  async function load(shoot: { code: string, id: string, revertedAt?: string | null }, onRemoteChange?: () => void) {
     // ask iOS to keep the clips rather than clear them when space runs low
     navigator.storage?.persist?.().catch(() => {})
+    dropbox.ensure()
     shootIds.set(shoot.code, shoot.id)
     if (!loadedShoots.has(shoot.code)) {
       loadedShoots.add(shoot.code)
@@ -193,6 +199,7 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
         clips.set(target, reactive<AttachedClip>({ ...clip, dest, url: clip.file ? URL.createObjectURL(clip.file) : '', progress: clip.state === 'uploaded' ? 1 : 0 }))
       }
     }
+    await discardBefore(shoot.code, shoot.revertedAt)
 
     await fetchShared(shoot)
 
@@ -224,6 +231,19 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
     if (row) setShared(row)
   }
 
+  /** The shoot was reverted: drop this phone's clips saved before then, so they're not shared or uploaded. */
+  async function discardBefore(shoot: string, revertedAt?: string | null) {
+    if (!revertedAt) return
+    const cutoff = Date.parse(revertedAt)
+    for (const [target, clip] of [...clips]) {
+      if (clip.shoot !== shoot || (clip.savedAt ?? 0) >= cutoff) continue
+      if (clip.url) URL.revokeObjectURL(clip.url)
+      clips.delete(target)
+      shared.delete(target)
+      await inStore('readwrite', store => store.delete(target))
+    }
+  }
+
   async function remove(target: string) {
     const clip = clips.get(target)
     if (!clip) return
@@ -242,6 +262,7 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
     const dest = keepBoth ? `${path}${file.name.replace(/\.[^.]+$/, '')}` : path
     const clip = reactive<AttachedClip>({
       shoot,
+      savedAt: Date.now(),
       name: file.name,
       type: file.type,
       size: file.size,
@@ -265,7 +286,7 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
     return clip
   }
 
-  async function uploadOne(target: string, clip: AttachedClip) {
+  async function uploadOne(target: string, clip: AttachedClip, uploader: ClipUploader) {
     if (!clip.file) return
     clip.state = 'uploading'
     clip.progress = 0
@@ -283,8 +304,10 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
       await inStore('readwrite', store => store.put(toStored(target, clip)))
       const shootId = shootIds.get(clip.shoot)
       if (shootId) await db.from('shoot_clips').update({ state: 'uploaded', path: clip.path }).eq('shoot_id', shootId).eq('target', target)
-    } catch {
+    } catch (error) {
       if (current()) clip.state = 'failed'
+      uploadRun.error = (error as { statusMessage?: string, data?: { statusMessage?: string } }).data?.statusMessage
+        ?? (error as { statusMessage?: string }).statusMessage ?? ''
     }
   }
 
@@ -293,7 +316,9 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
     if (uploadRun.active) return
     const queue = [...clips].filter(([, clip]) => clip.shoot === shoot && (clip.state === 'saved' || clip.state === 'failed'))
     if (!queue.length) return
-    Object.assign(uploadRun, { active: true, shoot, total: queue.length, done: 0, failed: 0 })
+    Object.assign(uploadRun, { active: true, shoot, total: queue.length, done: 0, failed: 0, error: '' })
+    await dropbox.refresh().catch(() => {})
+    const uploader = connected.value ? dropboxUploader : stubUploader
     let wakeLock: { release: () => Promise<void> } | null = null
     try {
       wakeLock = await (navigator as Navigator & { wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> } })
@@ -301,7 +326,7 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
     } catch { /* the screen may sleep, which pauses the upload until the app is back */ }
     try {
       for (const [target, clip] of queue) {
-        await uploadOne(target, clip)
+        await uploadOne(target, clip, uploader)
         if (clip.state === 'failed') uploadRun.failed++
         uploadRun.done++
       }
@@ -330,13 +355,14 @@ export const useClipUpload = (uploader: ClipUploader = stubUploader) => {
     [...clips.values()].filter(clip => clip.shoot === shoot && clip.state !== 'uploaded')
 
   return {
-    connected: uploader.connected,
+    connected,
     clipFor: (target: string) => clips.get(target) ?? null,
     /** a clip added on another phone for this target, if there's none on this one */
     elsewhere: (target: string) => clips.has(target) ? null : shared.get(target) ?? null,
     /** whether a target has footage on any phone (this one included) */
     taken: (target: string) => clips.has(target) || shared.has(target),
     load,
+    discardBefore,
     resync: fetchShared,
     phones,
     save,

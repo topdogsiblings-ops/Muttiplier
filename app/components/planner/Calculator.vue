@@ -60,6 +60,8 @@ const warnings = computed(() => [
   ...props.result.warnings,
   ...props.unfilled.map(entry => `${entry.code}: unfilled ${entry.slots.map(slot => `{{${slot}}}`).join(', ')}`)
 ])
+/** warnings start collapsed: the count says there are some; open to read them */
+const warningsOpen = ref(false)
 </script>
 
 <template>
@@ -141,9 +143,14 @@ const warnings = computed(() => [
       color="warning"
       variant="subtle"
       icon="i-lucide-triangle-alert"
-      :title="`${warnings.length} warning${warnings.length === 1 ? '' : 's'}`"
     >
-      <template #description>
+      <template #title>
+        <button type="button" class="flex w-full items-center gap-1 text-left" :aria-expanded="warningsOpen" @click="warningsOpen = !warningsOpen">
+          <span class="flex-1">{{ warnings.length }} warning{{ warnings.length === 1 ? '' : 's' }}</span>
+          <UIcon :name="warningsOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="size-4 shrink-0" />
+        </button>
+      </template>
+      <template v-if="warningsOpen" #description>
         <ul class="list-disc space-y-0.5 pl-4">
           <li v-for="warning in warnings.slice(0, 8)" :key="warning">
             {{ warning }}

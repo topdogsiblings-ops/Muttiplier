@@ -39,6 +39,8 @@ export interface BundleItem {
   title?: string | null
   /** VOs: the person on the cast who wrote it; only they perform it. Null = anyone. */
   writer_id?: string | null
+  /** the Library template's source link, if it has one */
+  source_url?: string | null
   format: {
     code: string
     cta_modes: string[]
@@ -258,7 +260,7 @@ const KIND_FOLDER: Record<ItemKind, string> = { hook: 'hooks', body: 'vo', cta: 
  */
 export type ClipStage = 'raw' | 'edited'
 
-/** Paths are relative to the Dropbox `topdogugc/` root. */
+/** Paths are relative to the Dropbox `UGC/` root folder. */
 export function productFolder(bundle: Pick<ShootBundle, 'brand' | 'product'>): string {
   return `${bundle.brand.slug}/${bundle.product.slug}`
 }
@@ -412,7 +414,7 @@ export function buildCsv(bundle: ShootBundle): string {
 const parentFolder = (path: string) => path.slice(0, path.lastIndexOf('/'))
 
 /**
- * Every folder in the skeleton zip, relative to the `topdogugc/` root: the folder of every clip
+ * Every folder in the skeleton zip, relative to the Dropbox `UGC/` root folder: the folder of every clip
  * in shootsheet.json under both raw/ and edited/, plus the shoot's renders/ (spec §10d).
  */
 export function skeletonFolders(bundle: ShootBundle): string[] {
