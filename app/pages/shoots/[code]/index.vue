@@ -94,18 +94,12 @@ async function setPeople(next: string[]) {
     }))) return
   }
   await run(async () => {
-    if (added.length) {
-      must(await db.from('shoot_people').insert(added.map(person_id => ({ shoot_id: shoot.value.id, person_id }))))
-      // everyone films the whole shot list (apart from VOs someone else wrote for themselves),
-      // once for each of the shoot's channels they're linked to
-      const rows = added.flatMap(person_id => groups.value
-        .filter(group => !group.items[0]!.writer_id || group.items[0]!.writer_id === person_id)
-        .flatMap(group => channelsFor(bundle.value, person_id).map(channel => copyFor(group, person_id, channel.id))))
-      if (rows.length) must(await db.from('shoot_items').insert(rows))
-    }
+    if (added.length) must(await db.from('shoot_people').insert(added.map(person_id => ({ shoot_id: shoot.value.id, person_id }))))
     // items go with the person (cascade)
     if (removed.length) must(await db.from('shoot_people').delete().eq('shoot_id', shoot.value.id).in('person_id', removed))
     await refresh()
+    // newcomers film the whole shot list, for each of the shoot's channels they're linked to
+    if (await fillMissingItems()) await refresh()
   })
 }
 
@@ -113,26 +107,40 @@ async function setChannels(next: string[]) {
   const added = next.filter(id => !channelIds.value.includes(id))
   const removed = channelIds.value.filter(id => !next.includes(id))
   await run(async () => {
-    if (added.length) {
-      must(await db.from('shoot_channels').insert(added.map(channel_id => ({ shoot_id: shoot.value.id, channel_id }))))
-      // everyone linked to a new channel films the shot list for it too
-      const links = must(await db.from('person_channels').select('person_id, channel_id').in('channel_id', added))
-      const rows = added.flatMap(channel_id => bundle.value.people
-        .filter(person => links.some(link => link.person_id === person.id && link.channel_id === channel_id))
-        .flatMap(person => groups.value
-          .filter(group => !group.items[0]!.writer_id || group.items[0]!.writer_id === person.id)
-          .map(group => copyFor(group, person.id, channel_id))))
-      if (rows.length) must(await db.from('shoot_items').insert(rows))
-    }
+    if (added.length) must(await db.from('shoot_channels').insert(added.map(channel_id => ({ shoot_id: shoot.value.id, channel_id }))))
     if (removed.length) {
       must(await db.from('broll_shots').delete().eq('shoot_id', shoot.value.id).in('channel_id', removed))
       must(await db.from('shoot_items').delete().eq('shoot_id', shoot.value.id).in('channel_id', removed))
       must(await db.from('shoot_channels').delete().eq('shoot_id', shoot.value.id).in('channel_id', removed))
     }
     await refresh()
-
+    // everyone linked to a new channel films the shot list for it too
+    if (await fillMissingItems()) await refresh()
   })
 }
+
+/**
+ * Make sure everyone on a draft shoot has an item for every shot-list entry on every one of the
+ * shoot's channels they're linked to (apart from VOs someone else wrote for themselves). Runs
+ * after people or channels change, and when a draft opens, so a link made in Settings → People
+ * later is picked up too. The links are read fresh: a person who's just joined isn't in the
+ * loaded ones yet. Returns how many items it added.
+ */
+async function fillMissingItems(): Promise<number> {
+  if (!isDraft.value || !groups.value.length || !personIds.value.length || !channelIds.value.length) return 0
+  const links = must(await db.from('person_channels').select('person_id, channel_id')
+    .in('person_id', personIds.value).in('channel_id', channelIds.value))
+  const have = new Set(bundle.value.items.map(item => `${item.template_id}|${item.person_id}|${item.channel_id}`))
+  const rows = groups.value.flatMap(group => links
+    .filter(link => !group.items[0]!.writer_id || group.items[0]!.writer_id === link.person_id)
+    .filter(link => !have.has(`${group.template_id}|${link.person_id}|${link.channel_id}`))
+    .map(link => copyFor(group, link.person_id, link.channel_id)))
+  if (rows.length) must(await db.from('shoot_items').insert(rows))
+  return rows.length
+}
+onMounted(async () => {
+  if (await fillMissingItems().catch(() => 0)) await refresh()
+})
 
 // --- shot list ---------------------------------------------------------------
 // Everyone on the shoot films the same list, once for each channel they're linked to: each
@@ -392,6 +400,10 @@ const blockers = computed(() => {
   if (!bundle.value.channels.length) list.push('Add at least one channel')
   if (!bundle.value.items.length) list.push('Add items from the Library')
   const unlinked = bundle.value.people.filter(person => !channelsFor(bundle.value, person.id).length)
+  const unfilmed = bundle.value.channels.filter(channel => !bundle.value.people.some(person => bundle.value.channelPeople?.[channel.id]?.includes(person.id)))
+  if (unfilmed.length) {
+    list.push(`Nobody on this shoot is linked to ${unfilmed.map(channel => channel.name).join(', ')}: add someone who is, or remove ${unfilmed.length === 1 ? 'it' : 'them'} (Settings → People)`)
+  }
   if (unlinked.length) {
     list.push(`${unlinked.map(person => person.name).join(', ')} ${unlinked.length === 1 ? 'isn\'t' : 'aren\'t'} linked to any of this shoot's channels (Settings → People)`)
   }
