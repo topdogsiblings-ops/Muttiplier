@@ -151,15 +151,51 @@ async function saveStatus(item: BundleItem, next: string) {
   if (ok) await afterTick(next)
 }
 
-// Only a saved clip ticks a deliverable off; by hand you can only skip or unskip.
-const toggleSkip = (item: BundleItem) => {
-  if (item.status !== 'filmed') saveStatus(item, item.status === 'skipped' ? 'planned' : 'skipped')
+// --- takes ------------------------------------------------------------------------
+// Each person films an item once per channel they're on; a line that doesn't name the dog is
+// one take for all of them, and a VO is recorded beat by beat. Only saved clips tick an item
+// off (once every spot it has, every beat of a VO, has one); by hand you can only skip.
+
+/** Each person on a shot-list entry, with their takes and how far along they are. */
+const peopleRows = (group: ShotGroup) => {
+  const ids = [...new Set(group.items.map(item => item.person_id))]
+  return ids.map((personId) => {
+    const items = group.items.filter(item => item.person_id === personId)
+    const beatOrder = (beat: string | null) => (items[0] && beat ? itemBeats(items[0]).indexOf(beat) : 0)
+    const takes = recordingsOf(items).sort((a, b) =>
+      (a.items[0]?.channel_id ?? '').localeCompare(b.items[0]?.channel_id ?? '') || beatOrder(a.beat) - beatOrder(b.beat))
+    return {
+      person: personId,
+      items,
+      takes,
+      filmed: items.every(item => item.status === 'filmed'),
+      skipped: items.every(item => item.status === 'skipped')
+    }
+  })
 }
-const itemSaved = (item: BundleItem) => {
-  if (item.status !== 'filmed') saveStatus(item, 'filmed')
+/** "Nix + Whiskey", or the beat for a VO take: what a take's button says. */
+const takeLabel = (take: Recording) => {
+  const channels = take.items.map(item => channelName(item.channel_id)).filter(Boolean).join(' + ')
+  return take.beat ? `${take.beat} · ${channels}` : channels || 'Add clip'
 }
-const itemClipRemoved = (item: BundleItem) => {
-  if (item.status === 'filmed') saveStatus(item, 'planned')
+
+/** After a clip is saved or removed: tick off (or un-tick) each item the take fills. */
+function syncTake(take: Recording) {
+  for (const item of take.items) {
+    if (item.status === 'skipped') continue
+    const done = itemBeats(item).every(beat => taken(clipTarget.item(item.id, beat)))
+    const next = done ? 'filmed' : 'planned'
+    if (next !== item.status) saveStatus(item, next)
+  }
+}
+
+/** Skip (or unskip) one person's whole entry: every channel and beat of it. */
+function toggleSkip(items: BundleItem[]) {
+  const unskip = items.every(item => item.status === 'skipped')
+  for (const item of items) {
+    if (item.status === 'filmed') continue
+    saveStatus(item, unskip ? 'planned' : 'skipped')
+  }
 }
 
 /** Every clip is the keeper, so b-roll is ticked off clip by clip: min_clips per channel. */
@@ -192,11 +228,10 @@ function brollClipChanged(shot: Row<'broll_shots'>) {
 
 // Clips added on set are saved on the phone; once the shoot is ended, Upload sends them to
 // Dropbox (spec §12); the uploader is in test mode until Dropbox is connected.
-// Clips go to the shoot's raw/ folder: hooks, VOs and CTAs as files named by code (H01.mov),
-// b-roll loose in its beat folder under its own name. Editors mirror it under edited/.
-const itemClipPath = (item: BundleItem) => itemPath(bundle.value, item)
-/** VOs and VO CTAs are audio recordings; everything else is video. */
-const clipMedia = (item: BundleItem) => item.kind === 'body' || (item.kind === 'cta' && item.cta_mode === 'vo') ? 'audio' as const : 'video' as const
+// Clips go to the shoot's raw/ folder, by channel: hooks, VOs (beat by beat) and CTAs as files
+// named by code (H01.mov, V01_problem.m4a), b-roll loose in its beat folder under its own name.
+// Editors mirror it under edited/.
+const clipMedia = (item: BundleItem) => mediaOf(item)
 
 // Sanity checks on submitted clips use the presets in Settings -> Defaults.
 const { settings, load: loadRefData } = useRefData()
@@ -280,7 +315,6 @@ async function requestUploadAll() {
 watch(() => [uploadRequested.value, shootEnded.value, waitingClips.value.length] as const, ([requested, ended, count]) => {
   if (requested && ended && count && !uploadRun.active) uploadClips()
 })
-const attachedGroupClips = (group: ShotGroup) => group.items.filter(item => clipFor(clipTarget.item(item.id))).length
 
 function skipBroll(shot: Row<'broll_shots'>) {
   const skipped = shot.status === 'skipped'
@@ -467,199 +501,97 @@ function skipBroll(shot: Row<'broll_shots'>) {
       </h2>
 
       <div class="space-y-2">
-        <template v-for="group in section.groups" :key="group.key">
-          <!-- one person: a single big tick -->
-          <template v-if="person">
-            <article
-              v-for="item in group.items"
-              :key="item.id"
-              class="flex gap-3 rounded-lg border border-default p-3"
-              :class="{
-                'border-success/40 bg-success/5': item.status === 'filmed',
-                'opacity-60': item.status === 'skipped'
-              }"
-            >
-              <div class="flex shrink-0 flex-col items-center gap-1.5">
-                <!-- ticked by uploading a clip, not by hand -->
-                <span
-                  class="flex size-12 items-center justify-center rounded-full border-2"
-                  :class="item.status === 'filmed' ? 'border-success bg-success text-inverted' : 'border-accented text-transparent'"
-                  role="img"
-                  :aria-label="item.status === 'filmed' ? `${item.code} uploaded` : `${item.code} not uploaded yet`"
-                >
-                  <UIcon name="i-lucide-check" class="size-7" />
-                </span>
-                <UButton
-                  v-if="item.status !== 'filmed'"
-                  :label="item.status === 'skipped' ? 'Unskip' : 'Skip'"
-                  size="xs"
-                  color="neutral"
-                  :variant="item.status === 'skipped' ? 'solid' : 'ghost'"
-                  @click="toggleSkip(item)"
-                />
-              </div>
+        <article
+          v-for="group in section.groups"
+          :key="group.key"
+          class="space-y-2 rounded-lg border border-default p-3"
+          :class="{
+            'border-success/40 bg-success/5': group.items.every(item => item.status === 'filmed'),
+            'opacity-60': group.items.every(item => item.status === 'skipped')
+          }"
+        >
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="font-mono text-base font-bold text-highlighted">{{ group.code }}</span>
+            <UBadge v-if="group.items[0]!.angle" :label="group.items[0]!.angle!" color="neutral" variant="subtle" size="sm" />
+            <UBadge v-if="group.items[0]!.cta_mode" :label="group.items[0]!.cta_mode!" color="info" variant="subtle" size="sm" />
+            <span v-if="group.items[0]!.location" class="flex items-center gap-0.5 text-xs text-muted">
+              <UIcon name="i-lucide-map-pin" />{{ group.items[0]!.location }}
+            </span>
+            <span class="ml-auto text-xs text-muted tabular-nums">
+              {{ group.items.filter(item => item.status !== 'planned').length }}/{{ group.items.length }}
+            </span>
+          </div>
 
-              <div class="min-w-0 flex-1 space-y-1.5">
-                <div class="flex flex-wrap items-center gap-1.5">
-                  <span class="font-mono text-base font-bold text-highlighted">{{ item.code }}</span>
-                  <UBadge v-if="channelName(item.channel_id)" :label="channelName(item.channel_id)!" color="neutral" variant="outline" size="sm" />
-                  <UBadge v-if="item.angle" :label="item.angle" color="neutral" variant="subtle" size="sm" />
-                  <UBadge v-if="item.cta_mode" :label="item.cta_mode" color="info" variant="subtle" size="sm" />
-                  <UBadge v-if="item.status === 'skipped'" label="skipped" color="warning" variant="subtle" size="sm" />
-                  <span v-if="item.location" class="flex items-center gap-0.5 text-xs text-muted">
-                    <UIcon name="i-lucide-map-pin" />{{ item.location }}
-                  </span>
-                  <!-- add a clip, in the top row -->
-                  <ClipCapture
-                    :shoot="shoot.code"
-                    v-if="item.status !== 'skipped'"
-                    part="actions"
-                    class="ml-auto"
-                    :target="clipTarget.item(item.id)"
-                    :path="itemClipPath(item)"
-                    :label="item.code"
-                    :media="clipMedia(item)"
-                    :rules="clipRules"
-                    :expected-seconds="expectedSeconds(item)"
-                    @saved="itemSaved(item)"
-                    @removed="itemClipRemoved(item)"
-                  />
-                </div>
-
-                <template v-if="item.kind === 'body'">
-                  <p v-if="item.title" class="text-sm font-medium text-muted">
-                    {{ item.title }}
-                  </p>
-                  <p v-for="beat in script(item).beats" :key="beat.beat" class="text-base leading-snug text-highlighted">
-                    <span class="mr-1 text-xs font-semibold text-muted uppercase">{{ beat.beat }}</span>{{ beat.script }}
-                  </p>
-                </template>
-                <p v-else class="text-lg leading-snug text-highlighted" :class="{ 'line-through': item.status === 'skipped' }">
-                  {{ script(item).text }}
-                </p>
-                <p v-if="item.filming_notes" class="flex items-start gap-1.5 rounded-md bg-elevated/60 px-2 py-1.5 text-sm text-default">
-                  <UIcon name="i-lucide-video" class="mt-0.5 shrink-0 text-muted" />
-                  <span><span class="font-medium">How to film:</span> {{ item.filming_notes }}</span>
-                </p>
-
-                <!-- the attached clip -->
-                <ClipCapture
-                  :shoot="shoot.code"
-                  part="clip"
-                  :target="clipTarget.item(item.id)"
-                  :path="itemClipPath(item)"
-                  :label="item.code"
-                  :media="clipMedia(item)"
-                  @removed="itemClipRemoved(item)"
-                />
-              </div>
-            </article>
+          <template v-if="group.kind === 'body'">
+            <p v-if="group.items[0]!.title" class="text-sm font-medium text-muted">
+              {{ group.items[0]!.title }}
+            </p>
+            <p v-for="beat in script(group.items[0]!).beats" :key="beat.beat" class="text-base leading-snug text-highlighted">
+              <span class="mr-1 text-xs font-semibold text-muted uppercase">{{ beat.beat }}</span>{{ beat.script }}
+            </p>
           </template>
+          <p v-else class="text-lg leading-snug text-highlighted">
+            {{ script(group.items[0]!).text }}
+          </p>
+          <p v-if="group.items[0]!.filming_notes" class="flex items-start gap-1.5 rounded-md bg-elevated/60 px-2 py-1.5 text-sm text-default">
+            <UIcon name="i-lucide-video" class="mt-0.5 shrink-0 text-muted" />
+            <span><span class="font-medium">How to film:</span> {{ group.items[0]!.filming_notes }}</span>
+          </p>
+          <p v-for="item in person ? [] : ownVersions(group)" :key="`own-${item.id}`" class="text-sm text-muted">
+            <span class="font-medium text-default">{{ personName(item.person_id) }}'s version:</span>
+            {{ script(item).beats ? script(item).beats!.map(beat => beat.script).join(' ') : script(item).text }}
+          </p>
 
-          <!-- everyone: the item once, with a tick per person -->
-          <article
-            v-else
-            class="space-y-2 rounded-lg border border-default p-3"
-            :class="{ 'border-success/40 bg-success/5': group.items.every(item => item.status !== 'planned') }"
-          >
-            <div class="flex flex-wrap items-center gap-1.5">
-              <span class="font-mono text-base font-bold text-highlighted">{{ group.code }}</span>
-              <UBadge v-if="channelName(groupChannel(group))" :label="channelName(groupChannel(group))!" color="neutral" variant="outline" size="sm" />
-              <UBadge v-if="group.items[0]!.angle" :label="group.items[0]!.angle!" color="neutral" variant="subtle" size="sm" />
-              <UBadge v-if="group.items[0]!.cta_mode" :label="group.items[0]!.cta_mode!" color="info" variant="subtle" size="sm" />
-              <span v-if="group.items[0]!.location" class="flex items-center gap-0.5 text-xs text-muted">
-                <UIcon name="i-lucide-map-pin" />{{ group.items[0]!.location }}
-              </span>
+          <!-- each person: their takes (one per channel, or one for all of them when the line
+               doesn't name the dog; a VO beat by beat), each ticked by its clip -->
+          <div v-for="row in peopleRows(group)" :key="row.person" class="space-y-2 border-t border-default pt-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <UIcon
+                :name="row.filmed ? 'i-lucide-circle-check' : row.skipped ? 'i-lucide-skip-forward' : 'i-lucide-circle'"
+                class="size-5"
+                :class="row.filmed ? 'text-success' : 'text-muted'"
+              />
+              <span class="font-medium text-highlighted" :class="{ 'line-through': row.skipped }">{{ personName(row.person) }}</span>
+              <UButton
+                v-if="!row.filmed"
+                :label="row.skipped ? 'Unskip' : 'Skip'"
+                size="xs"
+                color="neutral"
+                :variant="row.skipped ? 'solid' : 'ghost'"
+                class="ml-auto"
+                @click="toggleSkip(row.items)"
+              />
             </div>
-
-            <template v-if="group.kind === 'body'">
-              <p v-if="group.items[0]!.title" class="text-sm font-medium text-muted">
-                {{ group.items[0]!.title }}
-              </p>
-              <p v-for="beat in script(group.items[0]!).beats" :key="beat.beat" class="text-base leading-snug text-highlighted">
-                <span class="mr-1 text-xs font-semibold text-muted uppercase">{{ beat.beat }}</span>{{ beat.script }}
-              </p>
-            </template>
-            <p v-else class="text-lg leading-snug text-highlighted">
-              {{ script({ ...group.items[0]!, script_override: null }).text }}
-            </p>
-            <p v-if="group.items[0]!.filming_notes" class="flex items-start gap-1.5 rounded-md bg-elevated/60 px-2 py-1.5 text-sm text-default">
-              <UIcon name="i-lucide-video" class="mt-0.5 shrink-0 text-muted" />
-              <span><span class="font-medium">How to film:</span> {{ group.items[0]!.filming_notes }}</span>
-            </p>
-            <p v-for="item in ownVersions(group)" :key="`own-${item.id}`" class="text-sm text-muted">
-              <span class="font-medium text-default">{{ personName(item.person_id) }}'s version:</span>
-              {{ script(item).beats ? script(item).beats!.map(beat => beat.script).join(' ') : script(item).text }}
-            </p>
-
-            <!-- each person: VOs show a status chip (tap to skip or unskip) and an add-clip button; hooks and
-                 CTAs a single "+ Name" add-clip button that turns into a tick once their clip is saved -->
-            <div class="flex flex-wrap gap-x-3 gap-y-2 pt-1">
-              <div v-for="item in group.items" :key="item.id" class="flex items-center gap-1">
-                <button
-                  v-if="group.kind === 'body' || item.status === 'skipped'"
-                  type="button"
-                  class="inline-flex min-h-11 items-center gap-2 rounded-full border-2 px-3 text-sm font-medium transition"
-                  :class="item.status === 'filmed'
-                    ? 'border-success bg-success text-inverted'
-                    : item.status === 'skipped'
-                      ? 'border-warning/50 text-muted line-through'
-                      : 'border-accented text-highlighted'"
-                  :disabled="item.status === 'filmed'"
-                  :aria-label="item.status === 'filmed'
-                    ? `${personName(item.person_id)}: uploaded`
-                    : `${personName(item.person_id)}: ${item.status === 'skipped' ? 'skipped. Tap to unskip.' : 'not uploaded yet. Tap to skip.'}`"
-                  @click="toggleSkip(item)"
-                >
-                  <UIcon
-                    :name="item.status === 'filmed' ? 'i-lucide-check' : item.status === 'skipped' ? 'i-lucide-skip-forward' : 'i-lucide-circle'"
-                    class="size-4"
-                  />
-                  {{ personName(item.person_id) }}
-                </button>
-                <ClipCapture
-                  v-if="item.status !== 'skipped'"
+            <template v-if="!row.skipped">
+              <div class="flex flex-wrap gap-2">
+                <ChecklistTake
+                  v-for="take in row.takes"
+                  :key="take.key"
                   part="actions"
-                  :shoot="shoot.code"
-                  :target="clipTarget.item(item.id)"
-                  :path="itemClipPath(item)"
-                  :label="`${group.code} for ${personName(item.person_id)}`"
-                  :button-label="group.kind === 'body' ? undefined : personName(item.person_id)"
-                  :size="group.kind === 'body' ? 'sm' : 'md'"
-                  :media="clipMedia(item)"
+                  :recording="take"
+                  :bundle="bundle"
                   :rules="clipRules"
-                  :expected-seconds="expectedSeconds(item)"
-                  @saved="itemSaved(item)"
-                  @removed="itemClipRemoved(item)"
+                  :button-label="takeLabel(take)"
+                  @saved="syncTake(take)"
+                  @removed="syncTake(take)"
                 />
               </div>
-            </div>
-            <!-- each person's clip, once added -->
-            <div v-if="attachedGroupClips(group)" class="space-y-2">
-              <template v-for="item in group.items" :key="`clip-${item.id}`">
-                <div v-if="clipFor(clipTarget.item(item.id))" class="space-y-1">
-                  <p class="text-sm font-medium text-muted">
-                    {{ personName(item.person_id) }}
-                  </p>
-                  <ClipCapture
-                    part="clip"
-                    :shoot="shoot.code"
-                    :target="clipTarget.item(item.id)"
-                    :path="itemClipPath(item)"
-                    :label="`${group.code} for ${personName(item.person_id)}`"
-                    :media="clipMedia(item)"
-                    @removed="itemClipRemoved(item)"
-                  />
-                </div>
-              </template>
-            </div>
-          </article>
-        </template>
+              <ChecklistTake
+                v-for="take in row.takes"
+                :key="`clip-${take.key}`"
+                part="clip"
+                :recording="take"
+                :bundle="bundle"
+                @removed="syncTake(take)"
+              />
+            </template>
+          </div>
+        </article>
       </div>
     </section>
 
     <p v-if="!person && sections.length" class="mt-3 text-xs text-muted">
-      A name is ticked once their clip is uploaded. Tap a name to skip it, and again to unskip.
+      Each take is ticked once its clip is saved. A line that doesn't say <code v-pre>{{dog}}</code> is filmed once and used on all of a person's channels.
     </p>
     <section v-if="showBroll && brollGroups.length" class="mt-8">
       <h2 class="mb-2 text-sm font-semibold text-highlighted uppercase">

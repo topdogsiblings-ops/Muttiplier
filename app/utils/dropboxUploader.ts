@@ -93,5 +93,33 @@ export const dropboxUploader: ClipUploader = {
     }
     onProgress(1)
     return { uploaded: true, path: result?.path_display ?? commit.path }
+  },
+
+  /** Copy an uploaded file (full path) to another spot (relative to the root), replacing what's there. */
+  async copy(from, to) {
+    const { root } = await getAccess()
+    const target = `${root}/${to}`
+    const call = (route: string, body: object) => withRetries(token => $fetch<{ metadata?: { path_display?: string } }>(`https://api.dropboxapi.com/2/files/${route}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body
+    }).catch((error) => {
+      const status = (error as { response?: { status?: number } }).response?.status ?? 0
+      throw new DropboxError(status, JSON.stringify((error as { data?: unknown }).data ?? ''))
+    }))
+    try {
+      return (await call('copy_v2', { from_path: from, to_path: target, autorename: false })).metadata?.path_display ?? target
+    } catch (error) {
+      // already there (an earlier take): replace it
+      if (!(error instanceof DropboxError) || !error.message.includes('conflict')) throw error
+      await call('delete_v2', { path: target })
+      return (await call('copy_v2', { from_path: from, to_path: target, autorename: false })).metadata?.path_display ?? target
+    }
+  },
+
+  /** Write a small text file (captions) relative to the root, replacing what's there. */
+  async writeText(path, text) {
+    const { root } = await getAccess()
+    await withRetries(token => send('upload', { path: `${root}/${path}`, mode: 'overwrite', autorename: false, mute: true }, new Blob([text], { type: 'text/plain' }), token, () => {}))
   }
 }

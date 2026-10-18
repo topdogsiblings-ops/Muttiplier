@@ -30,6 +30,10 @@ const props = withDefaults(defineProps<{
   size?: 'xs' | 'sm' | 'md'
   /** a label always shown on the button (e.g. a person's name): + before a clip, ✓ after */
   buttonLabel?: string
+  /** other spots the same take fills (a line that doesn't name the dog, on the person's other channels) */
+  also?: { target: string, path: string }[]
+  /** what's said in the clip, for its captions */
+  script?: string | null
 }>(), { media: 'video', part: 'all', rules: () => DEFAULT_CLIP_RULES, expectedSeconds: 0, size: 'sm' })
 
 // A saved clip is what ticks a deliverable off: `saved` when this target gains one,
@@ -55,10 +59,10 @@ const checking = ref(false)
 async function check(file: File) {
   if (audio.value) {
     const measure = { duration: (await measureAudio(file)).duration, expectedSeconds: props.expectedSeconds }
-    return { details: describeAudio(measure) || null, issues: checkAudio(measure, props.rules) }
+    return { details: describeAudio(measure) || null, issues: checkAudio(measure, props.rules), duration: measure.duration }
   }
   const measure = await measureVideo(file)
-  return { details: measure.width ? describeVideo(measure, props.rules) : null, issues: checkVideo(measure, props.rules) }
+  return { details: measure.width ? describeVideo(measure, props.rules) : null, issues: checkVideo(measure, props.rules), duration: measure.duration }
 }
 
 async function send(file: File) {
@@ -76,14 +80,18 @@ async function send(file: File) {
     confirmLabel: 'Save anyway'
   }))) return
 
-  const hadClip = !!clip.value
   try {
-    await save(props.target, props.shoot, props.path, file, checked)
+    await save(props.target, props.shoot, props.path, file, {
+      checked: { details: checked.details, issues: checked.issues },
+      also: props.also,
+      script: props.script,
+      duration: checked.duration
+    })
   } catch {
     toast.add({ title: 'Couldn\'t save the clip on this phone', description: 'The phone may be out of space. Free some up, then try again.', color: 'error', icon: 'i-lucide-hard-drive' })
     return
   }
-  if (!hadClip) emit('saved')
+  emit('saved')
 }
 
 async function onPick(event: Event) {

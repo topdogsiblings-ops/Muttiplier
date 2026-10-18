@@ -337,9 +337,9 @@ Route: `/shoots/[code]/sheet?person=[slug]&show=[hook|cta|body|broll]`. Both fil
 - Header: shoot, product, brand, date, elapsed time, progress for what's showing, Start / End / Resume.
 - Sections: **Hooks** (used for every channel), **CTAs**, **VOs** (recorded off set), then **B-roll** by beat.
 - Each item: code, rendered script (VOs by beat), angle, location, and filming notes ("How to film").
-- **Every deliverable gets its clip from the checklist** with **Add clip**, which picks a video (hooks, sync CTAs, b-roll) or audio file (VOs, VO CTAs) from the phone, for its folder (§10d). Clips are filmed and recorded in the phone's own apps; the app doesn't film or record itself, because iOS compresses video its camera hands straight to a web page (to 480×360). **Only a saved clip ticks it off**; nothing can be ticked by hand. Removing the clip unticks it. Skip / unskip stays manual.
-  - **Everyone view:** the item once, with a status chip per person (tap to skip/unskip) each with its own Add clip button; added clips show below with the person's name. Per-person rewordings are listed under the item.
-  - **Person view:** a status tick with Skip underneath; Add clip in the item's top row (next to the code and badges); the attached clip below the script.
+- **Every deliverable gets its clip from the checklist** with **Add clip**, which picks a video (hooks, sync CTAs, b-roll) or audio file (VOs, VO CTAs) from the phone. Clips are filmed and recorded in the phone's own apps (iOS compresses video its camera hands straight to a web page). **Takes:** each person films every item once per channel they're on; a line that doesn't say `{{dog}}` is one take for all of their channels (saved once, filling each channel's spot, uploaded once and copied in Dropbox to the other channels' folders), one that does is a take per channel. A VO is recorded **beat by beat**, one file per beat. An item is ticked off once every spot it has (every beat of a VO) has a clip; nothing can be ticked by hand. Removing a clip unticks it. Skip / unskip stays manual.
+  - **Everyone view:** each hook / CTA / VO once, with a row per person: their takes as Add clip buttons labelled by channel ("Nix + Whiskey", or a beat for a VO), Skip / Unskip for their whole entry, and their clips below. Per-person rewordings are listed under the item.
+  - **Person view:** the same cards, just that person's row.
 - **B-roll:** a row per channel, each with one Add clip button per required clip (`min_clips`) and its clips shown below once saved; each channel's clips go to that channel's b-roll folder. The shot is filmed once every channel's clips are in. Filtered to a person, only the channels they're linked to show (shots with none are hidden). Skip covers the whole shot.
 - **Sanity checks** before a clip is saved, with presets in Settings → Defaults → Clip checks:
   - Video: aspect ratio (default 9:16 vertical), resolution (default at least 1080×1920) and frame rate (default 24–60 fps, measured by playing the clip briefly; skipped if the browser can't measure it).
@@ -426,12 +426,13 @@ UGC/
     shoots/[S###]/                         named by the shoot code
       shootsheet.json
       raw/
-        hooks/[person]/H##.mov             one file per hook, named by code
-        vo/[person]/V##.m4a                with its captions alongside, e.g. V##.srt
-        ctas/[person]/C##.mov
-        b-roll/[channel]/[beat]/           each channel's own b-roll, loose under the clips' own names;
+        [channel]/                         topdognix/, topdogwhiskey/, topdogsiblings/: split by channel first
+          hooks/[person]/H##.mov           one file per hook, named by code, captions alongside (H##.srt)
+          vo/[person]/V##_[beat].m4a       a VO recorded beat by beat: V01_problem.m4a, V01_product.m4a…
+          ctas/[person]/C##.mov
+          b-roll/[beat]/                   the channel's own b-roll, loose under the clips' own names;
                                            beats filed by name across formats
-        b-roll/[channel]/general/          general product shots
+          b-roll/general/                  general product shots
       edited/                              same tree as raw/
       renders/                             everything rendered from this shoot
 ```

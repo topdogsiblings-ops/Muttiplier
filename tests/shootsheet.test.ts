@@ -35,13 +35,13 @@ function bundle(): ShootBundle {
         angle: 'pov', format: null
       },
       {
-        id: 'i3', code: 'V01', kind: 'body', person_id: 'p1', channel_id: null,
+        id: 'i3', code: 'V01', kind: 'body', person_id: 'p1', channel_id: 'c1',
         script_snapshot: [{ beat: 'problem', script: 'My dog pulled' }, { beat: 'product', script: '{{brand}} {{product}}' }, { beat: 'result', script: '{{benefit}}' }],
         script_override: null, cta_mode: null, location: null, status: 'planned', sort_order: 2, template_id: 'bbbbbbbb-0000-0000-0000-000000000003',
         angle: 'problem', format
       },
       {
-        id: 'i4', code: 'C01', kind: 'cta', person_id: 'p1', channel_id: null, script_snapshot: 'Template CTA',
+        id: 'i4', code: 'C01', kind: 'cta', person_id: 'p1', channel_id: 'c1', script_snapshot: 'Template CTA',
         script_override: 'Grab {{product}}, "today"', cta_mode: 'sync', location: null, status: 'planned', sort_order: 3,
         template_id: 'cccccccc-0000-0000-0000-000000000004', angle: null, format: null
       }
@@ -67,8 +67,7 @@ describe('shared shot list', () => {
   function twoPeople(): ShootBundle {
     const b = bundle()
     b.people.push({ id: 'p2', slug: 'sam', name: 'Sam' })
-    b.items.push({ ...b.items[0]!, id: 'i1b', person_id: 'p2', channel_id: null })
-    b.items[0]!.channel_id = null
+    b.items.push({ ...b.items[0]!, id: 'i1b', person_id: 'p2' })
     return b
   }
 
@@ -86,8 +85,8 @@ describe('shared shot list', () => {
   it('files each person\'s clip under the shared code, as a file named by the code', () => {
     const b = twoPeople()
     expect(buildShootsheet(b).items.filter(item => item.code === 'H01').map(item => item.file)).toEqual([
-      'pawco/calming-chews/shoots/S014/edited/hooks/joe/H01',
-      'pawco/calming-chews/shoots/S014/edited/hooks/sam/H01'
+      'pawco/calming-chews/shoots/S014/edited/topdognix/hooks/joe/H01',
+      'pawco/calming-chews/shoots/S014/edited/topdognix/hooks/sam/H01'
     ])
   })
 
@@ -95,15 +94,15 @@ describe('shared shot list', () => {
     const b = bundle()
     b.broll.push({ channel_id: null, format_id: 'f2', beat: 'result', description: 'happy dog', product_visible: false, min_clips: 2, status: 'planned' })
     expect(buildShootsheet(b).broll.map(shot => shot.raw_folder)).toEqual(expect.arrayContaining([
-      'pawco/calming-chews/shoots/S014/raw/b-roll/nix/result',
-      'pawco/calming-chews/shoots/S014/raw/b-roll/whiskey/result'
+      'pawco/calming-chews/shoots/S014/raw/topdognix/b-roll/result',
+      'pawco/calming-chews/shoots/S014/raw/topdogwhiskey/b-roll/result'
     ]))
   })
 
-  it('uses b-roll/shared/ only when the shoot has no channels', () => {
+  it('uses all/ for the channel only when the shoot has none', () => {
     const b = bundle()
     b.channels = []
-    expect(buildShootsheet(b).broll.map(shot => shot.raw_folder)).toContain('pawco/calming-chews/shoots/S014/raw/b-roll/shared/general')
+    expect(buildShootsheet(b).broll.map(shot => shot.raw_folder)).toContain('pawco/calming-chews/shoots/S014/raw/all/b-roll/general')
   })
 })
 
@@ -163,27 +162,28 @@ describe('buildShootsheet', () => {
     expect(sheet.shoot).toMatchObject({ code: 'S014', date: '2026-10-20', broll_variations: 3, submission_rate: 0.15 })
     expect(sheet.channels[0]).toEqual({ slug: 'topdognix', folder_slug: 'nix', dogs: ['nix'] })
     expect(sheet.formats).toEqual([format])
-    expect(sheet.items.map(item => [item.code, item.file])).toEqual([
-      ['C01', 'pawco/calming-chews/shoots/S014/edited/ctas/joe/C01'],
-      ['H01', 'pawco/calming-chews/shoots/S014/edited/hooks/joe/H01'],
+    // channel first; a VO is recorded beat by beat, a file each
+    expect(sheet.items.map(item => [item.code, 'beats' in item ? item.beats.map(beat => beat.file) : item.file])).toEqual([
+      ['C01', 'pawco/calming-chews/shoots/S014/edited/topdognix/ctas/joe/C01'],
+      ['H01', 'pawco/calming-chews/shoots/S014/edited/topdognix/hooks/joe/H01'],
       // universal hooks are filed like any other hook, by their code
-      ['U01', 'pawco/calming-chews/shoots/S014/edited/hooks/joe/U01'],
-      ['V01', 'pawco/calming-chews/shoots/S014/edited/vo/joe/V01']
+      ['U01', 'pawco/calming-chews/shoots/S014/edited/topdogwhiskey/hooks/joe/U01'],
+      ['V01', ['pawco/calming-chews/shoots/S014/edited/topdognix/vo/joe/V01_problem', 'pawco/calming-chews/shoots/S014/edited/topdognix/vo/joe/V01_product', 'pawco/calming-chews/shoots/S014/edited/topdognix/vo/joe/V01_result']]
     ])
     expect(sheet.items[1]).toEqual({
       code: 'H01', kind: 'hook', person: 'joe', channel: 'topdognix', template_id: 'aaaaaaaa-0000-0000-0000-000000000001',
       angle: 'curiosity', script: 'Nobody told me Calming Chews could do this for my Doberman',
       caption: 'my Doberman and Calming Chews: calmer walks',
-      file: 'pawco/calming-chews/shoots/S014/edited/hooks/joe/H01',
-      raw_file: 'pawco/calming-chews/shoots/S014/raw/hooks/joe/H01'
+      file: 'pawco/calming-chews/shoots/S014/edited/topdognix/hooks/joe/H01',
+      raw_file: 'pawco/calming-chews/shoots/S014/raw/topdognix/hooks/joe/H01'
     })
-    expect(sheet.items[3]).toMatchObject({ kind: 'body', channel: null, format: 'F02', angle: 'problem' })
-    expect(sheet.items[0]).toMatchObject({ kind: 'cta', cta_mode: 'sync', channel: null })
+    expect(sheet.items[3]).toMatchObject({ kind: 'body', channel: 'topdognix', format: 'F02', angle: 'problem' })
+    expect(sheet.items[0]).toMatchObject({ kind: 'cta', cta_mode: 'sync', channel: 'topdognix' })
     // the shared pack shot (a general product shot) is listed once per channel
     expect(sheet.broll.map(shot => shot.folder)).toEqual([
-      'pawco/calming-chews/shoots/S014/edited/b-roll/nix/problem',
-      'pawco/calming-chews/shoots/S014/edited/b-roll/nix/general',
-      'pawco/calming-chews/shoots/S014/edited/b-roll/whiskey/general'
+      'pawco/calming-chews/shoots/S014/edited/topdognix/b-roll/problem',
+      'pawco/calming-chews/shoots/S014/edited/topdognix/b-roll/general',
+      'pawco/calming-chews/shoots/S014/edited/topdogwhiskey/b-roll/general'
     ])
   })
 
@@ -202,9 +202,11 @@ describe('skeleton zip', () => {
     const sheet = buildShootsheet(b)
     const parent = (path: string) => path.slice(0, path.lastIndexOf('/'))
     for (const item of sheet.items) {
-      expect(folders).toContain(parent(item.file))
-      expect(folders).toContain(parent(item.raw_file))
-      expect(item.raw_file.replace('/raw/', '/edited/')).toBe(item.file)
+      for (const clip of 'beats' in item ? item.beats : [item]) {
+        expect(folders).toContain(parent(clip.file))
+        expect(folders).toContain(parent(clip.raw_file))
+        expect(clip.raw_file.replace('/raw/', '/edited/')).toBe(clip.file)
+      }
     }
     for (const shot of sheet.broll) {
       expect(folders).toContain(shot.folder)
@@ -226,9 +228,9 @@ describe('buildCsv', () => {
     expect(lines[0]).toBe('shoot,person,kind,code,channel,angle,cta_mode,location,script,status,raw_path')
     // the shared pack shot gets a row per channel
     expect(lines).toHaveLength(1 + 4 + 3)
-    expect(lines[1]).toBe('S014,joe,cta,C01,,,sync,,"Grab Calming Chews, ""today""",planned,pawco/calming-chews/shoots/S014/raw/ctas/joe/C01')
+    expect(lines[1]).toBe('S014,joe,cta,C01,topdognix,,sync,,"Grab Calming Chews, ""today""",planned,pawco/calming-chews/shoots/S014/raw/topdognix/ctas/joe/C01')
     expect(lines[4]).toContain('[problem] My dog pulled [product] PawCo Calming Chews [result] calmer walks')
-    expect(lines[5]).toBe('S014,,broll,,topdognix,,,,[problem] anxious pacing,planned,pawco/calming-chews/shoots/S014/raw/b-roll/nix/problem')
-    expect(lines[6]).toBe('S014,,broll,,topdognix,,,,[general] pack shot,planned,pawco/calming-chews/shoots/S014/raw/b-roll/nix/general')
+    expect(lines[5]).toBe('S014,,broll,,topdognix,,,,[problem] anxious pacing,planned,pawco/calming-chews/shoots/S014/raw/topdognix/b-roll/problem')
+    expect(lines[6]).toBe('S014,,broll,,topdognix,,,,[general] pack shot,planned,pawco/calming-chews/shoots/S014/raw/topdognix/b-roll/general')
   })
 })

@@ -270,22 +270,72 @@ export function shootFolder(bundle: Pick<ShootBundle, 'brand' | 'product' | 'sho
   return `${productFolder(bundle)}/shoots/${bundle.shoot.code}`
 }
 
-/** A hook, VO or CTA, as a file without extension: `<kind>/<person>/<code>`. */
-export function itemPath(bundle: ShootBundle, item: BundleItem, stage: ClipStage = 'raw'): string {
+/** Everything under raw/ and edited/ is split by channel first: `topdognix/`, `topdogwhiskey/`… */
+export function channelFolder(bundle: Pick<ShootBundle, 'channels'>, channelId: string | null): string {
+  return bundle.channels.find(c => c.id === channelId)?.slug ?? 'all'
+}
+
+/**
+ * A hook, VO or CTA for its channel, as a file without extension:
+ * `<channel>/<kind>/<person>/<code>`, and a VO beat by beat, `…/vo/<person>/V01_problem`.
+ */
+export function itemPath(bundle: ShootBundle, item: BundleItem, stage: ClipStage = 'raw', beat: string | null = null): string {
   const person = bundle.people.find(p => p.id === item.person_id)?.slug ?? 'unknown'
-  return `${shootFolder(bundle)}/${stage}/${KIND_FOLDER[item.kind]}/${person}/${item.code}`
+  const name = beat ? `${item.code}_${slugify(beat) || 'beat'}` : item.code
+  return `${shootFolder(bundle)}/${stage}/${channelFolder(bundle, item.channel_id)}/${KIND_FOLDER[item.kind]}/${person}/${name}`
 }
 
 /**
  * A b-roll shot's folder for one channel, each channel filming its own:
- * `b-roll/<channel>/<beat>` for a format's shots (beats are filed by name, so the same beat in
- * different formats shares a folder) and `b-roll/<channel>/general` for general product shots.
- * `shared` stands in for the channel only when the shoot has none.
+ * `<channel>/b-roll/<beat>` for a format's shots (beats are filed by name, so the same beat in
+ * different formats shares a folder) and `<channel>/b-roll/general` for general product shots.
  */
 export function brollFolder(bundle: ShootBundle, shot: Pick<BundleBroll, 'format_id' | 'beat'>, channelId: string | null, stage: ClipStage = 'raw'): string {
   const section = shot.format_id ? slugify(shot.beat) || 'misc' : 'general'
-  const channel = bundle.channels.find(c => c.id === channelId)?.folder_slug ?? 'shared'
-  return `${shootFolder(bundle)}/${stage}/b-roll/${channel}/${section}`
+  return `${shootFolder(bundle)}/${stage}/${channelFolder(bundle, channelId)}/b-roll/${section}`
+}
+
+// --- recordings ----------------------------------------------------------------
+
+/** Hooks and sync CTAs are filmed (video); VOs and VO CTAs are recorded (audio). */
+export const mediaOf = (item: Pick<BundleItem, 'kind' | 'cta_mode'>): 'video' | 'audio' =>
+  item.kind === 'body' || (item.kind === 'cta' && item.cta_mode === 'vo') ? 'audio' : 'video'
+
+/** The beats a VO is recorded in, one file each; hooks and CTAs are one take (null). */
+export function itemBeats(item: Pick<BundleItem, 'kind' | 'script_snapshot'>): (string | null)[] {
+  if (item.kind !== 'body') return [null]
+  const beats = parseBeats(item.script_snapshot).map(beat => beat.beat)
+  return beats.length ? beats : [null]
+}
+
+/**
+ * One take to film or record: a hook, a CTA or one VO beat, by one person. A script that
+ * doesn't name the dog is one take for all of the person's channels (`items` holds one item per
+ * channel it fills); one that does is a take per channel.
+ */
+export interface Recording {
+  key: string
+  kind: ItemKind
+  code: string
+  person_id: string
+  beat: string | null
+  items: BundleItem[]
+}
+
+export function recordingsOf(items: BundleItem[]): Recording[] {
+  const byKey = new Map<string, Recording>()
+  for (const item of items) {
+    for (const beat of itemBeats(item)) {
+      const key = `${recordingKey(item)}|${beat ?? ''}`
+      let recording = byKey.get(key)
+      if (!recording) {
+        recording = { key, kind: item.kind, code: item.code, person_id: item.person_id, beat, items: [] }
+        byKey.set(key, recording)
+      }
+      recording.items.push(item)
+    }
+  }
+  return [...byKey.values()]
 }
 
 
@@ -339,14 +389,21 @@ export function buildShootsheet(bundle: ShootBundle) {
         channel: channelSlug(bundle, item.channel_id),
         template_id: item.template_id
       }
-      // the clip as a file without extension: file = the edited clip, which the worker reads;
-      // raw_file = where it was uploaded
+      // clips as files without extension: file = the edited clip, which the worker reads;
+      // raw_file = where it was uploaded. A VO is recorded beat by beat, a file each.
       const folders = { file: itemPath(bundle, item, 'edited'), raw_file: itemPath(bundle, item, 'raw') }
       if (item.kind === 'hook') {
         const caption = item.caption ? renderScript(item.caption, itemSlotContext(bundle, item.channel_id)).text : null
         return { ...base, angle: item.angle, script: script.text ?? '', caption, ...folders }
       }
-      if (item.kind === 'body') return { ...base, format: item.format?.code ?? null, angle: item.angle, beats: script.beats ?? [], ...folders }
+      if (item.kind === 'body') {
+        const beats = (script.beats ?? []).map(beat => ({
+          ...beat,
+          file: itemPath(bundle, item, 'edited', beat.beat),
+          raw_file: itemPath(bundle, item, 'raw', beat.beat)
+        }))
+        return { ...base, format: item.format?.code ?? null, angle: item.angle, beats }
+      }
       return { ...base, cta_mode: item.cta_mode, script: script.text ?? '', ...folders }
     }),
     // one entry per shot per channel; its clips go loose into the folder, under their own names
@@ -388,7 +445,7 @@ export function buildCsv(bundle: ShootBundle): string {
       item.location ?? '',
       scriptAsText(resolveItemScript(bundle, item)),
       item.status,
-      itemPath(bundle, item, 'raw')
+      itemBeats(item).map(beat => itemPath(bundle, item, 'raw', beat)).join(' ')
     ])
   }
   for (const shot of bundle.broll) {
@@ -422,8 +479,8 @@ export function skeletonFolders(bundle: ShootBundle): string[] {
   const shoot = shootFolder(bundle)
   const folders = new Set<string>([`${shoot}/raw`, `${shoot}/edited`, `${shoot}/renders`])
   for (const item of sheet.items) {
-    folders.add(parentFolder(item.file))
-    folders.add(parentFolder(item.raw_file))
+    const files = 'beats' in item ? item.beats.flatMap(beat => [beat.file, beat.raw_file]) : [item.file, item.raw_file]
+    for (const file of files) folders.add(parentFolder(file))
   }
   for (const shot of sheet.broll) {
     folders.add(shot.folder)
