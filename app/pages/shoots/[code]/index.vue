@@ -433,7 +433,7 @@ async function backToDraft() {
 
 const confirmPlan = ref(false)
 
-// The shoot's whole folder tree in Dropbox (raw/, edited/, renders/ and shootsheet.json), made
+// The shoot's whole folder tree in Dropbox (raw/, edited/, renders/ and the plan's manifest.json), made
 // once it's planned and again before uploads. Folders already there are left as they are.
 const dropbox = useDropbox()
 const buildingTree = ref(false)
@@ -505,7 +505,7 @@ function download(format: string) {
 
 const exportItems = computed<DropdownMenuItem[][]>(() => [
   [
-    { label: 'shootsheet.json', icon: 'i-lucide-braces', onSelect: () => download('json') },
+    { label: 'manifest.json (plan)', icon: 'i-lucide-braces', onSelect: () => download('json') },
     { label: 'CSV', icon: 'i-lucide-table', onSelect: () => download('csv') },
     { label: 'Folder skeleton (zip)', icon: 'i-lucide-folder-archive', onSelect: () => download('zip') }
   ],
@@ -533,7 +533,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
           <span class="hidden font-normal text-muted sm:inline"> · {{ bundle.brand.name }} — {{ bundle.product.name }}</span>
         </template>
         <template #trailing>
-          <UBadge :label="shoot.status" :color="SHOOT_STATUS_COLORS[shoot.status]" variant="subtle" class="capitalize" />
+          <UBadge :label="SHOOT_STATUS_LABELS[shoot.status] ?? shoot.status" :color="SHOOT_STATUS_COLORS[shoot.status]" variant="subtle" />
         </template>
         <template #right>
           <template v-if="isDraft">
@@ -624,6 +624,8 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
             title="Codes and scripts are frozen"
             :description="shoot.status === 'planned' ? 'Library and product edits no longer affect this shoot. You can still add per-person wording, locations and b-roll shots, or use Back to draft to change the plan.' : 'Library and product edits no longer affect this shoot. You can still add per-person wording, locations and b-roll shots.'"
           />
+          <!-- edits in: check them and build the manifest (filmed → ready for batching) -->
+          <PlannerBatchReady v-if="shoot.status === 'filmed' || shoot.status === 'edited'" :bundle="bundle" @changed="refresh" />
           <!-- slots nothing fills yet: fill them here (drafts only; planning freezes the scripts) -->
           <PlannerSlotFiller v-if="isDraft" :bundle="bundle" @changed="refresh" />
           <UAlert

@@ -291,7 +291,7 @@ async function saveProduct() {
                   <span class="font-mono font-medium text-highlighted">{{ shoot.code }}</span>
                   <span class="text-sm text-muted">{{ formatDate(shoot.shoot_date) }}</span>
                   <UBadge
-                    :label="shoot.status"
+                    :label="SHOOT_STATUS_LABELS[shoot.status] ?? shoot.status"
                     :color="SHOOT_STATUS_COLORS[shoot.status]"
                     variant="subtle"
                     class="ml-auto capitalize"

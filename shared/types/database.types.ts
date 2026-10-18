@@ -1026,6 +1026,51 @@ export type Database = {
           },
         ]
       }
+      shoot_manifests: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          data: Json
+          id: string
+          shoot_id: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          data: Json
+          id?: string
+          shoot_id: string
+          updated_at?: string
+          version: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          data?: Json
+          id?: string
+          shoot_id?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shoot_manifests_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shoot_manifests_shoot_id_fkey"
+            columns: ["shoot_id"]
+            isOneToOne: false
+            referencedRelation: "shoots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shoot_people: {
         Row: {
           person_id: string
@@ -1063,6 +1108,7 @@ export type Database = {
           created_by: string | null
           id: string
           entry_ids: string[]
+          manifest_version: number | null
           shoot_id: string
           size: number
           updated_at: string
@@ -1073,6 +1119,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           entry_ids: string[]
+          manifest_version?: number | null
           shoot_id: string
           size: number
           updated_at?: string
@@ -1083,6 +1130,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           entry_ids?: string[]
+          manifest_version?: number | null
           shoot_id?: string
           size?: number
           updated_at?: string

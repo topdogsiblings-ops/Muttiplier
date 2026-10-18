@@ -355,7 +355,7 @@ function channelSlug(bundle: ShootBundle, channelId: string | null): string | nu
   return bundle.channels.find(channel => channel.id === channelId)?.slug ?? null
 }
 
-/** `shootsheet.json`: the contract with the future worker. */
+/** The plan (spec §10c): the shoot, people, channels, formats, items and b-roll shots. Part of the manifest. */
 export function buildShootsheet(bundle: ShootBundle) {
   const formats = new Map<string, NonNullable<BundleItem['format']>>()
   for (const item of bundle.items) if (item.format) formats.set(item.format.code, item.format)
@@ -472,7 +472,7 @@ const parentFolder = (path: string) => path.slice(0, path.lastIndexOf('/'))
 
 /**
  * Every folder in the skeleton zip, relative to the Dropbox `UGC/` root folder: the folder of every clip
- * in shootsheet.json under both raw/ and edited/, plus the shoot's renders/ (spec §10d).
+ * in the plan under both raw/ and edited/, plus the shoot's renders/ (spec §10d).
  */
 export function skeletonFolders(bundle: ShootBundle): string[] {
   const sheet = buildShootsheet(bundle)
@@ -489,10 +489,20 @@ export function skeletonFolders(bundle: ShootBundle): string[] {
   return [...folders].sort()
 }
 
-/** Files in the skeleton zip: a `.keep` per folder plus shootsheet.json in the shoot folder. */
+export const MANIFEST_SCHEMA_VERSION = 2
+
+/**
+ * The manifest before the edits are in (spec §14): just the plan, version 0, no clips. Written
+ * when the shoot is planned; Ready for batching replaces it with the full one.
+ */
+export function planManifest(bundle: ShootBundle) {
+  return { schema_version: MANIFEST_SCHEMA_VERSION, version: 0, generated_at: null, plan: buildShootsheet(bundle), clips: [] }
+}
+
+/** Files in the skeleton zip: a `.keep` per folder plus the plan's manifest.json in the shoot folder. */
 export function skeletonFiles(bundle: ShootBundle): Record<string, string> {
   const files: Record<string, string> = {}
   for (const folder of skeletonFolders(bundle)) files[`${folder}/.keep`] = ''
-  files[`${shootFolder(bundle)}/shootsheet.json`] = JSON.stringify(buildShootsheet(bundle), null, 2)
+  files[`${shootFolder(bundle)}/manifest.json`] = JSON.stringify(planManifest(bundle), null, 2)
   return files
 }

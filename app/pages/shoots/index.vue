@@ -71,7 +71,7 @@ const productFilter = computed(() => [
   { label: 'All products', value: 'all' },
   ...products.value.filter(p => brand.value === 'all' || p.brand.id === brand.value).map(p => ({ label: p.name, value: p.id }))
 ])
-const statusFilter = [{ label: 'All statuses', value: 'all' }, ...selectOptions(Object.keys(SHOOT_STATUS_COLORS))]
+const statusFilter = [{ label: 'All statuses', value: 'all' }, ...Object.keys(SHOOT_STATUS_COLORS).map(value => ({ label: SHOOT_STATUS_LABELS[value] ?? value, value }))]
 watch(brand, () => {
   product.value = 'all'
 })
@@ -195,7 +195,7 @@ async function save() {
                 <CreatedBy :by="shoot.created_by" :at="shoot.created_at" class="block" />
               </td>
               <td class="px-4 py-3">
-                <UBadge :label="shoot.status" :color="SHOOT_STATUS_COLORS[shoot.status]" variant="subtle" class="capitalize" />
+                <UBadge :label="SHOOT_STATUS_LABELS[shoot.status] ?? shoot.status" :color="SHOOT_STATUS_COLORS[shoot.status]" variant="subtle" />
               </td>
               <td class="px-4 py-3">
                 {{ shoot.shoot_people.map(row => row.person.name).sort().join(', ') || '—' }}

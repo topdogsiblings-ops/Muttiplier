@@ -1,5 +1,5 @@
 // Build a shoot's whole folder tree in Dropbox (spec §10d): every clip folder under raw/ and
-// edited/, plus renders/, and the current shootsheet.json. Folders that already exist are left
+// edited/, plus renders/, and (until the edits are in) the plan as manifest.json. Folders that already exist are left
 // exactly as they are (no renaming, nothing removed), so this is safe to run again and again:
 // after planning, before each upload, or by hand. Any allowlisted user; not for drafts, whose
 // codes can still change.
@@ -39,16 +39,11 @@ export default defineEventHandler(async (event) => {
   const created = result.entries.filter(entry => entry['.tag'] === 'success').length
   const failed = result.entries.filter(entry => entry['.tag'] === 'failure' && entry.failure.path?.['.tag'] !== 'conflict').length
 
-  // the shoot sheet is regenerated each time, so it always matches the plan
-  await $fetch('https://content.dropboxapi.com/2/files/upload', {
-    method: 'POST',
-    headers: {
-      ...auth,
-      'Content-Type': 'application/octet-stream',
-      'Dropbox-API-Arg': dropboxArg({ path: `${root}/${shootFolder(bundle)}/shootsheet.json`, mode: 'overwrite', mute: true })
-    },
-    body: JSON.stringify(buildShootsheet(bundle), null, 2)
-  })
+  // the plan's manifest, regenerated so it matches the plan; once the shoot is ready for
+  // batching, the full manifest (with every clip) is there and left alone
+  if (['planned', 'shooting', 'filmed'].includes(bundle.shoot.status)) {
+    await dropboxWriteText(accessToken, `${root}/${shootFolder(bundle)}/manifest.json`, JSON.stringify(planManifest(bundle), null, 2))
+  }
 
   return { folders: paths.length, created, existing: paths.length - created - failed, failed, root: `${root}/${shootFolder(bundle)}` }
 })

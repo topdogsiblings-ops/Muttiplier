@@ -356,7 +356,7 @@ Route: `/shoots/[code]/sheet?person=[slug]&show=[hook|cta|body|broll]`. Both fil
 
 One row per shoot item and b-roll shot (a shared shot gets a row per channel): `shoot, person, kind, code, channel, angle, cta_mode, location, script, status, raw_path`, where `raw_path` is where the clip is uploaded: the file (without extension) for hooks, VOs and CTAs, the folder for b-roll. For VOs, beats joined as `[problem] … [product] … [result] …`.
 
-### c) `shootsheet.json`
+### c) The plan (in `manifest.json`)
 
 The contract with the future worker. Download from the shoot page. Skipped items and shots are left out.
 
@@ -416,7 +416,7 @@ Items: `file` is the edited clip (what the worker reads) and `raw_file` where Mu
 
 ### d) Folder skeleton (zip)
 
-Download a zip of empty folders (each with a `.keep` file) plus `shootsheet.json`, to unzip into the Dropbox `UGC/` root folder. With Dropbox connected, the same tree is created directly in Dropbox instead (§12).
+Download a zip of empty folders (each with a `.keep` file) plus the plan's `manifest.json`, to unzip into the Dropbox `UGC/` root folder. With Dropbox connected, the same tree is created directly in Dropbox instead (§12).
 
 Everything from a shoot lives in its shoot folder. `raw/` and `edited/` have exactly the same tree: Muttiplier only uploads to `raw/`; editors edit each clip and put it in the same place under `edited/`.
 
@@ -424,7 +424,7 @@ Everything from a shoot lives in its shoot folder. `raw/` and `edited/` have exa
 UGC/
   [brand]/[product]/
     shoots/[S###]/                         named by the shoot code
-      shootsheet.json
+      manifest.json                        the plan; the full index of every clip once ready for batching
       raw/
         [channel]/                         topdognix/, topdogwhiskey/, topdogsiblings/: split by channel first
           hooks/[person]/H##.mov           one file per hook, named by code, captions alongside (H##.srt)
@@ -471,6 +471,14 @@ Goal: clips go straight from the shoot into the right Dropbox folders (§10d), s
 - **The shoot's whole tree is built in Dropbox** (`/api/dropbox/tree`): every clip folder under `raw/` and `edited/`, `renders/`, and the current `shootsheet.json` (overwritten each time so it matches the plan). It runs when a shoot is marked as planned, at the start of every Upload all phones, and from **Export → Create folders in Dropbox**. Folders are created with autorename off, so ones that already exist are left exactly as they are and only missing ones are added; safe to run again and again. Not for drafts, whose codes can still change. The skeleton zip still works without Dropbox.
 
 ---
+
+## 12b. Ready for batching and the manifest
+
+Once a shoot is **filmed** and the editors have put every clip in `edited/`, the shoot page shows **Edits in? Get it ready for batching**.
+
+- **Check edits** (runs in the browser, talking to Dropbox directly so a big shoot isn't cut short): lists `raw/` and `edited/` and checks that every filmed take is in both, named by its code (a VO beat by beat: `V01_problem`), of the right kind (video for hooks and sync CTAs, audio for VOs and VO CTAs); that `edited/` mirrors `raw/` clip for clip (same folders and names; extensions can differ); that no clips are still on phones; and reads every edited clip's **length** from the start of the file (MP4 / MOV / M4A from the movie header, WAV from its header; anything unreadable is a problem). Any problem blocks the next step.
+- **Mark ready for batching** writes the **manifest** and sets the shoot to `edited`, shown as **Ready for batching**. **Refresh manifest** later re-checks and writes a new version; **Not ready** goes back to filmed.
+- **The manifest** (`manifest.json` in the shoot folder, and a copy in `shoot_manifests` with a version number) indexes every clip once, so batching and later tools never re-read Dropbox: the plan (shoot, people, channels, formats, items, b-roll shots), and for every take its kind, channel, person, code, beat (VOs), format, CTA mode, angle, the script read, its `edited/` and `raw/` file, its caption file and its length; for every b-roll clip its channel, beat folder (or `general`), the shot it was filmed for (from the checklist's upload records, matched by name) and whether the product is visible (from the shot; a clip in `general/` counts as a product shot). Until then, `manifest.json` holds just the plan (version 0, no clips).
 
 ## 13. Build phases and acceptance criteria
 

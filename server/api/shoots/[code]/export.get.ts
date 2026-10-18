@@ -43,6 +43,6 @@ export default defineEventHandler(async (event) => {
   }
 
   if (format !== 'json') throw createError({ statusCode: 400, statusMessage: 'format must be json, csv or zip' })
-  download('shootsheet.json', 'application/json; charset=utf-8')
-  return JSON.stringify(buildShootsheet(bundle), null, 2)
+  download('manifest.json', 'application/json; charset=utf-8')
+  return JSON.stringify(planManifest(bundle), null, 2)
 })

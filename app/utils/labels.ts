@@ -87,6 +87,18 @@ export const SHOOT_STATUS_COLORS: Record<string, Color> = {
   done: 'primary'
 }
 
+/** What a shoot status reads as: `edited` is ready for batching (the edits checked, the manifest built). */
+export const SHOOT_STATUS_LABELS: Record<string, string> = {
+  draft: 'Draft',
+  planned: 'Planned',
+  shooting: 'Shooting',
+  filmed: 'Filmed',
+  edited: 'Ready for batching',
+  ingested: 'Ingested',
+  rendering: 'Rendering',
+  done: 'Done'
+}
+
 export const ITEM_STATUS_COLORS: Record<string, Color> = {
   planned: 'neutral',
   filmed: 'success',

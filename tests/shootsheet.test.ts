@@ -218,7 +218,7 @@ describe('skeleton zip', () => {
     expect(folders).toEqual(expect.arrayContaining([`${shoot}/raw`, `${shoot}/edited`, `${shoot}/renders`]))
     // everything lives in the shoot folder
     expect(folders.every(folder => folder.startsWith(shoot))).toBe(true)
-    expect(JSON.parse(files[`${shoot}/shootsheet.json`]!)).toEqual(sheet)
+    expect(JSON.parse(files[`${shoot}/manifest.json`]!)).toEqual({ schema_version: 2, version: 0, generated_at: null, plan: sheet, clips: [] })
   })
 })
 
