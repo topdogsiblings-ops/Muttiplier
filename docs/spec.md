@@ -438,7 +438,7 @@ UGC/
 ```
 
 - **Hooks, VOs and CTAs are files named by code**, keeping their own extension. Re-adding one replaces the file. Editors save the edited clip under the same name in `edited/` (the extension can differ).
-- **Captions** sit next to their clip under the same name (e.g. `V01.srt` beside `V01.m4a`), in `raw/` and `edited/` alike; there's no separate captions folder.
+- **Captions** sit next to their clip under the same name (e.g. `H01.srt` beside `H01.mov`, `V01_problem.srt` beside `V01_problem.m4a`), in `raw/` and `edited/` alike; there's no separate captions folder. Muttiplier writes them when each hook, CTA and VO beat uploads: the script that was read, split into short lines (sentence breaks, at most ~32 characters / 6 words) and timed across the clip's measured length in proportion to each line's length. Editors polish them into `edited/`.
 - **B-roll** is per shoot and loose: any clip in a beat folder can go under any VO with that beat, so clips keep their own names and a clash gets a number rather than overwriting. Beats are filed by name, so the same beat in two formats (e.g. `product`) shares a folder; general product shots go in `general/`. `shared` stands in for the channel only when a shoot has no channels.
 
 All slugs lowercase kebab-case; generate once and never change after a shoot is planned.

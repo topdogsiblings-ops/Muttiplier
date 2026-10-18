@@ -351,6 +351,9 @@ export const useClipUpload = () => {
       if (!result.uploaded || !result.path) throw new Error('not uploaded')
       // the same take into every other channel's spot
       for (const spot of clip.also) await uploader.copy(result.path, `${spot.dest}${extension}`)
+      // captions next to it (H01.srt), from what was said; best effort, the clip still counts
+      const srt = buildSrt(clip.script, clip.duration)
+      if (srt) for (const spot of spotsOf(clip)) await uploader.writeText(`${spot.dest}.srt`, srt).catch(() => {})
       clip.path = result.path
       clip.state = 'uploaded'
       clip.file = null // off the phone; the preview's object URL keeps it viewable this session
