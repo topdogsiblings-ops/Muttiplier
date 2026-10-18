@@ -626,6 +626,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
           />
           <!-- edits in: check them and build the manifest (filmed → ready for batching) -->
           <PlannerBatchReady v-if="shoot.status === 'filmed' || shoot.status === 'edited'" :bundle="bundle" @changed="refresh" />
+          <PlannerBatches v-if="shoot.status === 'edited'" :bundle="bundle" @changed="refresh" />
           <!-- slots nothing fills yet: fill them here (drafts only; planning freezes the scripts) -->
           <PlannerSlotFiller v-if="isDraft" :bundle="bundle" @changed="refresh" />
           <UAlert

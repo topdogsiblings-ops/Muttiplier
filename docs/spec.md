@@ -434,7 +434,9 @@ UGC/
                                            beats filed by name across formats
           b-roll/general/                  general product shots
       edited/                              same tree as raw/
-      renders/                             everything rendered from this shoot
+      batches/                             B01.json, B01.csv… (recipe references)
+      recipes.json                         every valid recipe
+      renders/                             B01/, B02/…: each batch's renders
 ```
 
 - **Hooks, VOs and CTAs are files named by code**, keeping their own extension. Re-adding one replaces the file. Editors save the edited clip under the same name in `edited/` (the extension can differ).
@@ -479,6 +481,27 @@ Once a shoot is **filmed** and the editors have put every clip in `edited/`, the
 - **Check edits** (runs in the browser, talking to Dropbox directly so a big shoot isn't cut short): lists `raw/` and `edited/` and checks that every filmed take is in both, named by its code (a VO beat by beat: `V01_problem`), of the right kind (video for hooks and sync CTAs, audio for VOs and VO CTAs); that `edited/` mirrors `raw/` clip for clip (same folders and names; extensions can differ); that no clips are still on phones; and reads every edited clip's **length** from the start of the file (MP4 / MOV / M4A from the movie header, WAV from its header; anything unreadable is a problem). Any problem blocks the next step.
 - **Mark ready for batching** writes the **manifest** and sets the shoot to `edited`, shown as **Ready for batching**. **Refresh manifest** later re-checks and writes a new version; **Not ready** goes back to filmed.
 - **The manifest** (`manifest.json` in the shoot folder, and a copy in `shoot_manifests` with a version number) indexes every clip once, so batching and later tools never re-read Dropbox: the plan (shoot, people, channels, formats, items, b-roll shots), and for every take its kind, channel, person, code, beat (VOs), format, CTA mode, angle, the script read, its `edited/` and `raw/` file, its caption file and its length; for every b-roll clip its channel, beat folder (or `general`), the shot it was filmed for (from the checklist's upload records, matched by name) and whether the product is visible (from the shot; a clip in `general/` counts as a product shot). Until then, `manifest.json` holds just the plan (version 0, no clips).
+
+### Recipes and batches
+
+Once a shoot is ready for batching, the shoot page shows **Batches**, working from the latest manifest (no Dropbox reads; it only writes the results).
+
+**A valid recipe** (`shared/utils/recipes.ts`):
+
+- Exactly **Hook → VO → CTA**: one hook (on camera, its own sync audio), one VO (every beat, b-roll underneath, no on-camera footage; the VO is the spine and sets the body's length) and one CTA (sync, or VO over b-roll). Any CTA follows any VO.
+- **One person and one channel throughout**: the person's hook, VO and CTA filmed for that channel (people only film for channels they're linked to). Never across people or channels; never across shoots.
+- **B-roll per beat**: covered by that channel's clips filed under the beat (beats are filed by name across formats), added clip by clip in a fixed order until their combined length covers the beat's recording; **general product shots** top a beat up only when its own clips run short. Never looped or slowed: a beat that can't be covered makes the recipe invalid. **The product beat** (any beat named with "product") starts with a product-visible clip. **No clip repeats** within one video. A **VO CTA** is covered the same way, product shots first.
+- Every clip must be in the manifest with a length. The stitcher trims (evenly, proportionally, head and tail; ~1.2 s minimum) and offsets the per-clip captions; hook, VO and CTA clips are never trimmed.
+- **Recipe IDs are deterministic**: `S001_topdognix_joe_H01_V02_C01_<hash of the b-roll picks>`. The same inputs give the same ID, which is also the render's file name.
+
+**Batches** (Best in Show; a batch is what gets rendered and submitted to the brand):
+
+- **Size** = the shoot's batch size (default 5%) × all valid recipes, at least one.
+- **No two recipes in a batch share a hook + VO pair** (a shared hook is fine).
+- **Spread**: each pick is the recipe whose person, then format, then angle has been used least so far, so every person and format appears before any repeats; parts rated good are favoured; CTAs and b-roll only break ties.
+- **Never batch a recipe ID twice** (`shoot_shortlists.entry_ids`), and leave out recipes with a part rated bad.
+- **Ratings**: once ready for batching, each person's hooks, VOs and CTAs can be marked good or bad ("What worked"; stored on their items for every channel).
+- **Files**: `recipes.json` (every valid recipe, with its b-roll per beat and the manifest version), `batches/B01.json` (the recipe IDs, in order, with the manifest version; plus `B01.csv` for people) and an empty `renders/B01/` for the stitcher, which renders each recipe to `renders/B01/<recipe id>.mp4` from `edited/`.
 
 ## 13. Build phases and acceptance criteria
 

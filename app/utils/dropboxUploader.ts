@@ -223,3 +223,15 @@ export async function dropboxDuration(path: string, size: number): Promise<numbe
   }
   return null
 }
+
+/** Create a folder (relative to the root); fine if it's already there. */
+export async function dropboxEnsureFolder(folder: string) {
+  const { root } = await getAccess()
+  await withRetries(token => $fetch(`https://api.dropboxapi.com/2/files/create_folder_v2`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: { path: `${root}/${folder}`, autorename: false }
+  })).catch((error) => {
+    if (!JSON.stringify((error as { data?: unknown }).data ?? '').includes('conflict')) throw error
+  })
+}
