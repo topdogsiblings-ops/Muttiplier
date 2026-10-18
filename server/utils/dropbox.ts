@@ -97,3 +97,58 @@ export async function dropboxAccess(event: H3Event, db: Awaited<ReturnType<typeo
 /** Dropbox-API-Arg must be ASCII: escape anything else (e.g. accents in a folder name). */
 export const dropboxArg = (value: unknown) =>
   JSON.stringify(value).replace(/[\u007f-\uffff]/g, char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`)
+
+/** Every file under a Dropbox folder, as paths relative to it ("hooks/joe/H01.mov"); none if it isn't there. */
+export async function dropboxFiles(accessToken: string, folder: string): Promise<string[]> {
+  type Entry = { '.tag': string, path_display: string }
+  type Page = { entries: Entry[], cursor: string, has_more: boolean }
+  const call = (route: string, body: object) => $fetch<Page>(`${API}/2/files/${route}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body
+  })
+  let page: Page
+  try {
+    page = await call('list_folder', { path: folder, recursive: true, limit: 2000 })
+  } catch (error) {
+    // not created yet: nothing in it
+    if (JSON.stringify((error as { data?: unknown }).data ?? '').includes('not_found')) return []
+    throw error
+  }
+  const files: string[] = []
+  const prefix = `${folder.toLowerCase()}/`
+  for (;;) {
+    for (const entry of page.entries) {
+      if (entry['.tag'] !== 'file') continue
+      const path = entry.path_display
+      if (path.toLowerCase().startsWith(prefix)) files.push(path.slice(prefix.length))
+    }
+    if (!page.has_more) break
+    page = await call('list_folder/continue', { cursor: page.cursor })
+  }
+  return files.sort()
+}
+
+/** Upload a small text file (JSON, CSV), replacing what's there. */
+export async function dropboxWriteText(accessToken: string, path: string, text: string) {
+  await $fetch('https://content.dropboxapi.com/2/files/upload', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/octet-stream',
+      'Dropbox-API-Arg': dropboxArg({ path, mode: 'overwrite', mute: true })
+    },
+    body: text
+  })
+}
+
+/** Create one folder; fine if it's already there. */
+export async function dropboxEnsureFolder(accessToken: string, path: string) {
+  await $fetch(`${API}/2/files/create_folder_v2`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: { path, autorename: false }
+  }).catch((error) => {
+    if (!JSON.stringify((error as { data?: unknown }).data ?? '').includes('conflict')) throw error
+  })
+}

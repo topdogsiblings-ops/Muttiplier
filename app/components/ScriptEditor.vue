@@ -7,7 +7,7 @@
 const props = withDefaults(defineProps<{
   placeholder?: string
   disabled?: boolean
-  /** slots to flag as errors (e.g. product slots in a universal hook) */
+  /** slots to flag as errors */
   invalidSlots?: string[]
   /** show the slot palette while focused */
   palette?: boolean

@@ -10,8 +10,7 @@ import {
   joinBeats,
   renderScript,
   renderSegments,
-  slugify,
-  universalHookViolations
+  slugify
 } from '../shared/utils/slots'
 
 const context = buildSlotContext({
@@ -65,16 +64,6 @@ describe('renderSegments', () => {
       { type: 'slot', name: 'brand', raw: '{{brand}}', value: 'PawCo' },
       { type: 'text', text: '!' }
     ])
-  })
-})
-
-describe('universalHookViolations', () => {
-  it('rejects brand, product and custom slots', () => {
-    expect(universalHookViolations('Why {{brand}} {{product}} {{benefit}}?')).toEqual(['brand', 'product', 'benefit'])
-  })
-
-  it('allows {{dog}} and plain text', () => {
-    expect(universalHookViolations('Nobody told me {{dog}} would do this')).toEqual([])
   })
 })
 

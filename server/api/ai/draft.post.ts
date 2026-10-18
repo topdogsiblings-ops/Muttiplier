@@ -14,7 +14,6 @@ const requestSchema = z.discriminatedUnion('type', [
     type: z.literal('hooks'),
     angle: z.string().max(80).optional(),
     tags: z.array(z.string().max(40)).max(12).optional(),
-    universal: z.boolean().optional(),
     count: z.number().int().min(1).max(12).optional(),
     brief: z.string().max(1000).optional(),
     productId: z.string().uuid().optional()
@@ -109,9 +108,6 @@ export default defineEventHandler(async (event): Promise<{ drafts: AiDraft[] }> 
       `Write ${input.count ?? 6} distinct hook templates. A hook is the first 2 to 4 seconds on camera and has to stop the scroll.`,
       input.angle ? `Angle: ${input.angle}.` : '',
       input.tags?.length ? `Themes to lean on: ${input.tags.join(', ')}.` : '',
-      input.universal
-        ? 'These are universal hooks, reused across every brand: the only slot allowed is {{dog}}. Do not use {{brand}}, {{product}} or any other slot.'
-        : '',
       input.brief ? `Notes from the team: ${input.brief}` : '',
       'Make each hook different in structure, not just wording.',
       'For each hook, also suggest a short post caption to go with the video: one or two lines, a few relevant hashtags, at most one emoji. The caption may use the same slots.'
@@ -180,9 +176,7 @@ export default defineEventHandler(async (event): Promise<{ drafts: AiDraft[] }> 
       ? { title: draft.title, beats: formatBeats.length ? alignBeats(formatBeats, draft.beats) : draft.beats }
       : { script: draft.script.trim(), ...('caption' in draft ? { caption: draft.caption.trim() } : {}) })
 
-    // Universal hooks must stay free of product slots, whatever the model wrote.
-    const universal = input.type === 'hooks' && input.universal
-    return { drafts: universal ? drafts.filter(draft => universalHookViolations(draft.script ?? '').length === 0) : drafts }
+    return { drafts }
   } catch (error) {
     if (isError(error)) throw error
     if (error instanceof Anthropic.AuthenticationError) {

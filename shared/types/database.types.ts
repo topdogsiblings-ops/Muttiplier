@@ -926,6 +926,7 @@ export type Database = {
           kind: string
           location: string | null
           person_id: string
+          rating: string | null
           script_override: Json | null
           script_snapshot: Json
           shoot_id: string
@@ -948,6 +949,7 @@ export type Database = {
           kind: string
           location?: string | null
           person_id: string
+          rating?: string | null
           script_override?: Json | null
           script_snapshot: Json
           shoot_id: string
@@ -970,6 +972,7 @@ export type Database = {
           kind?: string
           location?: string | null
           person_id?: string
+          rating?: string | null
           script_override?: Json | null
           script_snapshot?: Json
           shoot_id?: string
@@ -1046,6 +1049,54 @@ export type Database = {
           },
           {
             foreignKeyName: "shoot_people_shoot_id_fkey"
+            columns: ["shoot_id"]
+            isOneToOne: false
+            referencedRelation: "shoots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shoot_shortlists: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string | null
+          id: string
+          entry_ids: string[]
+          shoot_id: string
+          size: number
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          entry_ids: string[]
+          shoot_id: string
+          size: number
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          entry_ids?: string[]
+          shoot_id?: string
+          size?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shoot_shortlists_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shoot_shortlists_shoot_id_fkey"
             columns: ["shoot_id"]
             isOneToOne: false
             referencedRelation: "shoots"

@@ -33,9 +33,7 @@ const busy = ref(false)
 const form = reactive({
   product_id: '',
   shoot_date: '',
-  hook_allocation: 'shared',
-  broll_variations: 3,
-  submission_pct: 15,
+  submission_pct: 5,
   runway_target: 60,
   kit: 'custom',
   location_notes: '',
@@ -45,8 +43,6 @@ watch(shoot, (value) => {
   Object.assign(form, {
     product_id: value.product_id,
     shoot_date: value.shoot_date ?? '',
-    hook_allocation: value.hook_allocation,
-    broll_variations: value.broll_variations,
     submission_pct: Math.round(Number(value.submission_rate) * 1000) / 10,
     runway_target: value.runway_target,
     kit: value.kit,
@@ -68,7 +64,6 @@ async function patchShoot(patch: Update<'shoots'>) {
 const saveSetup = () => patchShoot({
   product_id: form.product_id,
   shoot_date: form.shoot_date || null,
-  broll_variations: Math.max(1, Math.round(Number(form.broll_variations) || 1)),
   submission_rate: Math.min(100, Math.max(0, Number(form.submission_pct) || 0)) / 100,
   runway_target: Math.max(1, Math.round(Number(form.runway_target) || 1)),
   kit: form.kit,
@@ -101,10 +96,11 @@ async function setPeople(next: string[]) {
   await run(async () => {
     if (added.length) {
       must(await db.from('shoot_people').insert(added.map(person_id => ({ shoot_id: shoot.value.id, person_id }))))
-      // everyone films the whole shot list, apart from VOs someone else wrote for themselves
+      // everyone films the whole shot list (apart from VOs someone else wrote for themselves),
+      // once for each of the shoot's channels they're linked to
       const rows = added.flatMap(person_id => groups.value
         .filter(group => !group.items[0]!.writer_id || group.items[0]!.writer_id === person_id)
-        .map(group => copyFor(group, person_id)))
+        .flatMap(group => channelsFor(bundle.value, person_id).map(channel => copyFor(group, person_id, channel.id))))
       if (rows.length) must(await db.from('shoot_items').insert(rows))
     }
     // items go with the person (cascade)
@@ -117,10 +113,20 @@ async function setChannels(next: string[]) {
   const added = next.filter(id => !channelIds.value.includes(id))
   const removed = channelIds.value.filter(id => !next.includes(id))
   await run(async () => {
-    if (added.length) must(await db.from('shoot_channels').insert(added.map(channel_id => ({ shoot_id: shoot.value.id, channel_id }))))
+    if (added.length) {
+      must(await db.from('shoot_channels').insert(added.map(channel_id => ({ shoot_id: shoot.value.id, channel_id }))))
+      // everyone linked to a new channel films the shot list for it too
+      const links = must(await db.from('person_channels').select('person_id, channel_id').in('channel_id', added))
+      const rows = added.flatMap(channel_id => bundle.value.people
+        .filter(person => links.some(link => link.person_id === person.id && link.channel_id === channel_id))
+        .flatMap(person => groups.value
+          .filter(group => !group.items[0]!.writer_id || group.items[0]!.writer_id === person.id)
+          .map(group => copyFor(group, person.id, channel_id))))
+      if (rows.length) must(await db.from('shoot_items').insert(rows))
+    }
     if (removed.length) {
       must(await db.from('broll_shots').delete().eq('shoot_id', shoot.value.id).in('channel_id', removed))
-      must(await db.from('shoot_items').update({ channel_id: null }).eq('shoot_id', shoot.value.id).in('channel_id', removed))
+      must(await db.from('shoot_items').delete().eq('shoot_id', shoot.value.id).in('channel_id', removed))
       must(await db.from('shoot_channels').delete().eq('shoot_id', shoot.value.id).in('channel_id', removed))
     }
     await refresh()
@@ -129,9 +135,9 @@ async function setChannels(next: string[]) {
 }
 
 // --- shot list ---------------------------------------------------------------
-// Everyone on the shoot films the same list, and every item is used for every channel.
-// Each hook / VO / CTA is one entry with one shared code and location; there's an item per
-// person underneath for their own status and, optionally, their own wording (per-person override).
+// Everyone on the shoot films the same list, once for each channel they're linked to: each
+// hook / VO / CTA is one entry with one shared code and location, and there's an item per
+// person per channel underneath for its own clip, status and, optionally, own wording.
 const groups = computed(() => groupShotList(bundle.value.items))
 const groupsOf = (kind: string) => groups.value.filter(group => group.kind === kind)
 
@@ -139,8 +145,8 @@ const groupsOf = (kind: string) => groups.value.filter(group => group.kind === k
 const pickerOpen = ref(false)
 const existingTemplates = computed(() => groups.value.map(group => group.template_id))
 
-/** Items for one person copying a shot-list entry (used when someone joins the shoot). */
-function copyFor(group: ShotGroup, person_id: string): Insert<'shoot_items'> {
+/** A person's item for one channel, copying a shot-list entry (someone joins, or a channel is added). */
+function copyFor(group: ShotGroup, person_id: string, channel_id: string): Insert<'shoot_items'> {
   const source = group.items[0]!
   return {
     shoot_id: shoot.value.id,
@@ -150,7 +156,7 @@ function copyFor(group: ShotGroup, person_id: string): Insert<'shoot_items'> {
     body_template_id: source.kind === 'body' ? source.template_id : null,
     cta_template_id: source.kind === 'cta' ? source.template_id : null,
     code: group.code,
-    channel_id: source.channel_id,
+    channel_id,
     cta_mode: source.cta_mode,
     location: source.location,
     script_snapshot: source.script_snapshot as Json,
@@ -171,11 +177,10 @@ async function addItems(picked: PickedItems) {
 
   // one entry per template, then one item per person (only the writer, for their own VOs)
   const entries: (Omit<Insert<'shoot_items'>, 'shoot_id' | 'person_id'> & { writer_id?: string | null })[] = []
-  // every hook is used for every channel
   for (const hook of picked.hooks.filter(hook => !existingTemplates.value.includes(hook.id))) entries.push({
     kind: 'hook',
     hook_template_id: hook.id,
-    code: take(itemPrefix('hook', hook.is_universal)),
+    code: take(itemPrefix('hook')),
     script_snapshot: hook.script,
     caption: hook.caption,
     sort_order: ++order
@@ -188,9 +193,11 @@ async function addItems(picked: PickedItems) {
   }
   if (!entries.length) return
 
+  // one item per person per channel they're linked to (only the writer, for their own VOs)
   const rows = bundle.value.people.flatMap(person => entries
     .filter(entry => !entry.writer_id || entry.writer_id === person.id)
-    .map(({ writer_id: _writer, ...entry }) => ({ ...entry, shoot_id: shoot.value.id, person_id: person.id }) as Insert<'shoot_items'>))
+    .flatMap(({ writer_id: _writer, ...entry }) => channelsFor(bundle.value, person.id)
+      .map(channel => ({ ...entry, shoot_id: shoot.value.id, person_id: person.id, channel_id: channel.id }) as Insert<'shoot_items'>)))
   await run(async () => {
     must(await db.from('shoot_items').insert(rows))
     await refresh()
@@ -384,6 +391,10 @@ const blockers = computed(() => {
   if (!bundle.value.people.length) list.push('Add at least one person')
   if (!bundle.value.channels.length) list.push('Add at least one channel')
   if (!bundle.value.items.length) list.push('Add items from the Library')
+  const unlinked = bundle.value.people.filter(person => !channelsFor(bundle.value, person.id).length)
+  if (unlinked.length) {
+    list.push(`${unlinked.map(person => person.name).join(', ')} ${unlinked.length === 1 ? 'isn\'t' : 'aren\'t'} linked to any of this shoot's channels (Settings → People)`)
+  }
   if (unfilled.value.length) {
     list.push(`Fill or override the unfilled slots in ${unfilled.value.slice(0, 6).map(entry => entry.code).join(', ')}${unfilled.value.length > 6 ? '…' : ''}`)
   }
@@ -684,10 +695,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
                   @update:model-value="setChannels"
                 />
               </UFormField>
-              <UFormField label="B-roll variations per VO">
-                <UInput v-model.number="form.broll_variations" type="number" min="1" class="w-full" @change="saveSetup" />
-              </UFormField>
-              <UFormField label="Submission rate">
+              <UFormField label="Batch size" help="The share of this shoot's valid recipes each batch submits.">
                 <UInput v-model.number="form.submission_pct" type="number" min="0" max="100" step="0.5" class="w-full" @change="saveSetup">
                   <template #trailing>
                     <span class="text-xs text-muted">%</span>
@@ -835,7 +843,6 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
                         :group="group"
                         :bundle="bundle"
                         :draft="isDraft"
-                        :split="false"
                         :product-id="shoot.product_id"
                         @update-group="updateGroup(group, $event)"
                         @update-item="updateItem"
@@ -858,7 +865,6 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
                     :group="group"
                     :bundle="bundle"
                     :draft="isDraft"
-                    :split="false"
                     :product-id="shoot.product_id"
                     @update-group="updateGroup(group, $event)"
                     @update-item="updateItem"

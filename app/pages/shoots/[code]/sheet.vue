@@ -505,7 +505,6 @@ function skipBroll(shot: Row<'broll_shots'>) {
                   <UBadge v-if="channelName(item.channel_id)" :label="channelName(item.channel_id)!" color="neutral" variant="outline" size="sm" />
                   <UBadge v-if="item.angle" :label="item.angle" color="neutral" variant="subtle" size="sm" />
                   <UBadge v-if="item.cta_mode" :label="item.cta_mode" color="info" variant="subtle" size="sm" />
-                  <UBadge v-if="item.universal" label="universal" color="primary" variant="subtle" size="sm" />
                   <UBadge v-if="item.status === 'skipped'" label="skipped" color="warning" variant="subtle" size="sm" />
                   <span v-if="item.location" class="flex items-center gap-0.5 text-xs text-muted">
                     <UIcon name="i-lucide-map-pin" />{{ item.location }}
@@ -568,7 +567,6 @@ function skipBroll(shot: Row<'broll_shots'>) {
               <UBadge v-if="channelName(groupChannel(group))" :label="channelName(groupChannel(group))!" color="neutral" variant="outline" size="sm" />
               <UBadge v-if="group.items[0]!.angle" :label="group.items[0]!.angle!" color="neutral" variant="subtle" size="sm" />
               <UBadge v-if="group.items[0]!.cta_mode" :label="group.items[0]!.cta_mode!" color="info" variant="subtle" size="sm" />
-              <UBadge v-if="group.items[0]!.universal" label="universal" color="primary" variant="subtle" size="sm" />
               <span v-if="group.items[0]!.location" class="flex items-center gap-0.5 text-xs text-muted">
                 <UIcon name="i-lucide-map-pin" />{{ group.items[0]!.location }}
               </span>

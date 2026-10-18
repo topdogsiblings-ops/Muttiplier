@@ -9,21 +9,14 @@ const library = useLibrary('hook_templates', { usageKind: 'hook', text: row => r
 
 const angle = ref('all')
 const tag = ref('all')
-const scope = ref('all')
-const scopeOptions = [
-  { label: 'All hooks', value: 'all' },
-  { label: 'Universal', value: 'universal' },
-  { label: 'Product-specific', value: 'product' }
-]
 const angleFilter = computed(() => [{ label: 'All angles', value: 'all' }, ...angleOptions.value])
 
 const visible = computed(() => library.visible(row =>
   (angle.value === 'all' || row.angle_id === angle.value)
   && (tag.value === 'all' || row.tags.includes(tag.value))
-  && (scope.value === 'all' || row.is_universal === (scope.value === 'universal'))
 ))
 const pageRows = computed(() => library.paginate(visible.value))
-watch([angle, tag, scope], library.resetPage)
+watch([angle, tag], library.resetPage)
 
 // --- editor ----------------------------------------------------------------
 const open = ref(false)
@@ -32,7 +25,6 @@ const form = reactive({
   id: '',
   script: '',
   angle_id: undefined as string | undefined,
-  is_universal: false,
   est_seconds: undefined as number | undefined,
   tags: [] as string[],
   notes: '',
@@ -47,7 +39,6 @@ function edit(row?: Partial<Row<'hook_templates'>>, duplicate = false) {
     id: duplicate ? '' : row?.id ?? '',
     script: row?.script ?? '',
     angle_id: row?.angle_id ?? undefined,
-    is_universal: row?.is_universal ?? false,
     est_seconds: row?.est_seconds ?? undefined,
     tags: [...(row?.tags ?? [])],
     notes: row?.notes ?? '',
@@ -58,9 +49,7 @@ function edit(row?: Partial<Row<'hook_templates'>>, duplicate = false) {
   open.value = true
 }
 
-// Universal hooks must stay brand-agnostic: only {{dog}} is allowed (spec §5).
-const violations = computed(() => form.is_universal ? universalHookViolations(form.script) : [])
-const canSave = computed(() => form.script.trim() !== '' && violations.value.length === 0 && isValidUrl(form.source_url))
+const canSave = computed(() => form.script.trim() !== '' && isValidUrl(form.source_url))
 
 async function save() {
   saving.value = true
@@ -68,7 +57,6 @@ async function save() {
     const fields = {
       script: form.script.trim(),
       angle_id: form.angle_id ?? null,
-      is_universal: form.is_universal,
       est_seconds: form.est_seconds || null,
       tags: form.tags,
       notes: form.notes.trim() || null,
@@ -97,7 +85,6 @@ async function save() {
     >
       <USelect v-model="angle" :items="angleFilter" class="w-36" />
       <USelect v-model="tag" :items="tagOptions(library.rows.value)" class="w-32" />
-      <USelect v-model="scope" :items="scopeOptions" class="w-40" />
       <template #actions>
         <LibraryAiDrafts kind="hook" @use="edit($event)" />
       </template>
@@ -119,7 +106,6 @@ async function save() {
             <ScriptPreview :text="row.caption" />
           </p>
           <div class="flex flex-wrap items-center gap-1.5 text-xs text-muted">
-            <UBadge v-if="row.is_universal" label="Universal" color="primary" variant="subtle" size="sm" />
             <UTooltip v-if="row.filming_notes" :text="row.filming_notes">
               <UBadge label="Filming notes" icon="i-lucide-video" color="neutral" variant="subtle" size="sm" />
             </UTooltip>
@@ -153,17 +139,10 @@ async function save() {
           <UFormField
             label="Script"
             required
-            :error="violations.length ? `Universal hooks can't use ${violations.map(name => `{{${name}}}`).join(', ')}. Only {{dog}} is allowed.` : undefined"
-            help="On camera, sync audio. Use {{brand}}, {{product}}, {{dog}} or any custom slot."
+            help="On camera, sync audio. Use {{brand}}, {{product}}, {{dog}} or any custom slot. A line that says {{dog}} is filmed once per channel; one that doesn't is filmed once and used on every channel."
           >
-            <ScriptEditor v-model="form.script" :invalid-slots="violations" placeholder="Nobody told me {{product}} could do this…" />
+            <ScriptEditor v-model="form.script" placeholder="Nobody told me {{product}} could do this…" />
           </UFormField>
-
-          <USwitch
-            v-model="form.is_universal"
-            label="Universal hook"
-            description="Brand-agnostic: reusable across every product. May only use {{dog}}."
-          />
 
           <UFormField label="Suggested caption" help="The post caption to go with this hook. Slots work here too.">
             <ScriptEditor v-model="form.caption" placeholder="{{dog}} went from chaos to calm in a week 🐾 #dogsoftiktok" />

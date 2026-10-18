@@ -88,11 +88,6 @@ export function renderBeats(beats: Beat[], context: SlotContext = {}): { beats: 
   return { beats: rendered, unfilled }
 }
 
-/** Universal hooks may only use `{{dog}}`. Returns the slots that break the rule. */
-export function universalHookViolations(script: string): string[] {
-  return extractSlots(script).filter(name => name !== 'dog')
-}
-
 /** Read a `beats` jsonb value defensively. */
 export function parseBeats(value: unknown): Beat[] {
   if (!Array.isArray(value)) return []

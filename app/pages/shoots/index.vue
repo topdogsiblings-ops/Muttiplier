@@ -1,14 +1,13 @@
 <script setup lang="ts">
 import type { Row } from '#shared/types/models'
 import type { CalcItem } from '#shared/utils/calculator'
-import { channelPeopleFor } from '#shared/utils/loadShoot'
 
 type ShootRow = Row<'shoots'> & {
   product: { id: string, name: string, brand: { id: string, name: string } }
   shoot_people: { person: { id: string, name: string } }[]
   shoot_channels: { channel: { id: string, name: string } }[]
 }
-type ItemRow = Pick<Row<'shoot_items'>, 'shoot_id' | 'person_id' | 'kind' | 'channel_id' | 'cta_mode' | 'status'>
+type ItemRow = Pick<Row<'shoot_items'>, 'shoot_id' | 'person_id' | 'kind' | 'channel_id' | 'cta_mode' | 'status' | 'code' | 'script_snapshot' | 'script_override'>
 
 const db = useDb()
 const run = useAction()
@@ -16,7 +15,6 @@ const { products, productOptions, settings, load } = useRefData()
 
 const shoots = ref<ShootRow[]>([])
 const itemsByShoot = ref<Record<string, CalcItem[]>>({})
-const personChannels = ref<{ person_id: string, channel_id: string }[]>([])
 
 async function loadShoots() {
   shoots.value = must(await db
@@ -29,7 +27,7 @@ async function loadShoots() {
   for (let from = 0; ; from += 1000) {
     const page = must(await db
       .from('shoot_items')
-      .select('shoot_id, person_id, kind, channel_id, cta_mode, status')
+      .select('shoot_id, person_id, kind, channel_id, cta_mode, status, code, script_snapshot, script_override')
       .order('id')
       .range(from, from + 999)) as unknown as ItemRow[]
     for (const item of page) {
@@ -38,13 +36,13 @@ async function loadShoots() {
         kind: item.kind as CalcItem['kind'],
         channelId: item.channel_id,
         ctaMode: item.cta_mode,
-        status: item.status
+        status: item.status,
+        recordingKey: recordingKey(item)
       })
     }
     if (page.length < 1000) break
   }
   itemsByShoot.value = grouped
-  personChannels.value = must(await db.from('person_channels').select('person_id, channel_id'))
 }
 await Promise.all([load(), loadShoots()])
 
@@ -54,10 +52,7 @@ function estimate(shoot: ShootRow) {
   return calculate({
     people: shoot.shoot_people.map(row => row.person),
     channels: shoot.shoot_channels.map(row => row.channel),
-    channelPeople: channelPeopleFor(shoot.shoot_people.map(row => row.person), shoot.shoot_channels.map(row => row.channel), personChannels.value),
     items: itemsByShoot.value[shoot.id] ?? [],
-    hookAllocation: shoot.hook_allocation === 'shared' ? 'shared' : 'split',
-    brollVariations: shoot.broll_variations,
     submissionRate: Number(shoot.submission_rate),
     settings: calcSettings.value
   }).totals
@@ -109,7 +104,7 @@ async function save() {
       product_id: chosen.id,
       shoot_date: draft.shoot_date || null,
       kit: draft.kit,
-      submission_rate: Number(settings.value?.default_submission_rate ?? 0.15)
+      submission_rate: Number(settings.value?.default_submission_rate ?? 0.05)
     }).select('*').single())
 
     // Channels default to the brand's assigned channels.

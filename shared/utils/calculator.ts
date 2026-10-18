@@ -5,12 +5,17 @@ export type ItemKind = 'hook' | 'body' | 'cta'
 export interface CalcItem {
   personId: string
   kind: ItemKind
-  /** hooks only: the channel a hook is allocated to in split mode */
+  /** every item is filmed for one channel (a person films it once per channel they're linked to) */
   channelId?: string | null
   /** CTAs only: sync (on camera) or vo; decides filming vs recording time */
   ctaMode?: string | null
   label?: string
   status?: string
+  /**
+   * Items with the same key are one recording: a script that doesn't name the dog is filmed once
+   * and used on each of the person's channels (see recordingKey). Defaults to one per item.
+   */
+  recordingKey?: string
 }
 
 export interface CalcSettings {
@@ -26,16 +31,9 @@ export interface CalcInput {
   channels: { id: string, name: string }[]
   items: CalcItem[]
   brollShots?: { channelId: string | null, minClips: number, status?: string }[]
-  hookAllocation: 'split' | 'shared'
-  brollVariations: number
+  /** the share of valid recipes batched for submission */
   submissionRate: number
   settings: CalcSettings
-  /**
-   * People linked to each channel (Settings → People). On a channel with linked people on the
-   * shoot, recipes mix hooks, VOs and CTAs across all of them. Channels with none use the
-   * spec's same-person rule over everyone on the shoot.
-   */
-  channelPeople?: Record<string, string[]>
 }
 
 export interface PersonResult {
@@ -93,12 +91,20 @@ export const DEFAULT_CALC_SETTINGS: CalcSettings = {
   productive_hours_per_day: 6
 }
 
+/**
+ * Recipes follow the batching rules (spec §14): one hook, one VO and one CTA, all from the same
+ * person and the same channel (a person only films for channels they're linked to). So for each
+ * person on each channel: recipes = hooks × VOs × CTAs. Time counts each recording once: a
+ * script that doesn't name the dog is filmed once and used on every channel.
+ */
 export function calculate(input: CalcInput): CalcResult {
-  const { people, channels, settings, hookAllocation } = input
-  const variations = Math.max(0, input.brollVariations)
+  const { people, channels, settings } = input
   const items = input.items.filter(item => item.status !== 'skipped')
   const broll = (input.brollShots ?? []).filter(shot => shot.status !== 'skipped')
   const warnings: string[] = []
+  const warn = (message: string) => {
+    if (!warnings.includes(message)) warnings.push(message)
+  }
 
   // Shared shots (no channel) are filmed min_clips times for every channel.
   const sharedBroll = broll.filter(shot => shot.channelId === null).reduce((sum, shot) => sum + shot.minClips, 0)
@@ -112,38 +118,39 @@ export function calculate(input: CalcInput): CalcResult {
     brollClips: broll.filter(shot => shot.channelId === channel.id).reduce((sum, shot) => sum + shot.minClips, 0) + sharedBroll
   }))
 
-  const hooksOf = (personId: string, channelId: string) => items.filter(item =>
-    item.personId === personId && item.kind === 'hook' && (hookAllocation === 'shared' || item.channelId === channelId))
-  const of = (personId: string, kind: ItemKind) => items.filter(item => item.personId === personId && item.kind === kind)
-
-  const warn = (message: string) => {
-    if (!warnings.includes(message)) warnings.push(message)
+  /** one entry per recording: items sharing a recording key were filmed once */
+  const recordings = (rows: CalcItem[]) => {
+    const seen = new Set<string>()
+    return rows.filter((row, index) => {
+      const key = row.recordingKey ?? `#${index}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
   }
 
   const perPerson: PersonResult[] = people.map((person) => {
     const mine = items.filter(item => item.personId === person.id)
-    const hooks = mine.filter(item => item.kind === 'hook')
-    const bodies = mine.filter(item => item.kind === 'body')
-    const ctas = mine.filter(item => item.kind === 'cta')
+    const unplaced = mine.filter(item => !channels.some(channel => channel.id === item.channelId)).length
+    if (unplaced) warn(`${person.name}: ${unplaced} item${unplaced === 1 ? '' : 's'} not on one of this shoot's channels`)
+    const filmed = recordings(mine)
+    const hooks = filmed.filter(item => item.kind === 'hook').length
+    const bodies = filmed.filter(item => item.kind === 'body').length
+    const ctas = filmed.filter(item => item.kind === 'cta')
     const syncCtas = ctas.filter(item => item.ctaMode === 'sync').length
     const voCtas = ctas.length - syncCtas
-
-    if (hookAllocation === 'split') {
-      const unassigned = hooks.filter(hook => !channels.some(channel => channel.id === hook.channelId)).length
-      if (unassigned > 0) warn(`${person.name}: ${unassigned} hook${unassigned === 1 ? '' : 's'} not assigned to a channel`)
-    }
-
     return {
       id: person.id,
       name: person.name,
-      hooks: hooks.length,
-      bodies: bodies.length,
+      hooks,
+      bodies,
       ctas: ctas.length,
       syncCtas,
       voCtas,
+      // every channel's spot gets its own upload, even when one recording fills several
       clips: mine.length,
-      onCameraMin: hooks.length * settings.minutes_per_hook + syncCtas * settings.minutes_per_cta_sync,
-      voMin: bodies.length * settings.minutes_per_vo + voCtas * settings.minutes_per_cta_vo,
+      onCameraMin: hooks * settings.minutes_per_hook + syncCtas * settings.minutes_per_cta_sync,
+      voMin: bodies * settings.minutes_per_vo + voCtas * settings.minutes_per_cta_vo,
       recipes: 0,
       concepts: 0
     }
@@ -152,49 +159,24 @@ export function calculate(input: CalcInput): CalcResult {
 
   channels.forEach((channel, index) => {
     const result = perChannel[index]!
-    const linked = (input.channelPeople?.[channel.id] ?? []).filter(id => people.some(person => person.id === id))
-
-    if (linked.length) {
-      // Mixed: any linked person's hook + any linked person's VO + any linked person's CTA.
-      const bodies = linked.flatMap(id => of(id, 'body'))
-      const ctas = linked.flatMap(id => of(id, 'cta'))
-      // every CTA can follow every VO
-      const pairs = bodies.length * ctas.length
-      if (bodies.length && !ctas.length) warn(`${channel.name}: no CTAs, so its VOs can't make recipes`)
-      for (const id of linked) {
-        // recipes are credited to the person whose hook opens them
-        const hookCount = hooksOf(id, channel.id).length
-        const recipes = hookCount * pairs * variations
-        const concepts = hookCount * bodies.length
-        result.hooks += hookCount
-        result.recipes += recipes
-        result.concepts += concepts
-        personResult(id).recipes += recipes
-        personResult(id).concepts += concepts
-      }
-    } else {
-      // Same person: recipes(p,c) = H(p,c) × p's VOs × p's CTAs × V
-      for (const person of people) {
-        const bodies = of(person.id, 'body')
-        const ctas = of(person.id, 'cta')
-        if (bodies.length && !ctas.length) warn(`${person.name}: no CTAs, so their VOs can't make recipes`)
-        const hookCount = hooksOf(person.id, channel.id).length
-        const recipes = hookCount * bodies.length * ctas.length * variations
-        const concepts = hookCount * bodies.length
-        result.hooks += hookCount
-        result.recipes += recipes
-        result.concepts += concepts
-        personResult(person.id).recipes += recipes
-        personResult(person.id).concepts += concepts
-      }
+    for (const person of people) {
+      const of = (kind: ItemKind) => items.filter(item => item.personId === person.id && item.channelId === channel.id && item.kind === kind).length
+      const [hooks, bodies, ctas] = [of('hook'), of('body'), of('cta')]
+      if (!hooks && !bodies && !ctas) continue
+      if (bodies && !ctas) warn(`${person.name} on ${channel.name}: no CTAs, so their VOs can't make recipes`)
+      const recipes = hooks * bodies * ctas
+      const concepts = hooks * bodies
+      result.hooks += hooks
+      result.recipes += recipes
+      result.concepts += concepts
+      personResult(person.id).recipes += recipes
+      personResult(person.id).concepts += concepts
     }
   })
 
   for (const channel of perChannel) {
     channel.submissions = Math.round(channel.recipes * input.submissionRate)
-    if (hookAllocation === 'split' && channel.hooks === 0 && items.some(item => item.kind === 'hook')) {
-      warn(`${channel.name} has no hooks`)
-    }
+    if (channel.hooks === 0 && items.length) warn(`${channel.name} has no hooks`)
   }
   const sum = <T>(rows: T[], pick: (row: T) => number) => rows.reduce((total, row) => total + pick(row), 0)
   const recipes = sum(perChannel, c => c.recipes)

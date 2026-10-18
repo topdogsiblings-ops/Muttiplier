@@ -149,7 +149,7 @@ async function removeUser(row: Row<'allowed_users'>) {
 
 // --- defaults --------------------------------------------------------------
 const defaults = reactive({
-  default_submission_rate: 15,
+  default_submission_rate: 5,
   minutes_per_hook: 4.5,
   minutes_per_cta_sync: 3,
   minutes_per_vo: 9,
@@ -208,7 +208,7 @@ const clipCheckFields = [
 ] as const
 
 const defaultFields = [
-  { key: 'default_submission_rate', label: 'Default submission rate', unit: '%', help: 'Share of recipes rendered and submitted' },
+  { key: 'default_submission_rate', label: 'Default batch size', unit: '%', help: 'Share of a shoot\'s valid recipes each batch renders and submits; each shoot can change it' },
   { key: 'minutes_per_hook', label: 'Minutes per hook', unit: 'min', help: 'On camera' },
   { key: 'minutes_per_cta_sync', label: 'Minutes per sync CTA', unit: 'min', help: 'On camera' },
   { key: 'minutes_per_vo', label: 'Minutes per VO', unit: 'min', help: 'Recorded off set' },
@@ -424,7 +424,9 @@ async function saveDefaults() {
             </UFormField>
             <UFormField
               label="Channels"
-              help="The channels this person appears on. On a shoot, a channel's recipes can mix hooks, VOs and CTAs from all the people linked to it."
+              required
+              help="The channels this person appears on (at least one). On a shoot they film every hook, VO and CTA for each of them."
+              :error="person.channel_ids.length ? undefined : 'Pick at least one channel'"
             >
               <USelectMenu
                 v-model="person.channel_ids"
@@ -449,7 +451,7 @@ async function saveDefaults() {
           </div>
         </template>
         <template #footer>
-          <UButton label="Save" :loading="saving" :disabled="!person.name.trim() || !person.slug" @click="savePerson" />
+          <UButton label="Save" :loading="saving" :disabled="!person.name.trim() || !person.slug || !person.channel_ids.length" @click="savePerson" />
         </template>
       </UModal>
 

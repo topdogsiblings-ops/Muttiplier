@@ -6,11 +6,8 @@ import type { Beat, SlotContext } from '#shared/utils/slots'
 const props = defineProps<{
   item: BundleItem
   context: SlotContext
-  channels: { id: string, name: string }[]
   /** shoot is a draft: structure can still change */
   draft: boolean
-  /** hooks are split across channels */
-  split: boolean
   productId: string
   /** per-person line under a shot-list item: shows the person, hides what's shared by everyone */
   personName?: string
@@ -31,9 +28,7 @@ const unfilled = computed(() => props.item.kind === 'body'
   ? renderBeats(beats.value, props.context).unfilled
   : renderScript(text.value, props.context).unfilled)
 
-const channelOptions = computed(() => props.channels.map(channel => ({ label: channel.name, value: channel.id })))
 const compact = computed(() => !!props.personName)
-const canReassign = computed(() => props.item.kind === 'hook' && props.split && props.draft && !compact.value)
 
 // --- override editor -------------------------------------------------------
 const editing = ref(false)
@@ -89,9 +84,6 @@ function useVariant(variant: { script?: string, beats?: Beat[] }) {
   else if (variant.script) draftText.value = variant.script
 }
 
-function onDragStart(event: DragEvent) {
-  event.dataTransfer?.setData('text/plain', props.item.id)
-}
 
 const location = ref(props.item.location ?? '')
 watch(() => props.item.location, value => location.value = value ?? '')
@@ -102,18 +94,13 @@ function saveLocation() {
 </script>
 
 <template>
-  <div
-    class="flex items-start gap-3 px-3 py-2.5"
-    :class="{ 'cursor-grab': canReassign }"
-    :draggable="canReassign"
-    @dragstart="onDragStart"
-  >
+  <div class="flex items-start gap-3 px-3 py-2.5">
     <UBadge
       :label="props.personName ?? item.code"
-      :color="item.universal && !compact ? 'primary' : 'neutral'"
+      color="neutral"
       variant="subtle"
       class="mt-0.5 shrink-0"
-      :class="compact ? 'w-20 justify-center truncate' : 'font-mono'"
+      :class="compact ? 'w-32 justify-center truncate' : 'font-mono'"
     />
 
     <div class="min-w-0 flex-1 space-y-1.5">
@@ -187,7 +174,6 @@ function saveLocation() {
       </div>
 
       <div class="flex flex-wrap items-center gap-1.5">
-        <UBadge v-if="item.universal" label="universal" color="primary" variant="outline" size="sm" />
         <UBadge v-if="item.angle" :label="item.angle" color="neutral" variant="subtle" size="sm" />
         <UBadge v-if="item.format" :label="item.format.code" color="info" variant="subtle" size="sm" />
         <UBadge v-if="item.cta_mode" :label="item.cta_mode" color="info" variant="subtle" size="sm" />
@@ -216,15 +202,6 @@ function saveLocation() {
     </div>
 
     <div class="flex shrink-0 items-center gap-1">
-      <USelect
-        v-if="canReassign"
-        :model-value="item.channel_id ?? undefined"
-        :items="channelOptions"
-        size="xs"
-        placeholder="Channel"
-        class="w-32"
-        @update:model-value="emit('update', { channel_id: $event })"
-      />
       <UButton
         v-if="!editing"
         icon="i-lucide-pencil"

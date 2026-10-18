@@ -29,7 +29,7 @@ export interface PlannedFormat {
 }
 
 type ItemRow = Row<'shoot_items'> & {
-  hook: { is_universal: boolean, filming_notes: string | null, source_url: string | null, angle: { name: string } | null } | null
+  hook: { filming_notes: string | null, source_url: string | null, angle: { name: string } | null } | null
   cta: { source_url: string | null } | null
   body: {
     title: string
@@ -41,7 +41,7 @@ type ItemRow = Row<'shoot_items'> & {
 }
 
 const ITEM_SELECT = `*,
-  hook:hook_templates(is_universal, filming_notes, source_url, angle:angles(name)),
+  hook:hook_templates(filming_notes, source_url, angle:angles(name)),
   cta:cta_templates(source_url),
   body:body_templates(title, person_id, source_url, angle:angles(name), format:formats(id, code, name, description, cta_modes, beats, beat_descriptions, beat_broll))`
 
@@ -62,11 +62,11 @@ function toBundleItem(row: ItemRow): BundleItem {
     cta_mode: row.cta_mode,
     location: row.location,
     status: row.status,
+    rating: row.rating === 'good' || row.rating === 'bad' ? row.rating : null,
     take_notes: row.take_notes,
     sort_order: row.sort_order,
     template_id: (row.hook_template_id ?? row.body_template_id ?? row.cta_template_id)!,
     angle: row.hook?.angle?.name ?? row.body?.angle?.name ?? null,
-    universal: row.hook?.is_universal ?? false,
     filming_notes: row.hook?.filming_notes ?? null,
     caption: row.caption,
     title: row.body?.title ?? null,
@@ -133,12 +133,10 @@ export function bundleToCalcInput(bundle: ShootBundle, settings: CalcSettings): 
       channelId: item.channel_id,
       ctaMode: item.cta_mode,
       label: item.code,
-      status: item.status
+      status: item.status,
+      recordingKey: recordingKey(item)
     })),
     brollShots: bundle.broll.map(shot => ({ channelId: shot.channel_id, minClips: shot.min_clips, status: shot.status })),
-    hookAllocation: bundle.shoot.hook_allocation === 'shared' ? 'shared' : 'split',
-    channelPeople: bundle.channelPeople,
-    brollVariations: bundle.shoot.broll_variations,
     submissionRate: Number(bundle.shoot.submission_rate),
     settings
   }

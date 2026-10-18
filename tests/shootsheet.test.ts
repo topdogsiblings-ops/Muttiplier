@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ShootBundle } from '../shared/utils/shootsheet'
 import {
-  allocateChannels,
   buildCsv,
   buildShootsheet,
   groupShotList,
@@ -16,7 +15,7 @@ const format = { code: 'F02', cta_modes: ['sync', 'vo'], beats: ['problem', 'pro
 
 function bundle(): ShootBundle {
   return {
-    shoot: { code: 'S014', shoot_date: '2026-10-20', status: 'planned', hook_allocation: 'split', broll_variations: 3, submission_rate: 0.15 },
+    shoot: { code: 'S014', shoot_date: '2026-10-20', status: 'planned', broll_variations: 3, submission_rate: 0.15 },
     brand: { name: 'PawCo', slug: 'pawco' },
     product: { name: 'Calming Chews', slug: 'calming-chews', slot_values: { benefit: 'calmer walks' } },
     people: [{ id: 'p1', slug: 'joe', name: 'Joe' }],
@@ -28,23 +27,23 @@ function bundle(): ShootBundle {
       {
         id: 'i1', code: 'H01', kind: 'hook', person_id: 'p1', channel_id: 'c1', script_snapshot: 'Nobody told me {{product}} could do this for {{dog}}',
         script_override: null, cta_mode: null, location: 'kitchen', status: 'planned', sort_order: 0, template_id: 'aaaaaaaa-0000-0000-0000-000000000001',
-        angle: 'curiosity', universal: false, format: null, caption: '{{dog}} and {{product}}: {{benefit}}'
+        angle: 'curiosity', format: null, caption: '{{dog}} and {{product}}: {{benefit}}'
       },
       {
         id: 'i2', code: 'U01', kind: 'hook', person_id: 'p1', channel_id: 'c2', script_snapshot: 'POV: {{dog}} finally settles',
         script_override: null, cta_mode: null, location: null, status: 'planned', sort_order: 1, template_id: '1a2b3c4d-0000-0000-0000-000000000002',
-        angle: 'pov', universal: true, format: null
+        angle: 'pov', format: null
       },
       {
         id: 'i3', code: 'V01', kind: 'body', person_id: 'p1', channel_id: null,
         script_snapshot: [{ beat: 'problem', script: 'My dog pulled' }, { beat: 'product', script: '{{brand}} {{product}}' }, { beat: 'result', script: '{{benefit}}' }],
         script_override: null, cta_mode: null, location: null, status: 'planned', sort_order: 2, template_id: 'bbbbbbbb-0000-0000-0000-000000000003',
-        angle: 'problem', universal: false, format
+        angle: 'problem', format
       },
       {
         id: 'i4', code: 'C01', kind: 'cta', person_id: 'p1', channel_id: null, script_snapshot: 'Template CTA',
         script_override: 'Grab {{product}}, "today"', cta_mode: 'sync', location: null, status: 'planned', sort_order: 3,
-        template_id: 'cccccccc-0000-0000-0000-000000000004', angle: null, universal: false, format: null
+        template_id: 'cccccccc-0000-0000-0000-000000000004', angle: null, format: null
       }
     ],
     broll: [
@@ -61,11 +60,6 @@ describe('codes and allocation', () => {
     expect(nextItemCodes(['C99'], 'C', 1)).toEqual(['C100'])
   })
 
-  it('allocates hooks round-robin, topping up the least-loaded channel', () => {
-    expect(allocateChannels(['a', 'b', 'c'], {}, 5)).toEqual(['a', 'b', 'c', 'a', 'b'])
-    expect(allocateChannels(['a', 'b', 'c'], { a: 2, b: 1 }, 3)).toEqual(['c', 'b', 'c'])
-    expect(allocateChannels([], {}, 3)).toEqual([])
-  })
 })
 
 describe('shared shot list', () => {
@@ -166,7 +160,7 @@ describe('buildShootsheet', () => {
   it('matches the worker contract', () => {
     const sheet = buildShootsheet(bundle())
     expect(sheet.schema_version).toBe(1)
-    expect(sheet.shoot).toMatchObject({ code: 'S014', date: '2026-10-20', hook_allocation: 'split', broll_variations: 3, submission_rate: 0.15 })
+    expect(sheet.shoot).toMatchObject({ code: 'S014', date: '2026-10-20', broll_variations: 3, submission_rate: 0.15 })
     expect(sheet.channels[0]).toEqual({ slug: 'topdognix', folder_slug: 'nix', dogs: ['nix'] })
     expect(sheet.formats).toEqual([format])
     expect(sheet.items.map(item => [item.code, item.file])).toEqual([
@@ -178,7 +172,7 @@ describe('buildShootsheet', () => {
     ])
     expect(sheet.items[1]).toEqual({
       code: 'H01', kind: 'hook', person: 'joe', channel: 'topdognix', template_id: 'aaaaaaaa-0000-0000-0000-000000000001',
-      angle: 'curiosity', universal: false, script: 'Nobody told me Calming Chews could do this for my Doberman',
+      angle: 'curiosity', script: 'Nobody told me Calming Chews could do this for my Doberman',
       caption: 'my Doberman and Calming Chews: calmer walks',
       file: 'pawco/calming-chews/shoots/S014/edited/hooks/joe/H01',
       raw_file: 'pawco/calming-chews/shoots/S014/raw/hooks/joe/H01'

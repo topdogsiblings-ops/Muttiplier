@@ -31,7 +31,6 @@ export interface BundleItem {
   sort_order: number
   template_id: string
   angle: string | null
-  universal: boolean
   /** hooks: how to film it, from the template */
   filming_notes?: string | null
   /** hooks: suggested post caption, copied from the template like the script and frozen when planned */
@@ -41,6 +40,8 @@ export interface BundleItem {
   writer_id?: string | null
   /** the Library template's source link, if it has one */
   source_url?: string | null
+  /** how the filmed clip did, for later shortlists: good ones favoured, bad ones left out */
+  rating?: 'good' | 'bad' | null
   format: {
     code: string
     cta_modes: string[]
@@ -74,7 +75,6 @@ export interface ShootBundle {
     code: string
     shoot_date: string | null
     status: string
-    hook_allocation: string
     broll_variations: number
     submission_rate: number
   }
@@ -90,9 +90,9 @@ export interface ShootBundle {
 
 // --- codes -----------------------------------------------------------------
 
-/** H = hook, V = body (VO), C = CTA, U = universal hook */
-export function itemPrefix(kind: ItemKind, universal = false): 'H' | 'V' | 'C' | 'U' {
-  if (kind === 'hook') return universal ? 'U' : 'H'
+/** H = hook, V = body (VO), C = CTA */
+export function itemPrefix(kind: ItemKind): 'H' | 'V' | 'C' {
+  if (kind === 'hook') return 'H'
   return kind === 'body' ? 'V' : 'C'
 }
 
@@ -111,20 +111,20 @@ export function nextItemCodes(existingCodes: string[], prefix: string, count: nu
 }
 
 /**
- * Split-mode allocation: hand out `count` hooks to the least-loaded channel first, so a
- * person's hooks end up round-robin across the shoot's channels.
+ * Every item is filmed per person per channel, but a script that doesn't name the dog reads the
+ * same on every channel, so the person records it once and that one take fills each channel's
+ * spot. Items with the same key are one recording. A draft's script still says {{dog}}, so it's
+ * per channel; a planned shoot's has the dog phrase filled in, so it differs per channel anyway.
  */
-export function allocateChannels(channelIds: string[], existing: Record<string, number>, count: number): string[] {
-  if (channelIds.length === 0) return []
-  const load = new Map(channelIds.map(id => [id, existing[id] ?? 0]))
-  const result: string[] = []
-  for (let i = 0; i < count; i++) {
-    let pick = channelIds[0]!
-    for (const id of channelIds) if (load.get(id)! < load.get(pick)!) pick = id
-    load.set(pick, load.get(pick)! + 1)
-    result.push(pick)
-  }
-  return result
+export function recordingKey(item: Pick<BundleItem, 'person_id' | 'channel_id' | 'code' | 'script_snapshot' | 'script_override'>): string {
+  const script = JSON.stringify(item.script_override ?? item.script_snapshot ?? '')
+  const perChannel = script.includes('{{dog}}')
+  return `${item.person_id}|${item.code}|${perChannel ? item.channel_id : '*'}|${script}`
+}
+
+/** The channels a person films for on a shoot: the shoot's channels they're linked to. */
+export function channelsFor(bundle: Pick<ShootBundle, 'channels' | 'channelPeople'>, personId: string) {
+  return bundle.channels.filter(channel => bundle.channelPeople?.[channel.id]?.includes(personId))
 }
 
 // --- scripts ---------------------------------------------------------------
@@ -248,7 +248,7 @@ export function planSnapshots(bundle: ShootBundle): {
 
 // --- folders ---------------------------------------------------------------
 
-const KIND_FOLDER: Record<ItemKind, string> = { hook: 'hooks', body: 'vo', cta: 'ctas' }
+export const KIND_FOLDER: Record<ItemKind, string> = { hook: 'hooks', body: 'vo', cta: 'ctas' }
 
 /**
  * Everything from a shoot lives in its shoot folder. `raw/` and `edited/` have the same tree:
@@ -270,7 +270,7 @@ export function shootFolder(bundle: Pick<ShootBundle, 'brand' | 'product' | 'sho
   return `${productFolder(bundle)}/shoots/${bundle.shoot.code}`
 }
 
-/** A hook, VO or CTA, as a file without extension: `<kind>/<person>/<code>` (universal hooks too, by their U code). */
+/** A hook, VO or CTA, as a file without extension: `<kind>/<person>/<code>`. */
 export function itemPath(bundle: ShootBundle, item: BundleItem, stage: ClipStage = 'raw'): string {
   const person = bundle.people.find(p => p.id === item.person_id)?.slug ?? 'unknown'
   return `${shootFolder(bundle)}/${stage}/${KIND_FOLDER[item.kind]}/${person}/${item.code}`
@@ -317,7 +317,6 @@ export function buildShootsheet(bundle: ShootBundle) {
       date: bundle.shoot.shoot_date,
       brand: { name: bundle.brand.name, slug: bundle.brand.slug },
       product: { name: bundle.product.name, slug: bundle.product.slug, slot_values: bundle.product.slot_values ?? {} },
-      hook_allocation: bundle.shoot.hook_allocation,
       broll_variations: bundle.shoot.broll_variations,
       submission_rate: Number(bundle.shoot.submission_rate)
     },
@@ -345,7 +344,7 @@ export function buildShootsheet(bundle: ShootBundle) {
       const folders = { file: itemPath(bundle, item, 'edited'), raw_file: itemPath(bundle, item, 'raw') }
       if (item.kind === 'hook') {
         const caption = item.caption ? renderScript(item.caption, itemSlotContext(bundle, item.channel_id)).text : null
-        return { ...base, angle: item.angle, universal: item.universal, script: script.text ?? '', caption, ...folders }
+        return { ...base, angle: item.angle, script: script.text ?? '', caption, ...folders }
       }
       if (item.kind === 'body') return { ...base, format: item.format?.code ?? null, angle: item.angle, beats: script.beats ?? [], ...folders }
       return { ...base, cta_mode: item.cta_mode, script: script.text ?? '', ...folders }

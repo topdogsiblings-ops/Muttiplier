@@ -87,7 +87,7 @@ const options = computed<Option[]>(() => {
       id: row.id,
       title: null,
       text: row.script,
-      badges: [...(row.is_universal ? ['universal'] : []), ...(angleName(row.angle_id) ? [angleName(row.angle_id)!] : [])],
+      badges: angleName(row.angle_id) ? [angleName(row.angle_id)!] : [],
       tags: row.tags,
       angleId: row.angle_id
     }))

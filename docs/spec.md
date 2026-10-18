@@ -95,7 +95,7 @@ Scripts use double-brace slots: `{{brand}}`, `{{product}}`, `{{dog}}`, plus any 
 
 ### Rules
 
-- **Universal hooks** (`is_universal = true`) work for any brand: they may only use `{{dog}}`. Enforced in the editor and by a database check. On a shoot they get `U` codes and are filed like any other hook, by code (§10d).
+- **Per channel:** every hook, VO and CTA is filmed per person per channel. A script that says `{{dog}}` needs a separate take for each channel (each says that channel's dog); one that doesn't is recorded once and that take fills each of the person's channels. There are no universal hooks: hooks never cross shoots.
 - VOs should be written dog-neutral by default ("my dog", "my pup") so all channels can share them. Not enforced; soft warning if a VO uses `{{dog}}`.
 - Editor UI: highlight slots, show a live preview against a chosen product + channel.
 
@@ -114,7 +114,7 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 - `id` (= auth user id), `email`, `full_name`, `avatar_url`
 
 **settings** (single row)
-- `default_submission_rate numeric default 0.15`
+- `default_submission_rate numeric default 0.05` — the default batch size for new shoots (share of valid recipes)
 - `minutes_per_hook numeric default 4.5`
 - `minutes_per_cta_sync numeric default 3`
 - `minutes_per_vo numeric default 9`
@@ -173,7 +173,7 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 **body_template_products** — `body_template_id`, `product_id`, pk on both. The products a VO is written for; none = universal (offered for every product).
 
 **hook_templates**
-- `script text`, `angle_id`, `is_universal boolean default false`, `est_seconds int`, `tags text[]`, `notes text`
+- `script text`, `angle_id`, `est_seconds int`, `tags text[]`, `notes text` (`is_universal` is legacy, always false)
 - `filming_notes text` — how to film it (shown on the checklist)
 - `caption text` — suggested on-screen caption (may use slots)
 
@@ -189,11 +189,11 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 - `product_id`, `shoot_date date`, `location_notes text`, `notes text`
 - `status text check (status in ('draft','planned','shooting','filmed','edited','ingested','rendering','done'))` — this app sets `draft` → `planned` → `shooting` → `filmed` (and back, §9); later stages are reserved for the worker
 - `started_at`, `started_by`, `ended_at`, `ended_by` — stamped by trigger on status changes only
-- `broll_variations int default 3` — b-roll arrangements per VO used in recipe estimates
+- `broll_variations int` — legacy, unused
 - `submission_rate numeric` — defaults from settings
 - `runway_target int default 60` — target submissions per channel per month, for runway
 - `kit text check (kit in ('audition','scale','custom'))` — a tag for the shoot only; it changes nothing
-- `hook_allocation text default 'shared'` — legacy; hooks are always shared across channels
+- `hook_allocation text` — legacy, unused: every item is per channel
 
 **shoot_people** — `shoot_id`, `person_id`, pk on both
 **shoot_channels** — `shoot_id`, `channel_id`, pk on both. Default: the product's brand's `brand_channels`.
@@ -203,7 +203,8 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 - `shoot_id`, `person_id`
 - `kind text check (kind in ('hook','body','cta'))`
 - `hook_template_id` / `body_template_id` / `cta_template_id` (exactly one set, matching `kind`)
-- `code text` — shared per template within a shoot: everyone filming the same hook has the same code. Hooks `H01…`, VOs `V01…`, CTAs `C01…`, universal hooks `U01…`. Unique on (`shoot_id`, `person_id`, `code`), deferrable for renumbering.
+- `code text` — shared per template within a shoot: everyone filming the same hook has the same code, on every channel. Hooks `H01…`, VOs `V01…`, CTAs `C01…`. Unique on (`shoot_id`, `person_id`, `channel_id`, `code`).
+- `channel_id` — the channel this item is filmed for (every kind of item); a person has one item per code per channel they're linked to
 - `channel_id` — null (hooks are used for every channel); kept for older rows
 - `script_snapshot` — `text` for hooks/CTAs, `jsonb` beats for VOs: the template at plan time
 - `script_override` — same type, nullable: per-person rewording; takes priority over the snapshot
@@ -235,7 +236,7 @@ Snapshots matter: editing a template later must never change a shoot that's alre
 
 Tabs: **Hooks, CTAs, Formats & VOs, Angles**.
 
-- List view with search, filters (angle, tags, universal, CTA mode, archived) and sort; paginated.
+- List view with search, filters (angle, tags, CTA mode, archived) and sort; paginated.
 - Tags input autocompletes from tags already used in the Library.
 - Create / edit drawer:
   - Script editor with slot palette and slot highlighting.
@@ -271,10 +272,10 @@ Table of shoots: code, brand, product, date, status, people, channels, estimated
 
 Single page with a scrollable **calculator panel** (right side on desktop, drawer on mobile) that updates live. Four sections, each collapsible and each with a **Clear** action (confirmed):
 
-1. **Setup:** product, date, location, people (add/remove; any active person), channels (default from the brand), b-roll variations per VO, submission rate, runway target, kit tag.
+1. **Setup:** product, date, location, people (add/remove; any active person), channels (default from the brand), batch size (% of valid recipes, default 5%), runway target, kit tag. Everyone must be linked to at least one of the shoot's channels (it blocks planning).
 2. **Formats:** add or remove formats on the plan. Removing a format (confirmed) also removes its VOs and its b-roll.
 3. **Structure:** one shared shot list that **everyone films together**, one by one:
-   - **Hooks** — used for every channel (no per-channel split).
+   - **Hooks** — each person films every hook once per channel they're linked to (the per-person rows show person · channel).
    - **Formats & VOs** — one collapsible panel per planned format, with an "Add F01 VOs" picker limited to that format. The picker only offers VOs that are universal or for the shoot's product, and written by anyone or by someone on the shoot. A VO with a writer goes on the shot list for that person only.
    - **CTAs.**
    - Every item shows its rendered script (slots filled; `{{dog}}` per §5). One **Edit** menu per line: **For everyone** rewrites the shoot's own copy of a line (every person's snapshot) for this shoot only; the library isn't touched and per-person overrides stay on top. **Permanently** (hooks and CTAs) edits the Library template for later shoots and updates this shoot's copy to match (a planned shoot's copy with slots filled); other shoots keep their own copy, and universal hooks still only allow `{{dog}}`. **Per person** opens each person's own version. Or edit a person's line inline to create a per-person override, or use AI to reword it per person. Captions on hooks are snapshotted.
@@ -291,30 +292,24 @@ Single page with a scrollable **calculator panel** (right side on desktop, drawe
 
 ### Calculator (live)
 
-Definitions, per person *p* and channel *c* in the shoot (skipped items are ignored):
-
-- `H(p)` = *p*'s hooks (every hook is used on every channel)
-- `B(p)`, `C(p)` = *p*'s VOs and CTAs. Any CTA can follow any VO.
-- `V` = `broll_variations`
-- `L(c)` = people on the shoot linked to channel *c* (§6 `person_channels`)
+Recipes follow the batching rules (§14): one hook, one VO and one CTA, **all from the same person and the same channel**. A person only films for the shoot's channels they're linked to. Per person *p* and channel *c* (skipped items ignored):
 
 ```
-if L(c) is empty (same-person rule):
-  recipes(p,c) = H(p) × B(p) × C(p) × V
-if L(c) is not empty (mixed):
-  recipes(p,c) = H(p) × [Σ over q in L(c) of B(q)] × [Σ over q in L(c) of C(q)] × V   for p in L(c), else 0
-  (credited to p, whose hook opens the recipe)
+recipes(p,c) = H(p,c) × B(p,c) × C(p,c)        (p's hooks, VOs and CTAs filmed for c; any CTA follows any VO)
 recipes(c)   = Σ over p of recipes(p,c)
 recipes      = Σ over c of recipes(c)
-submissions  = round(recipes × submission_rate)          (also shown per channel)
-concepts(p,c)= H(p) × number of VOs available to p on c   (distinct hook×VO pairs)
+submissions  = round(recipes × batch size)        (also shown per channel)
+concepts(p,c)= H(p,c) × B(p,c)                    (distinct hook × VO pairs)
 ```
+
+Whether b-roll can cover every beat is only known once the edits are in (§14), so the planner's count is the most a shoot can make.
 
 Time estimates (from settings). Everyone films on their own phone at the same time, so the shoot is as long as the busiest person:
 
 ```
 on_camera_min(p) = hooks(p) × minutes_per_hook + sync_ctas(p) × minutes_per_cta_sync
 vo_min(p)        = vos(p) × minutes_per_vo + vo_ctas(p) × minutes_per_cta_vo
+(each counted per recording: a script that doesn't name the dog is recorded once for all of p's channels)
 shoot_days       = max over p of on_camera_min(p) / 60 / productive_hours_per_day   (rounded up to 0.5)
 ```
 
@@ -324,11 +319,11 @@ Panel shows:
 - **Per person:** stacked bars of on-camera vs VO time, plus clips, recipes and concepts.
 - **Totals:** clips, recipes, estimated submissions, on-camera hours, VO hours, shoot days, b-roll clips.
 - **Runway:** months of supply per channel at the shoot's `runway_target`.
-- **Warnings:** someone (or a mixed channel) has VOs but no CTAs; unfilled slots.
+- **Warnings:** someone has VOs but no CTAs on a channel; items not on one of the shoot's channels; unfilled slots.
 
 Chart colours use a fixed, colour-blind-checked categorical palette (`--chart-1…8`, separate light/dark values); every chart also shows its values as text.
 
-Test case (3 people, 3 channels, no linked people, each person with 30 hooks, 10 VOs, 5 CTAs, V = 3): recipes per channel = 3 × (30 × 10 × 5 × 3) = 13,500; total = 40,500; submissions at 15% = 6,075.
+Test case: Joe on Nix and Whiskey, Sam on Nix, Alex on Both, each with 10 hooks, 4 VOs and 3 CTAs per channel: Nix 240, Whiskey 120, Both 120, total 480 recipes; a 5% batch is 24.
 
 ---
 
@@ -373,7 +368,6 @@ The contract with the future worker. Download from the shoot page. Skipped items
     "date": "2026-10-20",
     "brand": { "name": "PawCo", "slug": "pawco" },
     "product": { "name": "Calming Chews", "slug": "calming-chews", "slot_values": {} },
-    "hook_allocation": "shared",
     "broll_variations": 3,
     "submission_rate": 0.15
   },
@@ -383,7 +377,7 @@ The contract with the future worker. Download from the shoot page. Skipped items
   "items": [
     {
       "code": "H01", "kind": "hook", "person": "joe", "channel": null,
-      "template_id": "uuid", "angle": "curiosity", "universal": false,
+      "template_id": "uuid", "angle": "curiosity",
       "script": "Nobody told me Calming Chews could do this…",
       "caption": "…",
       "file": "pawco/calming-chews/shoots/S014/edited/hooks/joe/H01",
@@ -432,7 +426,7 @@ UGC/
     shoots/[S###]/                         named by the shoot code
       shootsheet.json
       raw/
-        hooks/[person]/H##.mov             one file per hook, named by code (universal hooks too, as U##)
+        hooks/[person]/H##.mov             one file per hook, named by code
         vo/[person]/V##.m4a                with its captions alongside, e.g. V##.srt
         ctas/[person]/C##.mov
         b-roll/[channel]/[beat]/           each channel's own b-roll, loose under the clips' own names;
@@ -454,7 +448,7 @@ All slugs lowercase kebab-case; generate once and never change after a shoot is 
 
 Server routes calling the Anthropic API (`ANTHROPIC_MODEL`, default `claude-opus-5-5`). Every generation produces **drafts** a person approves before saving; nothing writes to the Library automatically. Refusals and invalid output are reported, not saved.
 
-- **Hook drafts:** given an angle and optional tags, generate N brand-agnostic hooks in slot syntax, each with a suggested caption. Universal hook drafts that use any slot other than `{{dog}}` are dropped.
+- **Hook drafts:** given an angle and optional tags, generate N hooks in slot syntax, each with a suggested caption.
 - **VO drafts:** given a format (and its beat descriptions) and an angle, generate a beat-structured VO script.
 - **CTA drafts:** given a mode (sync/vo), generate CTAs.
 - **Per-person rewording:** in the planner, reword a hook, VO or CTA for each person (saved as `script_override`), so cast members don't say identical lines.
@@ -488,8 +482,8 @@ Goal: clips go straight from the shoot into the right Dropbox folders (§10d), s
 - ✅ Can create a brand, a product with custom slots, and assign channels.
 
 **Phase 2 — Library** ✔
-- CRUD for formats & VOs, hooks, CTAs, angles; slot highlighting; live preview; universal validation; archive; usage counts; duplicate; seeded starter library.
-- ✅ A universal hook containing `{{brand}}` cannot be saved. Preview flags unfilled slots.
+- CRUD for formats & VOs, hooks, CTAs, angles; slot highlighting; live preview; archive; usage counts; duplicate; seeded starter library.
+- ✅ Preview flags unfilled slots.
 
 **Phase 3 — Shoot planner** ✔
 - Setup / Formats / Structure / B-roll, shared shot list, auto codes, inline overrides, b-roll from format suggestions, status flow including back to draft, start/end/resume.
@@ -515,7 +509,7 @@ Goal: clips go straight from the shoot into the right Dropbox folders (§10d), s
 - Database changes as SQL migrations in the repo (`supabase/migrations`).
 - Pure, unit-tested modules in `shared/utils/` (Vitest, `tests/`), shared by the UI and server routes:
   - `calculator.ts` — recipes, submissions, time, runway
-  - `slots.ts` — slot rendering, universal-hook rule, VO length estimate
+  - `slots.ts` — slot rendering, VO length estimate
   - `shootsheet.ts` — shot list grouping, folders, CSV, `shootsheet.json`, skeleton
   - `brandImport.ts` — Scrybe CSV parsing and import planning
 - No hard deletes on library or shoot data; archive instead. (Removing items from a draft shoot is allowed.)

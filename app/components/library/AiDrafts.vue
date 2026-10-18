@@ -12,7 +12,6 @@ const emit = defineEmits<{
     beats?: Beat[]
     angle_id?: string
     format_id?: string
-    is_universal?: boolean
     mode?: string
     tags?: string[]
     product_ids?: string[]
@@ -35,7 +34,6 @@ const form = reactive({
   product_id: undefined as string | undefined,
   mode: 'sync',
   tags: [] as string[],
-  universal: false,
   count: props.kind === 'body' ? 2 : 6,
   brief: ''
 })
@@ -54,9 +52,9 @@ async function generate() {
   loading.value = true
   await run(async () => {
     const angle = angles.value.find(a => a.id === form.angle_id)?.name
-    const shared = { count: form.count, brief: form.brief.trim() || undefined, productId: form.universal ? undefined : form.product_id }
+    const shared = { count: form.count, brief: form.brief.trim() || undefined, productId: form.product_id }
     const body = props.kind === 'hook'
-      ? { type: 'hooks' as const, ...shared, angle, tags: form.tags, universal: form.universal }
+      ? { type: 'hooks' as const, ...shared, angle, tags: form.tags }
       : props.kind === 'cta'
         ? { type: 'ctas' as const, ...shared, mode: form.mode as 'sync' | 'vo', tags: form.tags }
         : { type: 'body' as const, ...shared, angle, formatId: form.format_id! }
@@ -67,7 +65,7 @@ async function generate() {
 }
 
 function use(draft: { title?: string, script?: string, caption?: string, beats?: Beat[] }) {
-  if (props.kind === 'hook') emit('use', { script: draft.script, caption: draft.caption, angle_id: form.angle_id, is_universal: form.universal, tags: [...form.tags] })
+  if (props.kind === 'hook') emit('use', { script: draft.script, caption: draft.caption, angle_id: form.angle_id, tags: [...form.tags] })
   else if (props.kind === 'cta') emit('use', { script: draft.script, mode: form.mode, tags: [...form.tags] })
   // a VO drafted for a product is for that product
   else emit('use', { title: draft.title, beats: draft.beats, format_id: form.format_id, angle_id: form.angle_id, product_ids: form.product_id ? [form.product_id] : [] })
@@ -104,7 +102,6 @@ function use(draft: { title?: string, script?: string, caption?: string, beats?:
               value-key="value"
               placeholder="None (brand-agnostic)"
               class="w-full"
-              :disabled="form.universal"
             />
           </UFormField>
           <UFormField label="How many">
@@ -114,12 +111,6 @@ function use(draft: { title?: string, script?: string, caption?: string, beats?:
         <UFormField v-if="props.kind !== 'body'" label="Tags" help="Themes to lean on. Pick existing tags or type new ones.">
           <TagInput v-model="form.tags" />
         </UFormField>
-        <USwitch
-          v-if="props.kind === 'hook'"
-          v-model="form.universal"
-          label="Universal hooks"
-          description="Brand-agnostic: only {{dog}} is allowed."
-        />
         <UFormField label="Brief" help="Optional notes: audience, tone, what to avoid">
           <UTextarea v-model="form.brief" autoresize :rows="2" class="w-full" />
         </UFormField>

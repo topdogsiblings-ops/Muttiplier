@@ -14,7 +14,6 @@ const props = defineProps<{
   group: ShotGroup
   bundle: LoadedShoot
   draft: boolean
-  split: boolean
   productId: string
 }>()
 const emit = defineEmits<{
@@ -39,8 +38,7 @@ const unfilled = computed(() => {
   return [...slots]
 })
 
-const channelOptions = computed(() => props.bundle.channels.map(channel => ({ label: channel.name, value: channel.id })))
-const canReassign = computed(() => props.group.kind === 'hook' && props.split && props.draft)
+const channelName = (id: string | null) => props.bundle.channels.find(channel => channel.id === id)?.name ?? 'no channel'
 
 const expanded = ref(false)
 
@@ -81,7 +79,6 @@ const db = useDb()
 const run = useAction()
 const editingLibrary = ref(false)
 const libraryText = ref('')
-const libraryUniversal = ref(false)
 const loadingLibrary = ref(false)
 const libraryTable = computed(() => primary.value.kind === 'hook' ? 'hook_templates' as const : 'cta_templates' as const)
 
@@ -89,13 +86,11 @@ async function startEditLibrary() {
   loadingLibrary.value = true
   await run(async () => {
     if (libraryTable.value === 'hook_templates') {
-      const row = mustOne(await db.from('hook_templates').select('script, is_universal').eq('id', primary.value.template_id).single())
+      const row = mustOne(await db.from('hook_templates').select('script').eq('id', primary.value.template_id).single())
       libraryText.value = row.script
-      libraryUniversal.value = row.is_universal
     } else {
       const row = mustOne(await db.from('cta_templates').select('script').eq('id', primary.value.template_id).single())
       libraryText.value = row.script
-      libraryUniversal.value = false
     }
     editingAll.value = false
     editingLibrary.value = true
@@ -103,9 +98,7 @@ async function startEditLibrary() {
   loadingLibrary.value = false
 }
 
-/** Universal hooks may only use {{dog}} (the Library enforces the same). */
-const libraryViolations = computed(() => libraryUniversal.value ? universalHookViolations(libraryText.value) : [])
-const canSaveLibrary = computed(() => !!libraryText.value.trim() && !libraryViolations.value.length)
+const canSaveLibrary = computed(() => !!libraryText.value.trim())
 
 const savingLibrary = ref(false)
 async function saveLibrary() {
@@ -136,17 +129,14 @@ const editItems = computed<DropdownMenuItem[]>(() => [
   : [{ label: 'Permanently', description: 'In the Library, for later shoots', icon: 'i-lucide-book-marked', onSelect: startEditLibrary }])
 ])
 
-function onDragStart(event: DragEvent) {
-  event.dataTransfer?.setData('text/plain', props.group.key)
-}
 </script>
 
 <template>
-  <div class="px-3 py-2.5" :class="{ 'cursor-grab': canReassign }" :draggable="canReassign" @dragstart="onDragStart">
+  <div class="px-3 py-2.5">
     <div class="flex items-start gap-3">
       <UBadge
         :label="group.code"
-        :color="primary.universal ? 'primary' : 'neutral'"
+        color="neutral"
         variant="subtle"
         class="mt-0.5 shrink-0 font-mono"
       />
@@ -157,10 +147,7 @@ function onDragStart(event: DragEvent) {
         </p>
         <!-- permanently: the Library template, and this shoot with it -->
         <div v-if="editingLibrary" class="space-y-2 rounded-lg border border-primary/40 p-2.5">
-          <ScriptEditor v-model="libraryText" :invalid-slots="libraryViolations" />
-          <p v-if="libraryViolations.length" class="text-xs text-error">
-            Universal hooks can only use <code v-pre>{{dog}}</code>.
-          </p>
+          <ScriptEditor v-model="libraryText" />
           <p class="text-xs text-muted">
             Changes the {{ primary.kind === 'hook' ? 'hook' : 'CTA' }} in the Library for every later shoot, and this shoot's line for everyone.
             Other shoots keep their own copy.<template v-if="overrides">
@@ -208,7 +195,6 @@ function onDragStart(event: DragEvent) {
         </p>
 
         <div class="flex flex-wrap items-center gap-1.5">
-          <UBadge v-if="primary.universal" label="universal" color="primary" variant="outline" size="sm" />
           <UBadge v-if="primary.angle" :label="primary.angle" color="neutral" variant="subtle" size="sm" />
           <UBadge v-if="primary.format" :label="primary.format.code" color="info" variant="subtle" size="sm" />
           <UBadge v-if="writer" :label="`${writer}'s own`" icon="i-lucide-user" color="primary" variant="subtle" size="sm" />
@@ -247,15 +233,6 @@ function onDragStart(event: DragEvent) {
       </div>
 
       <div class="flex shrink-0 items-center gap-1">
-        <USelect
-          v-if="canReassign"
-          :model-value="primary.channel_id ?? undefined"
-          :items="channelOptions"
-          size="xs"
-          placeholder="Channel"
-          class="w-32"
-          @update:model-value="emit('updateGroup', { channel_id: $event })"
-        />
         <UDropdownMenu v-if="!editingAll && !editingLibrary" :items="editItems" :content="{ align: 'end' }">
           <UButton
             :loading="loadingLibrary"
@@ -287,18 +264,16 @@ function onDragStart(event: DragEvent) {
           Only {{ writer }} performs this: they wrote it.
         </template>
         <template v-else>
-          Everyone films this. Edit someone's line to give them their own wording.
+          Everyone films this, once per channel they're on. Edit someone's line to give them their own wording.
         </template>
       </p>
       <PlannerItemRow
         v-for="item in group.items"
         :key="item.id"
         :item="item"
-        :person-name="personName(item.person_id)"
+        :person-name="`${personName(item.person_id)} · ${channelName(item.channel_id)}`"
         :context="itemSlotContext(bundle, item.channel_id)"
-        :channels="bundle.channels"
         :draft="draft"
-        :split="split"
         :product-id="productId"
         @update="emit('updateItem', item, $event)"
       />
