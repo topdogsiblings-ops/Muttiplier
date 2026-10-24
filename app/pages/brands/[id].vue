@@ -4,7 +4,7 @@ import type { Row } from '#shared/types/models'
 const route = useRoute()
 const db = useDb()
 const run = useAction()
-const { channels, load } = useRefData()
+const { channels, features, load } = useRefData()
 const brandId = route.params.id as string
 
 const brand = ref<Row<'brands'> | null>(null)
@@ -69,7 +69,9 @@ const product = reactive({
   slots: [] as { key: string, value: string }[],
   claims_allowed: '',
   claims_forbidden: '',
-  notes: ''
+  notes: '',
+  /** core features, in order: every VO is about one of them */
+  features: [] as { id: string, name: string, description: string }[]
 })
 const requestProductOpen = useGuardedClose(productOpen, product)
 watch(() => product.name, (name) => {
@@ -85,9 +87,18 @@ function editProduct(row?: Row<'products'>) {
     slots: Object.entries(values).map(([key, value]) => ({ key, value: String(value ?? '') })),
     claims_allowed: row?.claims_allowed ?? '',
     claims_forbidden: row?.claims_forbidden ?? '',
-    notes: row?.notes ?? ''
+    notes: row?.notes ?? '',
+    features: featuresOf(row?.id).map(feature => ({ id: feature.id, name: feature.name, description: feature.description ?? '' }))
   })
   productOpen.value = true
+}
+
+const featuresOf = (productId: string | undefined) => features.value.filter(feature => feature.product_id === productId)
+
+function moveFeature(index: number, by: number) {
+  const list = product.features
+  const [moved] = list.splice(index, 1)
+  list.splice(index + by, 0, moved!)
 }
 
 const slotList = (row: Row<'products'>) =>
@@ -112,8 +123,19 @@ async function saveProduct() {
       claims_forbidden: product.claims_forbidden.trim() || null,
       notes: product.notes.trim() || null
     }
-    if (product.id) must(await db.from('products').update(fields).eq('id', product.id))
-    else must(await db.from('products').insert({ ...fields, brand_id: brandId, slug: product.slug }))
+    const productId = product.id
+      ? (must(await db.from('products').update(fields).eq('id', product.id)), product.id)
+      : must(await db.from('products').insert({ ...fields, brand_id: brandId, slug: product.slug }).select('id').single()).id
+
+    // features: update the ones kept (in their new order), add new ones, remove the rest
+    const kept = product.features.filter(feature => feature.name.trim())
+    const removed = featuresOf(product.id || undefined).filter(feature => !kept.some(k => k.id === feature.id)).map(feature => feature.id)
+    if (removed.length) must(await db.from('product_features').delete().in('id', removed))
+    for (const [index, feature] of kept.entries()) {
+      const values = { name: feature.name.trim(), description: feature.description.trim() || null, sort_order: index }
+      if (feature.id) must(await db.from('product_features').update(values).eq('id', feature.id))
+      else must(await db.from('product_features').insert({ ...values, product_id: productId }))
+    }
     await Promise.all([loadBrand(), load(true)])
   }, 'Product saved')
   saving.value = false
@@ -211,6 +233,9 @@ async function saveProduct() {
                     {{ row.name }}
                   </p>
                   <p class="truncate text-xs text-muted">
+                    {{ featuresOf(row.id).length ? featuresOf(row.id).map(feature => feature.name).join(' · ') : 'No features yet' }}
+                  </p>
+                  <p class="truncate text-xs text-dimmed">
                     {{ slotList(row) }}
                   </p>
                   <CreatedBy :by="row.created_by" :at="row.created_at" />
@@ -238,6 +263,39 @@ async function saveProduct() {
             </UFormField>
             <UFormField label="Slug" help="Used in folder names. Can't change once set.">
               <UInput v-model="product.slug" class="w-full" :disabled="!!product.id" />
+            </UFormField>
+
+            <UFormField label="Core features" help="What the product does or what sets it apart. Every VO is written about one of these.">
+              <div class="space-y-2">
+                <div v-for="(feature, index) in product.features" :key="feature.id || index" class="flex items-start gap-1 rounded-lg border border-default p-2">
+                  <div class="min-w-0 flex-1 space-y-2">
+                    <UInput v-model="feature.name" placeholder="Scans a barcode in seconds" class="w-full" />
+                    <UTextarea v-model="feature.description" placeholder="Details for the writers (optional)" autoresize :rows="1" class="w-full" />
+                  </div>
+                  <div class="flex flex-col">
+                    <UButton icon="i-lucide-chevron-up" color="neutral" variant="ghost" size="xs" aria-label="Move up" :disabled="index === 0" @click="moveFeature(index, -1)" />
+                    <UButton icon="i-lucide-chevron-down" color="neutral" variant="ghost" size="xs" aria-label="Move down" :disabled="index === product.features.length - 1" @click="moveFeature(index, 1)" />
+                  </div>
+                  <UButton
+                    icon="i-lucide-x"
+                    color="neutral"
+                    variant="ghost"
+                    aria-label="Remove feature"
+                    @click="product.features.splice(index, 1)"
+                  />
+                </div>
+                <UButton
+                  icon="i-lucide-plus"
+                  label="Add feature"
+                  color="neutral"
+                  variant="subtle"
+                  size="sm"
+                  @click="product.features.push({ id: '', name: '', description: '' })"
+                />
+                <p v-if="featuresOf(product.id || undefined).some(feature => !product.features.some(kept => kept.id === feature.id))" class="text-xs text-warning">
+                  VOs about a removed feature stay in the Library but need a new feature before they can go on a shoot.
+                </p>
+              </div>
             </UFormField>
 
             <UFormField label="Slot values" help="Custom slots scripts can use, e.g. benefit → calmer walks fills {{benefit}}">

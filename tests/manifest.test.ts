@@ -80,4 +80,12 @@ describe('buildManifest', () => {
     expect(manifest.clips[4]).toMatchObject({ section: 'problem', shot: { id: 'b1' }, product_visible: false })
     expect(manifest.clips[5]).toMatchObject({ section: 'general', shot: null, product_visible: true })
   })
+
+  it('records the problems it was marked ready with, and leaves out what\'s missing', () => {
+    const manifest = buildManifest(bundle(), edited.filter(file => !file.includes('C01')), durations, {
+      version: 2, generatedAt: '', overridden: ['C01 (Joe, topdognix): no video file at edited/topdognix/ctas/joe/C01']
+    })
+    expect(manifest.overridden).toHaveLength(1)
+    expect(manifest.clips.some(clip => clip.kind === 'cta')).toBe(false)
+  })
 })

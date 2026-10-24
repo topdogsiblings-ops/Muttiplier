@@ -2,15 +2,15 @@
 import type { Row } from '#shared/types/models'
 
 // Searchable multi-select over the Library. Picked items go on the shoot's shared shot list,
-// which everyone on the shoot films, except a VO someone on the cast wrote for themselves:
-// only they perform it. VOs show when they are universal or for the shoot's product, and
-// written by anyone or by someone on the shoot.
+// which everyone on the shoot films, except VOs: each is written by one person on the cast
+// about a feature of one product, and only they perform it. VOs show when they're about a
+// feature of the shoot's product and written by someone on the shoot.
 export interface PickedItems {
   hooks: Row<'hook_templates'>[]
   bodies: BodyWithProducts[]
   ctas: Row<'cta_templates'>[]
 }
-type BodyWithProducts = Row<'body_templates'> & { products: { product_id: string }[] }
+type BodyWithProducts = Row<'body_templates'> & { feature: { name: string, product_id: string } | null }
 
 const props = defineProps<{
   /** template ids already on the structure, so they can't be added twice */
@@ -33,10 +33,9 @@ const personName = (id: string | null) => people.value.find(person => person.id 
 const hooks = shallowRef<Row<'hook_templates'>[]>([])
 const allBodies = shallowRef<BodyWithProducts[]>([])
 const fitsShoot = (row: BodyWithProducts) =>
-  (!row.person_id || props.peopleIds.includes(row.person_id))
-  && (!row.products.length || row.products.some(link => link.product_id === props.productId))
+  !!row.person_id && props.peopleIds.includes(row.person_id) && row.feature?.product_id === props.productId
 const bodies = computed(() => allBodies.value.filter(fitsShoot))
-/** VOs in this view left out because they are for another product or someone not on the shoot */
+/** VOs in this view left out: for another product, by someone not on the shoot, or still needing a feature */
 const hiddenBodies = computed(() => allBodies.value.filter(row => !props.format || row.format_id === props.format.id).length
   - bodies.value.filter(row => !props.format || row.format_id === props.format.id).length)
 const ctas = shallowRef<Row<'cta_templates'>[]>([])
@@ -57,7 +56,7 @@ watch(open, async (isOpen) => {
   loading.value = true
   await run(async () => {
     hooks.value = must(await db.from('hook_templates').select('*').eq('archived', false).order('created_at', { ascending: false }))
-    allBodies.value = must(await db.from('body_templates').select('*, products:body_template_products(product_id)').eq('archived', false).order('title'))
+    allBodies.value = must(await db.from('body_templates').select('*, feature:product_features(name, product_id)').eq('archived', false).order('created_at'))
     ctas.value = must(await db.from('cta_templates').select('*').eq('archived', false).order('created_at', { ascending: false }))
   })
   loading.value = false
@@ -95,12 +94,11 @@ const options = computed<Option[]>(() => {
   if (kind.value === 'body') {
     return bodies.value.filter(row => !props.format || row.format_id === props.format.id).map(row => ({
       id: row.id,
-      title: row.title,
+      title: row.feature?.name ?? null,
       text: joinBeats(parseBeats(row.beats)),
       badges: [
         formatOf(row.format_id)?.code ?? '?',
         ...(personName(row.person_id) ? [`by ${personName(row.person_id)}`] : []),
-        ...(row.products.length ? ['this product'] : []),
         ...(angleName(row.angle_id) ? [angleName(row.angle_id)!] : [])
       ],
       tags: row.tags,
@@ -196,7 +194,7 @@ function add() {
           </p>
         </div>
         <p v-if="kind === 'body' && hiddenBodies" class="text-xs text-muted">
-          {{ hiddenBodies }} VO{{ hiddenBodies === 1 ? '' : 's' }} not shown: written for another product, or by someone who isn't on this shoot.
+          {{ hiddenBodies }} VO{{ hiddenBodies === 1 ? '' : 's' }} not shown: about another product, by someone who isn't on this shoot, or still needing a feature (Library → VOs).
         </p>
       </div>
     </template>

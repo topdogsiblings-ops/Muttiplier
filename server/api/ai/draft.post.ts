@@ -62,7 +62,9 @@ Scripts are reusable templates, so they use double-brace slots instead of real n
 - {{dog}} is filled per channel with a phrase like "my Doberman" or "my two dogs", so it must read naturally as a noun phrase.
 - Other slots such as {{benefit}}, {{offer}} or {{price}} are filled from the product's own values. Only use custom slots you are told exist.
 
-Write the way a real dog owner talks to camera: first person, plain spoken words, contractions, no hashtags, no emojis, no stage directions. Lines are read aloud, so keep them easy to say in one breath. Never invent facts, statistics, medical or veterinary claims, or guarantees about results.`
+Write the way a real dog parent talks to camera: first person, plain spoken words, contractions, no hashtags, no emojis, no stage directions. Lines are read aloud, so keep them easy to say in one breath. Never invent facts, statistics, medical or veterinary claims, or guarantees about results.
+
+Never call people dog "owners" or "pet owners" (or talk about "ownership"): it's too cold. Say "dog parents", "dog mums and dads", or just talk to the viewer as "you".`
 
 export default defineEventHandler(async (event): Promise<{ drafts: AiDraft[] }> => {
   const config = useRuntimeConfig(event)

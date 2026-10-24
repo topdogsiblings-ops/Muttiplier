@@ -19,10 +19,16 @@ const tabs = [
     help: 'The closing call to action. Sync CTAs are said on camera; VO CTAs are recorded as voiceover and laid over b-roll.'
   },
   {
-    label: 'Formats & VOs',
+    label: 'VOs',
+    value: 'vos',
+    icon: 'i-lucide-mic',
+    help: 'The voiceover scripts between the hook and the CTA, with b-roll underneath. Each is written by one person on the cast (only they perform it) about one core feature of one product, and built on a format, beat by beat. Listed by brand and product. Add a product\'s features on its brand page.'
+  },
+  {
+    label: 'Formats',
     value: 'formats',
     icon: 'i-lucide-layout-template',
-    help: 'A format is the structure of a VO: its beats and target length. Any CTA can follow any VO. VOs are the voiceover scripts between the hook and the CTA, with b-roll underneath; each belongs to a format and is written beat by beat. Open a format to see its VOs and add new ones.'
+    help: 'A format is the structure of a VO: its beats and target length. Any CTA can follow any VO. Each format shows how many VOs are built on it.'
   },
   {
     label: 'Angles',
@@ -34,8 +40,8 @@ const tabs = [
 
 // The open tab lives in the URL so it survives reloads and can be linked.
 const tab = computed({
-  // the old "bodies" tab now lives inside Formats & VOs
-  get: () => route.query.tab === 'bodies' ? 'formats' : tabs.some(t => t.value === route.query.tab) ? String(route.query.tab) : 'hooks',
+  // the old "bodies" tab is now VOs
+  get: () => route.query.tab === 'bodies' ? 'vos' : tabs.some(t => t.value === route.query.tab) ? String(route.query.tab) : 'hooks',
   set: value => router.replace({ query: { tab: value } })
 })
 </script>
@@ -84,7 +90,8 @@ const tab = computed({
     <template #body>
       <LibraryHooks v-if="tab === 'hooks'" />
       <LibraryCtas v-else-if="tab === 'ctas'" />
-      <LibraryFormatsVos v-else-if="tab === 'formats'" />
+      <LibraryVos v-else-if="tab === 'vos'" />
+      <LibraryFormats v-else-if="tab === 'formats'" />
       <LibraryAngles v-else />
     </template>
   </UDashboardPanel>

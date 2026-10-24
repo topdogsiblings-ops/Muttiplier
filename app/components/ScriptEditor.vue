@@ -18,6 +18,9 @@ const model = defineModel<string>({ default: '' })
 const { slots, isKnown } = useSlotNames()
 const segments = computed(() => renderSegments(model.value))
 const unknown = computed(() => extractSlots(model.value).filter(name => !isKnown(name)))
+// "owner" is too cold: flagged in the text and suggested away (shared/utils/wording.ts)
+const flagged = computed(() => flaggedWords(model.value))
+const suggestions = computed(() => [...new Map(flagged.value.map(word => [word.text.toLowerCase(), word])).values()])
 
 function slotClass(name: string) {
   if (props.invalidSlots?.includes(name)) return 'bg-error/20 text-error'
@@ -52,7 +55,13 @@ function insert(name: string) {
     >
       <div aria-hidden="true" class="layer pointer-events-none text-highlighted">
         <template v-for="(segment, index) in segments" :key="index">
-          <span v-if="segment.type === 'text'">{{ segment.text }}</span>
+          <template v-if="segment.type === 'text'">
+            <span
+              v-for="(run, at) in splitFlagged(segment.text)"
+              :key="at"
+              :class="{ 'underline decoration-warning decoration-wavy underline-offset-2': run.flagged }"
+            >{{ run.text }}</span>
+          </template>
           <span v-else class="rounded-sm" :class="slotClass(segment.name)">{{ segment.raw }}</span>
         </template>
         <!-- keeps a trailing newline from collapsing -->
@@ -70,6 +79,14 @@ function insert(name: string) {
 
     <p v-if="unknown.length" class="text-xs text-warning">
       Not recognised: {{ unknown.map(token).join(', ') }}. It isn't built in or a custom slot on any product, so it will show as unfilled.
+    </p>
+
+    <p v-if="flagged.length" class="flex items-start gap-1 text-xs text-warning">
+      <UIcon name="i-lucide-heart" class="mt-0.5 shrink-0" />
+      <span>
+        We don't call people "owners": it's too cold.
+        Try {{ suggestions.map(word => `“${word.suggestion}” for “${word.text}”`).join(', ') }}, or just talk to them as “you”.
+      </span>
     </p>
 
     <div v-if="props.palette && focused && !props.disabled" class="flex flex-wrap items-center gap-1">

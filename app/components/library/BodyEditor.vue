@@ -3,15 +3,15 @@ import type { Row } from '#shared/types/models'
 import type { Beat } from '#shared/utils/slots'
 
 // Slide-over editor for a VO (body template). Open it with `edit(row)`; pass `{ format_id }`
-// to start a new VO in a format. A VO can belong to one person on the cast (only they perform
-// it) and to specific products; with no products it is universal.
-export type BodyRow = Partial<Omit<Row<'body_templates'>, 'beats'>> & { beats?: unknown, product_ids?: string[] }
+// to start a new VO in a format. Every VO is written by one person on the cast (only they
+// perform it) about one core feature of one product (set on the brand page).
+export type BodyRow = Partial<Omit<Row<'body_templates'>, 'beats'>> & { beats?: unknown, product_id?: string }
 const emit = defineEmits<{ saved: [] }>()
 
 const db = useDb()
 const run = useAction()
 const { confirmDialog } = useConfirm()
-const { formats, angles, angleOptions, people, products, productOptions, settings } = useRefData()
+const { formats, angles, angleOptions, people, productOptions, featureOptions, featureOf, productOf, settings } = useRefData()
 const { access } = useAccess()
 const { context } = usePreviewContext()
 
@@ -30,11 +30,11 @@ const open = ref(false)
 const saving = ref(false)
 const form = reactive({
   id: '',
-  title: '',
   format_id: undefined as string | undefined,
   angle_id: undefined as string | undefined,
   person_id: undefined as string | undefined,
-  product_ids: [] as string[],
+  product_id: undefined as string | undefined,
+  feature_id: undefined as string | undefined,
   beats: [] as Beat[],
   tags: [] as string[],
   notes: '',
@@ -45,12 +45,12 @@ const requestOpen = useGuardedClose(open, form)
 function edit(row?: BodyRow, duplicate = false) {
   Object.assign(form, {
     id: duplicate ? '' : row?.id ?? '',
-    title: row?.title ? (duplicate ? `${row.title} (copy)` : row.title) : '',
     format_id: row?.format_id ?? formatOptions.value[0]?.value,
     angle_id: row?.angle_id ?? undefined,
     // a new VO is written by whoever is signed in, if they are on the cast
     person_id: (row?.id || row?.person_id !== undefined ? row?.person_id : me.value?.id) ?? undefined,
-    product_ids: [...(row?.product_ids ?? [])],
+    product_id: row?.product_id ?? featureOf(row?.feature_id)?.product_id ?? undefined,
+    feature_id: row?.feature_id ?? undefined,
     beats: parseBeats(row?.beats),
     tags: [...(row?.tags ?? [])],
     notes: row?.notes ?? '',
@@ -66,9 +66,16 @@ watch(() => [form.format_id, open.value] as const, () => {
   if (chosen && !beatsMatchFormat(chosen.beats, form.beats)) form.beats = alignBeats(chosen.beats, form.beats)
 })
 
-// Draft the beats in place with AI. The person reviews them before saving.
+// A feature belongs to its product: changing the product clears a feature from another one.
+const features = computed(() => featureOptions(form.product_id))
+watch(() => form.product_id, () => {
+  if (form.feature_id && featureOf(form.feature_id)?.product_id !== form.product_id) form.feature_id = undefined
+})
+const product = computed(() => productOf(form.product_id))
+const feature = computed(() => featureOf(form.feature_id))
+
+// Draft the beats in place with AI, about the chosen feature. The person reviews them before saving.
 const drafting = ref(false)
-const draftProduct = ref<string | undefined>()
 
 async function draftBeats() {
   if (form.beats.some(beat => beat.script.trim()) && !(await confirmDialog({
@@ -84,15 +91,14 @@ async function draftBeats() {
         type: 'body' as const,
         formatId: form.format_id!,
         angle: angles.value.find(a => a.id === form.angle_id)?.name,
-        brief: form.title.trim() ? `Working title: ${form.title.trim()}` : undefined,
-        productId: products.value.some(p => p.id === draftProduct.value) ? draftProduct.value : undefined,
+        brief: feature.value ? `Write it about this feature of the product: ${feature.value.name}${feature.value.description ? ` (${feature.value.description})` : ''}` : undefined,
+        productId: form.product_id,
         count: 1
       }
     })
     const draft = response.drafts[0]
     if (!draft?.beats) throw new Error('No draft came back. Try again.')
     form.beats = alignBeats(formatOf(form.format_id)?.beats ?? draft.beats.map(beat => beat.beat), draft.beats)
-    if (!form.title.trim() && draft.title) form.title = draft.title
   })
   drafting.value = false
 }
@@ -106,7 +112,7 @@ const words = computed(() => countWords(script.value))
 const estSeconds = computed(() => estimateSeconds(script.value, pace.value))
 const target = computed(() => formatOf(form.format_id)?.target_seconds ?? null)
 const canSave = computed(() =>
-  form.title.trim() !== '' && !!form.format_id && form.beats.length > 0 && form.beats.every(beat => beat.script.trim() !== '')
+  !!form.person_id && !!form.feature_id && !!form.format_id && form.beats.length > 0 && form.beats.every(beat => beat.script.trim() !== '')
   && isValidUrl(form.source_url)
 )
 
@@ -114,27 +120,18 @@ async function save() {
   saving.value = true
   const ok = await run(async () => {
     const fields = {
-      title: form.title.trim(),
       format_id: form.format_id!,
       angle_id: form.angle_id ?? null,
-      person_id: form.person_id ?? null,
+      person_id: form.person_id!,
+      feature_id: form.feature_id!,
       beats: form.beats.map(beat => ({ beat: beat.beat, script: beat.script.trim() })),
       est_seconds: estSeconds.value || null,
       tags: form.tags,
       notes: form.notes.trim() || null,
       source_url: normalizeUrl(form.source_url)
     }
-    const id = form.id
-      ? (must(await db.from('body_templates').update(fields).eq('id', form.id)), form.id)
-      : must(await db.from('body_templates').insert(fields).select('id').single()).id
-    // products: none means universal
-    const current = form.id
-      ? must(await db.from('body_template_products').select('product_id').eq('body_template_id', id)).map(link => link.product_id)
-      : []
-    const added = form.product_ids.filter(productId => !current.includes(productId))
-    const removed = current.filter(productId => !form.product_ids.includes(productId))
-    if (added.length) must(await db.from('body_template_products').insert(added.map(product_id => ({ body_template_id: id, product_id }))))
-    if (removed.length) must(await db.from('body_template_products').delete().eq('body_template_id', id).in('product_id', removed))
+    if (form.id) must(await db.from('body_templates').update(fields).eq('id', form.id))
+    else must(await db.from('body_templates').insert(fields))
   }, 'VO saved')
   saving.value = false
   if (ok) {
@@ -148,23 +145,39 @@ async function save() {
   <USlideover :open="open" @update:open="requestOpen" :title="form.id ? 'Edit VO' : 'New VO'" :ui="{ content: 'max-w-xl' }">
     <template #body>
       <div class="space-y-5">
-        <UFormField label="Title" required>
-          <UInput v-model="form.title" class="w-full" />
-        </UFormField>
         <div class="grid gap-4 sm:grid-cols-2">
+          <UFormField label="Written by" required help="Only they perform it on a shoot">
+            <USelectMenu v-model="form.person_id" :items="personOptions" value-key="value" placeholder="Pick someone" class="w-full" />
+          </UFormField>
+          <UFormField label="Product" required help="Offered on shoots for this product">
+            <USelectMenu v-model="form.product_id" :items="productOptions" value-key="value" placeholder="Pick a product" class="w-full" />
+          </UFormField>
+          <UFormField label="Feature" required class="sm:col-span-2" :help="feature?.description ?? 'The core feature of the product this VO sells'">
+            <USelectMenu
+              v-model="form.feature_id"
+              :items="features"
+              value-key="value"
+              :placeholder="form.product_id ? (features.length ? 'Pick a feature' : 'This product has no features yet') : 'Pick a product first'"
+              :disabled="!features.length"
+              class="w-full"
+            />
+          </UFormField>
           <UFormField label="Format" required>
             <USelect v-model="form.format_id" :items="formatOptions" class="w-full" />
           </UFormField>
           <UFormField label="Angle">
             <USelectMenu v-model="form.angle_id" :items="angleOptions" value-key="value" placeholder="None" class="w-full" />
           </UFormField>
-          <UFormField label="Written by" :help="form.person_id ? 'Only they perform it on a shoot' : 'Anyone on a shoot can perform it'">
-            <USelectMenu v-model="form.person_id" :items="personOptions" value-key="value" placeholder="Anyone" clear class="w-full" />
-          </UFormField>
-          <UFormField label="Products" :help="form.product_ids.length ? 'Only offered on shoots for these products' : 'Universal: offered for every product'">
-            <USelectMenu v-model="form.product_ids" :items="productOptions" value-key="value" multiple placeholder="Universal" class="w-full" />
-          </UFormField>
         </div>
+        <UAlert
+          v-if="product && !features.length"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-list-checks"
+          :title="`${product.name} has no core features yet`"
+          description="Add them to the product on its brand page, then pick one here."
+          :actions="[{ label: `Open ${product.brand.name}`, to: `/brands/${product.brand_id}`, color: 'warning', variant: 'outline', size: 'sm' }]"
+        />
 
         <div class="flex flex-wrap items-center gap-2 rounded-lg bg-elevated/50 p-2">
           <UButton
@@ -174,19 +187,11 @@ async function save() {
             color="neutral"
             variant="subtle"
             :loading="drafting"
-            :disabled="!form.format_id"
+            :disabled="!form.format_id || !form.feature_id"
             @click="draftBeats"
           />
-          <USelectMenu
-            v-model="draftProduct"
-            :items="productOptions"
-            value-key="value"
-            placeholder="For a product (optional)"
-            size="sm"
-            class="min-w-48 flex-1"
-          />
           <p class="w-full text-xs text-muted">
-            Uses the format, angle and title above. Review the beats before saving.
+            Uses the product, feature, format and angle above. Review the beats before saving.
           </p>
         </div>
 

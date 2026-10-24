@@ -71,7 +71,7 @@ ANTHROPIC_MODEL=claude-opus-5-5
 
 | Tab | Purpose |
 |---|---|
-| **Library** | Hooks, CTAs, **Formats & VOs**, Angles |
+| **Library** | Hooks, CTAs, **VOs**, **Formats**, Angles |
 | **Planner** | Shoots list → shoot planner (with calculator) → checklist → exports |
 | **Brands** | Brands (Trybe deal data, CSV import, filters), products with slot values, brand → channel assignment |
 | **Settings** (admin) | People, channels, allowlist, defaults (time per item, speech pace, general product shots) |
@@ -153,6 +153,10 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 - `slot_values jsonb` — e.g. `{"benefit": "calmer walks", "offer": "20% off"}`
 - `claims_allowed text`, `claims_forbidden text`, `notes text`
 
+**product_features** — a product's core features, edited with the product on its brand page
+- `product_id`, `name text`, `description text`, `sort_order int`
+- Removing one leaves its VOs needing a new feature (`feature_id` set null)
+
 ### Library
 
 **formats** — the structure of a video
@@ -164,13 +168,14 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 - `cta_modes text[]` — legacy, no longer used: any CTA can follow any VO
 
 **body_templates** — VO scripts, each belonging to a format
-- `format_id`, `title text`, `angle_id`
+- `format_id`, `angle_id`
+- `feature_id` — **required** in the app: the product feature the VO is about (its product is the feature's product). VOs have no title; they're shown by feature and script. `title` is legacy, kept for VOs written before features.
 - `beats jsonb` — ordered array: `[{ "beat": "problem", "script": "..." }, ...]`; beat names must match the format's `beats`
 - `est_seconds int` — **computed** from the word count ÷ `settings.words_per_second`, not typed in
 - `tags text[]`, `notes text`
-- `person_id` — optional: the person on the cast who wrote it. Only they perform it on a shoot; null = anyone can.
+- `person_id` — **required** in the app: the person on the cast who wrote it. Only they perform it on a shoot.
 
-**body_template_products** — `body_template_id`, `product_id`, pk on both. The products a VO is written for; none = universal (offered for every product).
+**body_template_products** — legacy, no longer used (VOs now belong to a product through their feature).
 
 **hook_templates**
 - `script text`, `angle_id`, `est_seconds int`, `tags text[]`, `notes text` (`is_universal` is legacy, always false)
@@ -234,7 +239,7 @@ Snapshots matter: editing a template later must never change a shoot that's alre
 
 ## 7. Library tab
 
-Tabs: **Hooks, CTAs, Formats & VOs, Angles**.
+Tabs: **Hooks, CTAs, VOs, Formats, Angles**.
 
 - List view with search, filters (angle, tags, CTA mode, archived) and sort; paginated.
 - Tags input autocompletes from tags already used in the Library.
@@ -243,7 +248,8 @@ Tabs: **Hooks, CTAs, Formats & VOs, Angles**.
   - Live preview: pick a product + channel → rendered script with slots filled; unfilled slots flagged.
   - Hooks: filming notes and suggested caption.
   - Validation rules from §5.
-- **Formats & VOs:** one collapsible panel per format (description, beats) listing its VOs, with **Add VO** inside the format. The format editor edits beats, each beat's description and its suggested b-roll shots. The VO editor has one block per beat and shows the estimated length (computed). Each VO can be given a writer from the cast (defaults to the signed-in user's person, so cast members can write their own) and products (none = universal); the list shows both and filters by writer.
+- **VOs:** grouped by brand and product; each VO shows its feature, writer, format and script (no title). VOs written before features sit in a "Needs a product and feature" group and can't go on a shoot until edited. Filters: product, format, writer, angle, tag. The VO editor requires a writer from the cast (defaults to the signed-in user's person), a product and one of its features, and a format; it has one block per beat and shows the estimated length (computed). AI drafting writes about the chosen feature.
+- **Formats:** one row per format (description, beats, target), with its VO count linking to the VOs tab filtered to that format. The format editor edits beats, each beat's description and its suggested b-roll shots.
 - Archive / unarchive (with confirm). No hard delete if referenced by a shoot.
 - Usage count per template ("used in 4 shoots").
 - Duplicate action.
@@ -276,7 +282,7 @@ Single page with a scrollable **calculator panel** (right side on desktop, drawe
 2. **Formats:** add or remove formats on the plan. Removing a format (confirmed) also removes its VOs and its b-roll.
 3. **Structure:** one shared shot list that **everyone films together**, one by one:
    - **Hooks** — each person films every hook once per channel they're linked to (the per-person rows show person · channel).
-   - **Formats & VOs** — one collapsible panel per planned format, with an "Add F01 VOs" picker limited to that format. The picker only offers VOs that are universal or for the shoot's product, and written by anyone or by someone on the shoot. A VO with a writer goes on the shot list for that person only.
+   - **Formats & VOs** — one collapsible panel per planned format, with an "Add F01 VOs" picker limited to that format. The picker only offers VOs about a feature of the shoot's product, written by someone on the shoot, and shows each by its feature. A VO goes on the shot list for its writer only.
    - **CTAs.**
    - Every item shows its rendered script (slots filled; `{{dog}}` per §5). One **Edit** menu per line: **For everyone** rewrites the shoot's own copy of a line (every person's snapshot) for this shoot only; the library isn't touched and per-person overrides stay on top. **Permanently** (hooks and CTAs) edits the Library template for later shoots and updates this shoot's copy to match (a planned shoot's copy with slots filled); other shoots keep their own copy, and universal hooks still only allow `{{dog}}`. **Per person** opens each person's own version. Or edit a person's line inline to create a per-person override, or use AI to reword it per person. Captions on hooks are snapshotted.
 4. **B-roll:** one collapsible panel per planned format (name, description, clip count), a section per beat with its `?` description, plus **General product shots** (suggestions from Settings). Suggested shots can be added one at a time, per beat ("Add this beat's") or for the whole format ("Add all suggestions"), or written by hand; **Generate b-roll** asks the AI for shots for every section based on the brand, product, formats and beat descriptions. Each shot has `product_visible` and `min_clips`.

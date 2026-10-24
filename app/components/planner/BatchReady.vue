@@ -14,6 +14,7 @@ const emit = defineEmits<{ changed: [] }>()
 const db = useDb()
 const run = useAction()
 const toast = useToast()
+const { confirmDialog } = useConfirm()
 const dropbox = useDropbox()
 const shoot = computed(() => props.bundle.shoot)
 const base = computed(() => shootFolder(props.bundle))
@@ -84,12 +85,26 @@ async function check() {
 
 // --- writing the manifest --------------------------------------------------------------
 const saving = ref(false)
-async function writeManifest() {
-  if (!result.value?.ok) return
+/**
+ * Write the manifest. With problems, only when someone overrides them: whatever's missing is
+ * left out (recipes needing it aren't made) and the problems are recorded in the manifest.
+ */
+async function writeManifest(override = false) {
+  if (!result.value || (!result.value.ok && !override)) return
+  if (override && !(await confirmDialog({
+    title: ready.value ? 'Save the manifest anyway?' : 'Mark ready for batching anyway?',
+    description: `${result.value.problems.length} problem${result.value.problems.length === 1 ? '' : 's'} will be left as they are. Anything missing or without a readable length stays out of the manifest, so recipes that need it won't be made. The problems are noted in the manifest, and you can refresh it once they're fixed.`,
+    confirmLabel: ready.value ? 'Save anyway' : 'Mark ready anyway'
+  }))) return
   saving.value = true
   const version = (latest.value?.version ?? 0) + 1
   const ok = await run(async () => {
-    const manifest = buildManifest(props.bundle, editedFiles, durations, { version, generatedAt: new Date().toISOString(), brollShots })
+    const manifest = buildManifest(props.bundle, editedFiles, durations, {
+      version,
+      generatedAt: new Date().toISOString(),
+      brollShots,
+      overridden: result.value!.ok ? undefined : result.value!.problems
+    })
     await dropboxUploader.writeText(`${base.value}/manifest.json`, JSON.stringify(manifest, null, 2))
     must(await db.from('shoot_manifests').insert({ shoot_id: shoot.value.id, version, data: manifest as unknown as Json }))
     if (!ready.value) must(await db.from('shoots').update({ status: 'edited' }).eq('id', shoot.value.id).eq('status', 'filmed'))
@@ -165,7 +180,7 @@ const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyl
               icon="i-lucide-package-check"
               size="sm"
               :loading="saving"
-              @click="writeManifest"
+              @click="writeManifest()"
             />
           </div>
         </template>
@@ -186,6 +201,18 @@ const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyl
               …and {{ result.problems.length - 20 }} more
             </li>
           </ul>
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            <UButton
+              :label="ready ? 'Save manifest anyway' : 'Mark ready anyway'"
+              icon="i-lucide-triangle-alert"
+              color="error"
+              variant="subtle"
+              size="sm"
+              :loading="saving"
+              @click="writeManifest(true)"
+            />
+            <span class="text-xs text-muted">Leaves out whatever's missing; recipes that need it won't be made.</span>
+          </div>
         </template>
       </UAlert>
     </template>

@@ -80,6 +80,14 @@ describe('buildRecipes', () => {
     expect(recipe!.cta.broll).toEqual(['nix/b-roll/general/g1.mp4'])
   })
 
+  it('leaves out a VO missing one of its format\'s beats (a manifest marked ready anyway)', () => {
+    const m = manifest([
+      take('hook', 'H01', 'joe', 'nix'), ...vo('V01', 'joe', 'nix', [['problem', 2]]), take('cta', 'C01', 'joe', 'nix'), ...nixBroll
+    ])
+    m.plan = { ...m.plan, formats: [{ code: 'F01', cta_modes: [], beats: ['problem', 'product'] }] }
+    expect(buildRecipes(m)).toEqual([])
+  })
+
   it('gives the same recipe the same id every time', () => {
     const clips = [take('hook', 'H01', 'joe', 'nix'), ...vo('V01', 'joe', 'nix', [['problem', 3]]), take('cta', 'C01', 'joe', 'nix'), ...nixBroll]
     expect(buildRecipes(manifest(clips))[0]!.id).toBe(buildRecipes(manifest([...clips].reverse()))[0]!.id)

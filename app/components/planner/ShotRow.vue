@@ -23,9 +23,15 @@ const emit = defineEmits<{
 }>()
 
 const primary = computed(() => props.group.items[0]!)
-const context = computed(() => itemSlotContext(props.bundle, primary.value.channel_id))
-const beats = computed(() => primary.value.kind === 'body' ? parseBeats(primary.value.script_snapshot) : [])
-const text = computed(() => typeof primary.value.script_snapshot === 'string' ? primary.value.script_snapshot : '')
+// one line for every channel it's filmed for: {{dog}} reads "my Vizsla / our two dogs", and on a
+// planned shoot (dog phrases already filled in) the channels' versions are merged the same way
+const context = computed(() => groupSlotContext(props.bundle, props.group.items.map(item => item.channel_id)))
+const beats = computed(() => {
+  if (primary.value.kind !== 'body') return []
+  const versions = props.group.items.map(item => parseBeats(item.script_snapshot))
+  return versions[0]!.map((beat, index) => ({ beat: beat.beat, script: mergeVariants(versions.map(version => version[index]?.script ?? '')) }))
+})
+const text = computed(() => mergeVariants(props.group.items.map(item => typeof item.script_snapshot === 'string' ? item.script_snapshot : '')))
 
 const personName = (id: string) => props.bundle.people.find(person => person.id === id)?.name ?? 'Unknown'
 /** a VO one person on the cast wrote for themselves: only they perform it */

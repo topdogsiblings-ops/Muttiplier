@@ -150,6 +150,44 @@ export function itemSlotContext(bundle: Pick<ShootBundle, 'brand' | 'product' | 
   })
 }
 
+/**
+ * A slot context for several channels at once: `{{dog}}` reads as every channel's phrase joined
+ * with " / " ("my Vizsla / our two dogs"), for showing one line that's filmed for each of them.
+ */
+export function groupSlotContext(bundle: Pick<ShootBundle, 'brand' | 'product' | 'channels'>, channelIds: (string | null)[]): SlotContext {
+  const phrases = [...new Set(channelIds)].map(id => dogPhraseFor(id, bundle.channels))
+  return buildSlotContext({
+    brand: bundle.brand.name,
+    product: bundle.product.name,
+    slotValues: bundle.product.slot_values,
+    dogPhrase: phrases.length && phrases.every(Boolean) ? [...new Set(phrases)].join(' / ') : null
+  })
+}
+
+/**
+ * One line from several channels' versions of it: where they differ (usually the dog), the
+ * variants are joined with " / ", whole words only. "Watch my Vizsla try it" + "Watch our two
+ * dogs try it" -> "Watch my Vizsla / our two dogs try it".
+ */
+export function mergeVariants(texts: string[]): string {
+  const unique = [...new Set(texts)]
+  if (unique.length <= 1) return unique[0] ?? ''
+  const first = unique[0]!
+  const shortest = Math.min(...unique.map(text => text.length))
+  let prefix = 0
+  while (prefix < shortest && unique.every(text => text[prefix] === first[prefix])) prefix++
+  // back off to a word boundary
+  if (prefix < shortest && first[prefix - 1] !== ' ') prefix = first.lastIndexOf(' ', prefix - 1) + 1
+  let suffix = 0
+  while (suffix < shortest - prefix && unique.every(text => text[text.length - 1 - suffix] === first[first.length - 1 - suffix])) suffix++
+  if (suffix > 0 && first[first.length - suffix] !== ' ') {
+    const space = first.indexOf(' ', first.length - suffix)
+    suffix = space < 0 ? 0 : first.length - space
+  }
+  const middles = [...new Set(unique.map(text => text.slice(prefix, text.length - suffix)))]
+  return first.slice(0, prefix) + middles.join(' / ') + first.slice(first.length - suffix)
+}
+
 export interface ResolvedScript {
   /** hooks and CTAs */
   text: string | null

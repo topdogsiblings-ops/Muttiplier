@@ -96,6 +96,9 @@ export function buildRecipes(manifest: Manifest): Recipe[] {
 
     for (const hook of hooks) {
       for (const beats of vos.values()) {
+        // every beat of the VO's format, each with a length (a manifest marked ready anyway can be short of some)
+        const formatBeats = manifest.plan.formats?.find(format => format.code === beats[0]!.format)?.beats
+        if (formatBeats && formatBeats.some(name => !beats.some(beat => beat.beat === name))) continue
         if (beats.some(beat => !beat.duration)) continue
         for (const cta of ctas) {
           const base = `${shoot}_${channel}_${person}_${hook.code}_${beats[0]!.code}_${cta.code}`

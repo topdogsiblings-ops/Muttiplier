@@ -14,7 +14,7 @@ const emit = defineEmits<{
     format_id?: string
     mode?: string
     tags?: string[]
-    product_ids?: string[]
+    product_id?: string
   }]
 }>()
 
@@ -67,8 +67,8 @@ async function generate() {
 function use(draft: { title?: string, script?: string, caption?: string, beats?: Beat[] }) {
   if (props.kind === 'hook') emit('use', { script: draft.script, caption: draft.caption, angle_id: form.angle_id, tags: [...form.tags] })
   else if (props.kind === 'cta') emit('use', { script: draft.script, mode: form.mode, tags: [...form.tags] })
-  // a VO drafted for a product is for that product
-  else emit('use', { title: draft.title, beats: draft.beats, format_id: form.format_id, angle_id: form.angle_id, product_ids: form.product_id ? [form.product_id] : [] })
+  // a VO drafted for a product is for that product (its feature is picked in the editor)
+  else emit('use', { beats: draft.beats, format_id: form.format_id, angle_id: form.angle_id, product_id: form.product_id })
   open.value = false
 }
 </script>

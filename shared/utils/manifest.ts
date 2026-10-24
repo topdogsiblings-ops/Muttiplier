@@ -142,6 +142,11 @@ export interface Manifest {
   /** the plan: shoot, people, channels, formats, items and b-roll shots (shootsheet) */
   plan: ReturnType<typeof buildShootsheet>
   clips: ManifestClip[]
+  /**
+   * What the edit check found, when someone marked it ready anyway. Missing takes aren't in
+   * `clips` and clips without a length can't go in recipes, so recipes needing them aren't made.
+   */
+  overridden?: string[]
 }
 
 /**
@@ -153,7 +158,7 @@ export function buildManifest(
   bundle: ShootBundle,
   edited: string[],
   durations: Map<string, number | null>,
-  options: { version: number, generatedAt: string, brollShots?: Map<string, string> }
+  options: { version: number, generatedAt: string, brollShots?: Map<string, string>, overridden?: string[] }
 ): Manifest {
   const clips: ManifestClip[] = []
   const personSlug = (id: string) => bundle.people.find(p => p.id === id)?.slug ?? 'unknown'
@@ -209,7 +214,8 @@ export function buildManifest(
     version: options.version,
     generated_at: options.generatedAt,
     plan: buildShootsheet(bundle),
-    clips
+    clips,
+    ...(options.overridden?.length ? { overridden: options.overridden } : {})
   }
 }
 

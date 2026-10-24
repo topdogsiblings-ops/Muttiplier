@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BundleItem } from '../shared/utils/shootsheet'
-import { itemBeats, recordingKey, recordingsOf } from '../shared/utils/shootsheet'
+import { itemBeats, mergeVariants, recordingKey, recordingsOf } from '../shared/utils/shootsheet'
 
 function item(id: string, channel: string, script: unknown, extra: Partial<BundleItem> = {}): BundleItem {
   return {
@@ -41,5 +41,17 @@ describe('takes', () => {
 
   it('treats hooks and CTAs as one take', () => {
     expect(itemBeats(item('a', 'nix', 'Hi'))).toEqual([null])
+  })
+})
+
+describe('mergeVariants', () => {
+  it('joins where the channels\' versions differ, on whole words', () => {
+    expect(mergeVariants(['Watch my Vizsla try Puppii.', 'Watch our two dogs try Puppii.'])).toBe('Watch my Vizsla / our two dogs try Puppii.')
+    expect(mergeVariants(['My Vizsla loves it', 'Our two dogs love it'])).toBe('My Vizsla loves / Our two dogs love it')
+  })
+
+  it('leaves a line that reads the same everywhere alone', () => {
+    expect(mergeVariants(['Grab it now.', 'Grab it now.'])).toBe('Grab it now.')
+    expect(mergeVariants([])).toBe('')
   })
 })

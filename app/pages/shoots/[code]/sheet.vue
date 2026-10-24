@@ -118,6 +118,13 @@ const progress = computed(() => {
 /** Lines where someone has their own wording, for the everyone view. */
 const ownVersions = (group: ShotGroup) => group.items.filter(item => item.script_override !== null && item.script_override !== undefined)
 const script = (item: BundleItem) => resolveItemScript(bundle.value, item)
+/** A shot-list entry's line across every channel it's filmed for: the dog reads "my Vizsla / our two dogs". */
+const groupScript = (group: ShotGroup) => {
+  const versions = group.items.map(item => script({ ...item, script_override: null }))
+  if (group.kind !== 'body') return { text: mergeVariants(versions.map(version => version.text ?? '')), beats: null }
+  const first = versions[0]?.beats ?? []
+  return { text: null, beats: first.map((beat, index) => ({ beat: beat.beat, script: mergeVariants(versions.map(version => version.beats?.[index]?.script ?? '')) })) }
+}
 
 /** Everything on the shoot (all people) still to film or skip. */
 const remaining = computed(() =>
@@ -526,12 +533,12 @@ function skipBroll(shot: Row<'broll_shots'>) {
             <p v-if="group.items[0]!.title" class="text-sm font-medium text-muted">
               {{ group.items[0]!.title }}
             </p>
-            <p v-for="beat in script(group.items[0]!).beats" :key="beat.beat" class="text-base leading-snug text-highlighted">
+            <p v-for="beat in groupScript(group).beats" :key="beat.beat" class="text-base leading-snug text-highlighted">
               <span class="mr-1 text-xs font-semibold text-muted uppercase">{{ beat.beat }}</span>{{ beat.script }}
             </p>
           </template>
           <p v-else class="text-lg leading-snug text-highlighted">
-            {{ script(group.items[0]!).text }}
+            {{ groupScript(group).text }}
           </p>
           <p v-if="group.items[0]!.filming_notes" class="flex items-start gap-1.5 rounded-md bg-elevated/60 px-2 py-1.5 text-sm text-default">
             <UIcon name="i-lucide-video" class="mt-0.5 shrink-0 text-muted" />

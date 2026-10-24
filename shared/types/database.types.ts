@@ -115,13 +115,14 @@ export type Database = {
           created_at: string
           created_by: string | null
           est_seconds: number | null
+          feature_id: string | null
           format_id: string
           id: string
           notes: string | null
           person_id: string | null
           source_url: string | null
           tags: string[]
-          title: string
+          title: string | null
           updated_at: string
         }
         Insert: {
@@ -131,13 +132,14 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           est_seconds?: number | null
+          feature_id?: string | null
           format_id: string
           id?: string
           notes?: string | null
           person_id?: string | null
           source_url?: string | null
           tags?: string[]
-          title: string
+          title?: string | null
           updated_at?: string
         }
         Update: {
@@ -147,13 +149,14 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           est_seconds?: number | null
+          feature_id?: string | null
           format_id?: string
           id?: string
           notes?: string | null
           person_id?: string | null
           source_url?: string | null
           tags?: string[]
-          title?: string
+          title?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -162,6 +165,13 @@ export type Database = {
             columns: ["angle_id"]
             isOneToOne: false
             referencedRelation: "angles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "body_templates_feature_id_fkey"
+            columns: ["feature_id"]
+            isOneToOne: false
+            referencedRelation: "product_features"
             referencedColumns: ["id"]
           },
           {
@@ -647,6 +657,54 @@ export type Database = {
             columns: ["person_id"]
             isOneToOne: false
             referencedRelation: "people"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_features: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          product_id: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          product_id: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          product_id?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_features_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_features_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
         ]
