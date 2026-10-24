@@ -7,7 +7,7 @@ const take = (kind: TakeClip['kind'], code: string, person: string, channel: str
   angle: null, script: '', file: `${channel}/${kind}/${person}/${code}.mp4`, raw_file: '', caption: null, duration: 3, ...extra
 })
 const vo = (code: string, person: string, channel: string, beats: [string, number][], format = 'F01') =>
-  beats.map(([beat, duration]) => take('vo', code, person, channel, { beat, duration, format, file: `${channel}/vo/${person}/${code}_${beat}.m4a` }))
+  beats.map(([beat, duration]) => take('vo', code, person, channel, { beat, duration, format, file: `${channel}/vo/${person}/${beat}/${code}.m4a` }))
 const clip = (channel: string, section: string, name: string, duration: number, productVisible = section === 'general'): BrollClip => ({
   kind: 'broll', channel, section, file: `${channel}/b-roll/${section}/${name}.mp4`, raw_file: '', duration, shot: null, product_visible: productVisible
 })

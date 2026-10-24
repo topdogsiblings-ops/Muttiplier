@@ -236,7 +236,8 @@ function brollClipChanged(shot: Row<'broll_shots'>) {
 // Clips added on set are saved on the phone; once the shoot is ended, Upload sends them to
 // Dropbox (spec §12); the uploader is in test mode until Dropbox is connected.
 // Clips go to the shoot's raw/ folder, by channel: hooks, VOs (beat by beat) and CTAs as files
-// named by code (H01.mov, V01_problem.m4a), b-roll loose in its beat folder under its own name.
+// named by code (H01.mov; a VO beat in its beat folder, problem/V01.m4a), b-roll loose in its
+// beat folder under its own name.
 // Editors mirror it under edited/.
 const clipMedia = (item: BundleItem) => mediaOf(item)
 

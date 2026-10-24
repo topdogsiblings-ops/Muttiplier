@@ -6,8 +6,7 @@
 // "topdognix/hooks/joe/H01.mov" or "topdognix/b-roll/problem/IMG_4821.mov".
 
 import type { BundleItem, ShootBundle } from './shootsheet'
-import { KIND_FOLDER, MANIFEST_SCHEMA_VERSION, brollFolder, buildShootsheet, channelFolder, itemBeats, mediaOf, resolveItemScript, shootFolder } from './shootsheet'
-import { slugify } from './slots'
+import { MANIFEST_SCHEMA_VERSION, brollFolder, buildShootsheet, channelFolder, itemBeats, mediaOf, resolveItemScript, shootFolder, takeSpot } from './shootsheet'
 
 const VIDEO = new Set(['mov', 'mp4', 'm4v', 'hevc'])
 const AUDIO = new Set(['m4a', 'mp3', 'wav', 'aac', 'caf', 'aif', 'aiff'])
@@ -21,12 +20,8 @@ export const isClip = (path: string) => !SIDECAR.has(extension(path)) && !path.s
 const kindOfFile = (path: string): 'video' | 'audio' | 'other' =>
   VIDEO.has(extension(path)) ? 'video' : AUDIO.has(extension(path)) ? 'audio' : 'other'
 
-/** A take's file relative to raw/ or edited/, without extension: "topdognix/vo/joe/V01_problem". */
-export function spotPath(bundle: ShootBundle, item: BundleItem, beat: string | null): string {
-  const person = bundle.people.find(p => p.id === item.person_id)?.slug ?? 'unknown'
-  const name = beat ? `${item.code}_${slugify(beat) || 'beat'}` : item.code
-  return `${channelFolder(bundle, item.channel_id)}/${KIND_FOLDER[item.kind]}/${person}/${name}`
-}
+/** A take's file relative to raw/ or edited/, without extension: "topdognix/vo/joe/problem/V01". */
+export const spotPath = (bundle: ShootBundle, item: BundleItem, beat: string | null): string => takeSpot(bundle, item, beat)
 
 /** The clip files at a spot in a listing (any extension). */
 const filesAt = (spot: string, files: string[]) =>

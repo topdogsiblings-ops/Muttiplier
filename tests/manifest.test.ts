@@ -29,11 +29,11 @@ function bundle(): ShootBundle {
 
 const raw = [
   'topdognix/hooks/joe/H01.mov', 'topdognix/hooks/joe/H01.srt',
-  'topdognix/vo/joe/V01_problem.m4a', 'topdognix/vo/joe/V01_product.m4a',
+  'topdognix/vo/joe/problem/V01.m4a', 'topdognix/vo/joe/product/V01.m4a',
   'topdognix/ctas/joe/C01.mov',
   'topdognix/b-roll/problem/IMG_1.MOV', 'topdognix/b-roll/general/IMG_9.MOV'
 ]
-const edited = [...raw.map(file => file.replace(/\.(mov|MOV)$/, '.mp4')), 'topdognix/vo/joe/V01_problem.srt']
+const edited = [...raw.map(file => file.replace(/\.(mov|MOV)$/, '.mp4')), 'topdognix/vo/joe/problem/V01.srt']
 const durations = new Map(edited.map(file => [file, 2.5]))
 
 describe('checkEdits', () => {
@@ -43,12 +43,12 @@ describe('checkEdits', () => {
 
   it('wants a VO beat by beat, of the right kind, and a length for every edited clip', () => {
     const check = checkEdits(bundle(), raw, [
-      ...edited.filter(file => !file.includes('V01_product')),
-      'topdognix/vo/joe/V01_product.mp4'
+      ...edited.filter(file => !file.includes('product/V01')),
+      'topdognix/vo/joe/product/V01.mp4'
     ], { durations: new Map([...durations].filter(([file]) => !file.includes('IMG_9'))), onPhones: 1 })
     expect(check.problems).toEqual(expect.arrayContaining([
       '1 clip is still on phones: upload them first',
-      'V01 product (Joe, topdognix): edited/topdognix/vo/joe/V01_product.mp4 should be an audio file',
+      'V01 product (Joe, topdognix): edited/topdognix/vo/joe/product/V01.mp4 should be an audio file',
       expect.stringContaining('Couldn\'t read the length of topdognix/b-roll/general/IMG_9.mp4')
     ]))
   })
@@ -75,7 +75,7 @@ describe('buildManifest', () => {
       'broll topdognix/b-roll/problem/IMG_1.mp4', 'broll topdognix/b-roll/general/IMG_9.mp4'
     ])
     expect(manifest.clips[0]).toMatchObject({ kind: 'hook', channel: 'topdognix', person: 'joe', script: 'Watch my Doberman go', duration: 2.5 })
-    expect(manifest.clips[1]).toMatchObject({ kind: 'vo', beat: 'problem', script: 'My dog pulled', caption: 'topdognix/vo/joe/V01_problem.srt' })
+    expect(manifest.clips[1]).toMatchObject({ kind: 'vo', beat: 'problem', script: 'My dog pulled', caption: 'topdognix/vo/joe/problem/V01.srt' })
     // the clip added for shot b1 isn't a product shot; one in general/ is
     expect(manifest.clips[4]).toMatchObject({ section: 'problem', shot: { id: 'b1' }, product_visible: false })
     expect(manifest.clips[5]).toMatchObject({ section: 'general', shot: null, product_visible: true })

@@ -162,13 +162,13 @@ describe('buildShootsheet', () => {
     expect(sheet.shoot).toMatchObject({ code: 'S014', date: '2026-10-20', broll_variations: 3, submission_rate: 0.15 })
     expect(sheet.channels[0]).toEqual({ slug: 'topdognix', folder_slug: 'nix', dogs: ['nix'] })
     expect(sheet.formats).toEqual([format])
-    // channel first; a VO is recorded beat by beat, a file each
+    // channel first; a VO is recorded beat by beat, a file each in its beat's folder
     expect(sheet.items.map(item => [item.code, 'beats' in item ? item.beats.map(beat => beat.file) : item.file])).toEqual([
       ['C01', 'pawco/calming-chews/shoots/S014/edited/topdognix/ctas/joe/C01'],
       ['H01', 'pawco/calming-chews/shoots/S014/edited/topdognix/hooks/joe/H01'],
       // universal hooks are filed like any other hook, by their code
       ['U01', 'pawco/calming-chews/shoots/S014/edited/topdogwhiskey/hooks/joe/U01'],
-      ['V01', ['pawco/calming-chews/shoots/S014/edited/topdognix/vo/joe/V01_problem', 'pawco/calming-chews/shoots/S014/edited/topdognix/vo/joe/V01_product', 'pawco/calming-chews/shoots/S014/edited/topdognix/vo/joe/V01_result']]
+      ['V01', ['pawco/calming-chews/shoots/S014/edited/topdognix/vo/joe/problem/V01', 'pawco/calming-chews/shoots/S014/edited/topdognix/vo/joe/product/V01', 'pawco/calming-chews/shoots/S014/edited/topdognix/vo/joe/result/V01']]
     ])
     expect(sheet.items[1]).toEqual({
       code: 'H01', kind: 'hook', person: 'joe', channel: 'topdognix', template_id: 'aaaaaaaa-0000-0000-0000-000000000001',

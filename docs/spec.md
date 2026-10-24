@@ -434,7 +434,8 @@ UGC/
       raw/
         [channel]/                         topdognix/, topdogwhiskey/, topdogsiblings/: split by channel first
           hooks/[person]/H##.mov           one file per hook, named by code, captions alongside (H##.srt)
-          vo/[person]/V##_[beat].m4a       a VO recorded beat by beat: V01_problem.m4a, V01_product.m4a…
+          vo/[person]/[beat]/V##.m4a       a VO recorded beat by beat, a folder per beat as in b-roll:
+                                           problem/V01.m4a, product/V01.m4a…
           ctas/[person]/C##.mov
           b-roll/[beat]/                   the channel's own b-roll, loose under the clips' own names;
                                            beats filed by name across formats
@@ -446,7 +447,7 @@ UGC/
 ```
 
 - **Hooks, VOs and CTAs are files named by code**, keeping their own extension. Re-adding one replaces the file. Editors save the edited clip under the same name in `edited/` (the extension can differ).
-- **Captions** sit next to their clip under the same name (e.g. `H01.srt` beside `H01.mov`, `V01_problem.srt` beside `V01_problem.m4a`), in `raw/` and `edited/` alike; there's no separate captions folder. Muttiplier writes them when each hook, CTA and VO beat uploads: the script that was read, split into short lines (sentence breaks, at most ~32 characters / 6 words) and timed across the clip's measured length in proportion to each line's length. Editors polish them into `edited/`.
+- **Captions** sit next to their clip under the same name (e.g. `H01.srt` beside `H01.mov`, `problem/V01.srt` beside `problem/V01.m4a`), in `raw/` and `edited/` alike; there's no separate captions folder. Muttiplier writes them when each hook, CTA and VO beat uploads: the script that was read, split into short lines (sentence breaks, at most ~32 characters / 6 words) and timed across the clip's measured length in proportion to each line's length. Editors polish them into `edited/`.
 - **B-roll** is per shoot and loose: any clip in a beat folder can go under any VO with that beat, so clips keep their own names and a clash gets a number rather than overwriting. Beats are filed by name, so the same beat in two formats (e.g. `product`) shares a folder; general product shots go in `general/`. `shared` stands in for the channel only when a shoot has no channels.
 
 All slugs lowercase kebab-case; generate once and never change after a shoot is planned.
@@ -484,7 +485,7 @@ Goal: clips go straight from the shoot into the right Dropbox folders (§10d), s
 
 Once a shoot is **filmed** and the editors have put every clip in `edited/`, the shoot page shows **Edits in? Get it ready for batching**.
 
-- **Check edits** (runs in the browser, talking to Dropbox directly so a big shoot isn't cut short): lists `raw/` and `edited/` and checks that every filmed take is in both, named by its code (a VO beat by beat: `V01_problem`), of the right kind (video for hooks and sync CTAs, audio for VOs and VO CTAs); that `edited/` mirrors `raw/` clip for clip (same folders and names; extensions can differ); that no clips are still on phones; and reads every edited clip's **length** from the start of the file (MP4 / MOV / M4A from the movie header, WAV from its header; anything unreadable is a problem). Any problem blocks the next step.
+- **Check edits** (runs in the browser, talking to Dropbox directly so a big shoot isn't cut short): lists `raw/` and `edited/` and checks that every filmed take is in both, named by its code (a VO beat by beat, in its beat's folder: `problem/V01`), of the right kind (video for hooks and sync CTAs, audio for VOs and VO CTAs); that `edited/` mirrors `raw/` clip for clip (same folders and names; extensions can differ); that no clips are still on phones; and reads every edited clip's **length** from the start of the file (MP4 / MOV / M4A from the movie header, WAV from its header; anything unreadable is a problem). Any problem blocks the next step.
 - **Mark ready for batching** writes the **manifest** and sets the shoot to `edited`, shown as **Ready for batching**. **Refresh manifest** later re-checks and writes a new version; **Not ready** goes back to filmed.
 - **The manifest** (`manifest.json` in the shoot folder, and a copy in `shoot_manifests` with a version number) indexes every clip once, so batching and later tools never re-read Dropbox: the plan (shoot, people, channels, formats, items, b-roll shots), and for every take its kind, channel, person, code, beat (VOs), format, CTA mode, angle, the script read, its `edited/` and `raw/` file, its caption file and its length; for every b-roll clip its channel, beat folder (or `general`), the shot it was filmed for (from the checklist's upload records, matched by name) and whether the product is visible (from the shot; a clip in `general/` counts as a product shot). Until then, `manifest.json` holds just the plan (version 0, no clips).
 

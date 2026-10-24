@@ -314,13 +314,19 @@ export function channelFolder(bundle: Pick<ShootBundle, 'channels'>, channelId: 
 }
 
 /**
- * A hook, VO or CTA for its channel, as a file without extension:
- * `<channel>/<kind>/<person>/<code>`, and a VO beat by beat, `…/vo/<person>/V01_problem`.
+ * A hook, VO or CTA within raw/ or edited/, as a file without extension:
+ * `<channel>/<kind>/<person>/<code>`. A VO is recorded beat by beat, each beat in its own
+ * folder as with b-roll: `<channel>/vo/<person>/problem/V01`.
  */
-export function itemPath(bundle: ShootBundle, item: BundleItem, stage: ClipStage = 'raw', beat: string | null = null): string {
+export function takeSpot(bundle: ShootBundle, item: BundleItem, beat: string | null = null): string {
   const person = bundle.people.find(p => p.id === item.person_id)?.slug ?? 'unknown'
-  const name = beat ? `${item.code}_${slugify(beat) || 'beat'}` : item.code
-  return `${shootFolder(bundle)}/${stage}/${channelFolder(bundle, item.channel_id)}/${KIND_FOLDER[item.kind]}/${person}/${name}`
+  const folder = `${channelFolder(bundle, item.channel_id)}/${KIND_FOLDER[item.kind]}/${person}`
+  return beat ? `${folder}/${slugify(beat) || 'beat'}/${item.code}` : `${folder}/${item.code}`
+}
+
+/** A hook, VO or CTA for its channel, relative to the Dropbox `UGC/` root (see takeSpot). */
+export function itemPath(bundle: ShootBundle, item: BundleItem, stage: ClipStage = 'raw', beat: string | null = null): string {
+  return `${shootFolder(bundle)}/${stage}/${takeSpot(bundle, item, beat)}`
 }
 
 /**
