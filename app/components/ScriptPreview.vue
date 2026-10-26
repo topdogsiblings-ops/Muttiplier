@@ -9,15 +9,15 @@ const props = defineProps<{
 }>()
 
 const segments = computed(() => renderSegments(props.text, props.context ?? {}))
-const { isKnown } = useSlotNames()
+const { isBuiltIn } = useSlotNames()
 </script>
 
 <template>
   <span class="whitespace-pre-wrap"><template v-for="(segment, index) in segments" :key="index"><template v-if="segment.type === 'text'">{{ segment.text }}</template><span
     v-else-if="!props.context"
     class="rounded-sm"
-    :class="isKnown(segment.name) ? 'bg-primary/15 text-primary' : 'bg-warning/15 text-warning underline decoration-dotted'"
-    :title="isKnown(segment.name) ? undefined : 'Not a built-in or custom slot'"
+    :class="isBuiltIn(segment.name) ? 'bg-primary/15 text-primary' : 'bg-info/15 text-info'"
+    :title="isBuiltIn(segment.name) ? undefined : 'Custom slot, filled in on each shoot'"
   >{{ segment.raw }}</span><span
     v-else-if="segment.value !== null"
     class="rounded-sm bg-success/15"

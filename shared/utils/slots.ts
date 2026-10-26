@@ -27,7 +27,7 @@ export function extractSlots(text: string): string[] {
 
 /**
  * Values available to a script. `brand` and `product` come from the product, `dog` from the
- * channel, everything else from the product's slot_values. Built-ins win over custom slots.
+ * channel, everything else from the shoot's slot_values. Built-ins win over custom slots.
  */
 export function buildSlotContext(source: {
   brand?: string | null

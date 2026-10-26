@@ -2,11 +2,10 @@
 import type { Json } from '#shared/types/database.types'
 import type { LoadedShoot } from '#shared/utils/loadShoot'
 
-// Fill in the slots the shoot's scripts use but nothing fills yet, right in the planner, rather
-// than hunting through the product and Settings. Custom slots ({{benefit}}, {{offer}}…) are saved
-// to the product's own values, so its next shoots have them too; {{dog}} is each channel's dog
-// phrase (Settings → Channels, admins only). Marking the shoot as planned freezes the filled
-// scripts, so this only shows on drafts.
+// Fill in the slots the shoot's scripts use but nothing fills yet, right in the planner. Custom
+// slots ({{benefit}}, {{offer}}…) are saved on this shoot only, so every shoot starts blank;
+// {{dog}} is each channel's dog phrase (Settings → Channels, admins only). Marking the shoot as
+// planned freezes the filled scripts, so this only shows on drafts.
 const props = defineProps<{ bundle: LoadedShoot }>()
 const emit = defineEmits<{ changed: [] }>()
 
@@ -78,8 +77,8 @@ async function save() {
       .filter(slot => slot.name !== 'dog' && values[slot.name]?.trim())
       .map(slot => [slot.name, values[slot.name]!.trim()]))
     if (Object.keys(filled).length) {
-      const current = (props.bundle.product.slot_values ?? {}) as Record<string, Json>
-      must(await db.from('products').update({ slot_values: { ...current, ...filled } }).eq('id', props.bundle.product.id))
+      const current = (props.bundle.shoot.slot_values ?? {}) as Record<string, Json>
+      must(await db.from('shoots').update({ slot_values: { ...current, ...filled } }).eq('id', props.bundle.shoot.id))
     }
     if (isAdmin.value) {
       for (const channel of channelsWithoutPhrase.value) {
@@ -107,7 +106,7 @@ async function save() {
             <span class="ml-1 text-sm font-normal text-muted">{{ slots.length }} to fill</span>
           </p>
           <p v-if="open" class="text-sm text-muted">
-            These scripts use slots nothing fills yet. Values are saved to {{ props.bundle.product.name }}, so its next shoots have them too.
+            These scripts use slots nothing fills yet. Values are saved on this shoot only.
           </p>
         </div>
         <UIcon :name="open ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="mt-0.5 size-5 shrink-0 text-muted" />

@@ -91,7 +91,7 @@ export default defineEventHandler(async (event): Promise<{ shots: DraftBrollShot
 
   const brandData = (bundle.brand.trybe_data ?? {}) as { about?: string, categories?: string[] }
   const existing = bundle.broll.map(shot => `- ${shot.beat}: ${shot.description}`).join('\n')
-  const slots = Object.entries((bundle.product.slot_values ?? {}) as Record<string, unknown>)
+  const slots = Object.entries((bundle.shoot.slot_values ?? {}) as Record<string, unknown>)
     .map(([key, value]) => `${key}: ${String(value)}`).join('; ')
 
   const brief = [
@@ -99,7 +99,7 @@ export default defineEventHandler(async (event): Promise<{ shots: DraftBrollShot
     brandData.about ? `Brand's own summary: ${clip(brandData.about, 400)}` : '',
     bundle.brand.notes ? `Notes on the brand:\n${clip(bundle.brand.notes, 1500)}` : '',
     `Product: ${bundle.product.name}`,
-    slots ? `Product details: ${slots}` : '',
+    slots ? `Details filled in for this shoot: ${slots}` : '',
     bundle.product.notes ? `Notes on the product:\n${clip(bundle.product.notes, 1500)}` : '',
     bundle.product.claims_allowed ? `Claims the brand allows:\n${clip(bundle.product.claims_allowed, 800)}` : '',
     bundle.product.claims_forbidden ? `Forbidden claims. Do not show or imply any of these:\n${clip(bundle.product.claims_forbidden, 800)}` : '',

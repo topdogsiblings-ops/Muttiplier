@@ -82,19 +82,17 @@ export default defineEventHandler(async (event): Promise<{ drafts: AiDraft[] }> 
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid drafting request' })
   const input = parsed.data
 
-  // Product context: the slots that exist, and the claims the brand allows or forbids.
+  // Product context: the claims the brand allows or forbids. Custom slots are filled in per shoot.
   let productNotes = 'No product is selected. Keep the script brand-agnostic and use only {{brand}}, {{product}} and {{dog}}.'
   if (input.productId) {
     const { data: product } = await db
       .from('products')
-      .select('name, slot_values, claims_allowed, claims_forbidden, brand:brands(name)')
+      .select('name, claims_allowed, claims_forbidden, brand:brands(name)')
       .eq('id', input.productId)
       .maybeSingle()
     if (product) {
-      const slots = Object.keys((product.slot_values ?? {}) as object)
       productNotes = [
         `Product: ${product.name} by ${(product.brand as { name: string } | null)?.name ?? 'the brand'}. Still write with slots, not these names.`,
-        slots.length ? `Custom slots available: ${slots.map(slot => `{{${slot}}}`).join(', ')}.` : 'This product has no custom slots.',
         product.claims_allowed ? `Claims the brand allows:\n${product.claims_allowed}` : '',
         product.claims_forbidden
           ? `Forbidden claims. Do not make, imply or paraphrase any of these:\n${product.claims_forbidden}`

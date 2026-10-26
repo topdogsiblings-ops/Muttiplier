@@ -15,9 +15,9 @@ const format = { code: 'F02', cta_modes: ['sync', 'vo'], beats: ['problem', 'pro
 
 function bundle(): ShootBundle {
   return {
-    shoot: { code: 'S014', shoot_date: '2026-10-20', status: 'planned', broll_variations: 3, submission_rate: 0.15 },
+    shoot: { code: 'S014', shoot_date: '2026-10-20', status: 'planned', broll_variations: 3, submission_rate: 0.15, slot_values: { benefit: 'calmer walks' } },
     brand: { name: 'PawCo', slug: 'pawco' },
-    product: { name: 'Calming Chews', slug: 'calming-chews', slot_values: { benefit: 'calmer walks' } },
+    product: { name: 'Calming Chews', slug: 'calming-chews' },
     people: [{ id: 'p1', slug: 'joe', name: 'Joe' }],
     channels: [
       { id: 'c1', name: 'topdognix', slug: 'topdognix', folder_slug: 'nix', dogs: ['nix'], dog_phrase: 'my Doberman' },
@@ -149,7 +149,7 @@ describe('planSnapshots', () => {
     // apply, then change the product: the planned shoot renders exactly as before
     b.items.forEach((item, index) => Object.assign(item, frozen[index]))
     const before = JSON.stringify(buildShootsheet(b).items)
-    b.product = { name: 'Renamed', slug: 'calming-chews', slot_values: {} }
+    b.product = { name: 'Renamed', slug: 'calming-chews' }
     b.brand.name = 'NewCo'
     expect(JSON.stringify(buildShootsheet(b).items)).toBe(before)
   })
@@ -158,7 +158,9 @@ describe('planSnapshots', () => {
 describe('buildShootsheet', () => {
   it('matches the worker contract', () => {
     const sheet = buildShootsheet(bundle())
-    expect(sheet.schema_version).toBe(1)
+    expect(sheet.schema_version).toBe(2)
+    // custom slots are the shoot's own
+    expect(sheet.shoot.slot_values).toEqual({ benefit: 'calmer walks' })
     expect(sheet.shoot).toMatchObject({ code: 'S014', date: '2026-10-20', broll_variations: 3, submission_rate: 0.15 })
     expect(sheet.channels[0]).toEqual({ slug: 'topdognix', folder_slug: 'nix', dogs: ['nix'] })
     expect(sheet.formats).toEqual([format])

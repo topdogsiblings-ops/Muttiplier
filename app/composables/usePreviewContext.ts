@@ -1,4 +1,7 @@
-/** The product + channel a library script is previewed against. Shared so the choice sticks between drawers. */
+/**
+ * The product + channel a library script is previewed against. Shared so the choice sticks between
+ * drawers. Custom slots stay unfilled here: they're filled in on each shoot.
+ */
 export const usePreviewContext = () => {
   const { products, channels } = useRefData()
   const productId = useState<string | undefined>('preview-product', () => undefined)
@@ -10,7 +13,6 @@ export const usePreviewContext = () => {
     return buildSlotContext({
       brand: product?.brand.name,
       product: product?.name,
-      slotValues: product?.slot_values,
       dogPhrase: channel?.dog_phrase
     })
   })

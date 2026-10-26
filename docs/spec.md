@@ -88,10 +88,10 @@ Scripts use double-brace slots: `{{brand}}`, `{{product}}`, `{{dog}}`, plus any 
 
 - `{{brand}}` and `{{product}}` are built in and filled from the product.
 - `{{dog}}` is filled per channel from the channel's dog phrase (e.g. "my Doberman", "my Vizsla", "my two dogs"). On items shared by every channel, `{{dog}}` is filled as the channels' phrases joined with " / " (e.g. "my Doberman / my Vizsla / my two dogs"), and only counts as unfilled if a channel on the shoot has no phrase.
-- Custom slots (e.g. `{{benefit}}`, `{{price}}`, `{{offer}}`) are filled from the product's `slot_values`.
+- Custom slots (e.g. `{{benefit}}`, `{{price}}`, `{{offer}}`) are any other `{{name}}`. They aren't defined anywhere first: each shoot fills its own (`shoots.slot_values`), so every shoot starts blank.
 - The script editor lists the available slots, and highlights recognised vs unrecognised slots as you type.
 - Unfilled slots are flagged in previews and block "Mark as planned".
-- On a draft shoot, a **Fill in slots** section in the planner lists every unfilled slot with the codes that use it (hooks and CTAs first). Custom slots are typed in there and saved to the product's `slot_values`, so its later shoots have them too; `{{dog}}` asks for the dog phrase of each channel on the shoot that has none (admins, saved to the channel). A line can still be overridden instead.
+- On a draft shoot, a **Fill in slots** section in the planner lists every unfilled slot with the codes that use it (hooks and CTAs first). Custom slots are typed in there and saved on that shoot only (`shoots.slot_values`); `{{dog}}` asks for the dog phrase of each channel on the shoot that has none (admins, saved to the channel). A line can still be overridden instead.
 
 ### Rules
 
@@ -150,7 +150,6 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 
 **products**
 - `brand_id`, `name text`, `slug text`, unique (`brand_id`, `slug`)
-- `slot_values jsonb` — e.g. `{"benefit": "calmer walks", "offer": "20% off"}`
 - `claims_allowed text`, `claims_forbidden text`, `notes text`
 
 **product_features** — a product's core features, edited with the product on its brand page
@@ -196,6 +195,7 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 - `started_at`, `started_by`, `ended_at`, `ended_by` — stamped by trigger on status changes only
 - `broll_variations int` — legacy, unused
 - `submission_rate numeric` — defaults from settings
+- `slot_values jsonb default '{}'` — the custom slots filled in for this shoot, e.g. `{"benefit": "calmer walks", "offer": "20% off"}` (the planner's Fill in slots)
 - `runway_target int default 60` — target submissions per channel per month, for runway
 - `kit text check (kit in ('audition','scale','custom'))` — a tag for the shoot only; it changes nothing
 - `hook_allocation text` — legacy, unused: every item is per channel
@@ -373,9 +373,10 @@ The contract with the future worker. Download from the shoot page. Skipped items
     "code": "S014",
     "date": "2026-10-20",
     "brand": { "name": "PawCo", "slug": "pawco" },
-    "product": { "name": "Calming Chews", "slug": "calming-chews", "slot_values": {} },
+    "product": { "name": "Calming Chews", "slug": "calming-chews" },
     "broll_variations": 3,
-    "submission_rate": 0.15
+    "submission_rate": 0.15,
+    "slot_values": { "benefit": "calmer walks" }
   },
   "people": [{ "slug": "joe", "name": "Joe", "channels": ["topdognix"] }],
   "channels": [{ "slug": "topdognix", "folder_slug": "nix", "dogs": ["nix"] }],

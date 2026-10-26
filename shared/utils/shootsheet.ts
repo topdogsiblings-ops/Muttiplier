@@ -4,7 +4,8 @@ import type { Beat, SlotContext } from './slots'
 import { buildSlotContext, joinBeats, parseBeats, renderBeats, renderScript, slugify } from './slots'
 import type { ItemKind } from './calculator'
 
-export const SHOOTSHEET_SCHEMA_VERSION = 1
+/** 2: custom slot values moved from plan.product to plan.shoot */
+export const SHOOTSHEET_SCHEMA_VERSION = 2
 export const DEFAULT_BEATS = ['problem', 'product', 'result']
 
 export interface BundleChannel {
@@ -77,9 +78,11 @@ export interface ShootBundle {
     status: string
     broll_variations: number
     submission_rate: number
+    /** custom slots filled in for this shoot ({{benefit}}…); built-ins fill themselves */
+    slot_values?: unknown
   }
   brand: { name: string, slug: string }
-  product: { name: string, slug: string, slot_values: unknown }
+  product: { name: string, slug: string }
   people: { id: string, slug: string, name: string }[]
   channels: BundleChannel[]
   items: BundleItem[]
@@ -141,11 +144,11 @@ export function dogPhraseFor(channelId: string | null, channels: BundleChannel[]
   return [...new Set(phrases)].join(' / ')
 }
 
-export function itemSlotContext(bundle: Pick<ShootBundle, 'brand' | 'product' | 'channels'>, channelId: string | null): SlotContext {
+export function itemSlotContext(bundle: Pick<ShootBundle, 'shoot' | 'brand' | 'product' | 'channels'>, channelId: string | null): SlotContext {
   return buildSlotContext({
     brand: bundle.brand.name,
     product: bundle.product.name,
-    slotValues: bundle.product.slot_values,
+    slotValues: bundle.shoot.slot_values,
     dogPhrase: dogPhraseFor(channelId, bundle.channels)
   })
 }
@@ -154,12 +157,12 @@ export function itemSlotContext(bundle: Pick<ShootBundle, 'brand' | 'product' | 
  * A slot context for several channels at once: `{{dog}}` reads as every channel's phrase joined
  * with " / " ("my Vizsla / our two dogs"), for showing one line that's filmed for each of them.
  */
-export function groupSlotContext(bundle: Pick<ShootBundle, 'brand' | 'product' | 'channels'>, channelIds: (string | null)[]): SlotContext {
+export function groupSlotContext(bundle: Pick<ShootBundle, 'shoot' | 'brand' | 'product' | 'channels'>, channelIds: (string | null)[]): SlotContext {
   const phrases = [...new Set(channelIds)].map(id => dogPhraseFor(id, bundle.channels))
   return buildSlotContext({
     brand: bundle.brand.name,
     product: bundle.product.name,
-    slotValues: bundle.product.slot_values,
+    slotValues: bundle.shoot.slot_values,
     dogPhrase: phrases.length && phrases.every(Boolean) ? [...new Set(phrases)].join(' / ') : null
   })
 }
@@ -199,7 +202,7 @@ export interface ResolvedScript {
 
 /** The script that will be performed: override over snapshot, slots filled. */
 export function resolveItemScript(
-  bundle: Pick<ShootBundle, 'brand' | 'product' | 'channels'>,
+  bundle: Pick<ShootBundle, 'shoot' | 'brand' | 'product' | 'channels'>,
   item: Pick<BundleItem, 'kind' | 'channel_id' | 'script_snapshot' | 'script_override'>
 ): ResolvedScript {
   const overridden = item.script_override !== null && item.script_override !== undefined
@@ -410,9 +413,10 @@ export function buildShootsheet(bundle: ShootBundle) {
       code: bundle.shoot.code,
       date: bundle.shoot.shoot_date,
       brand: { name: bundle.brand.name, slug: bundle.brand.slug },
-      product: { name: bundle.product.name, slug: bundle.product.slug, slot_values: bundle.product.slot_values ?? {} },
+      product: { name: bundle.product.name, slug: bundle.product.slug },
       broll_variations: bundle.shoot.broll_variations,
-      submission_rate: Number(bundle.shoot.submission_rate)
+      submission_rate: Number(bundle.shoot.submission_rate),
+      slot_values: bundle.shoot.slot_values ?? {}
     },
     people: bundle.people.map(person => ({
       slug: person.slug,

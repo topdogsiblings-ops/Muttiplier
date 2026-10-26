@@ -66,7 +66,6 @@ const product = reactive({
   id: '',
   name: '',
   slug: '',
-  slots: [] as { key: string, value: string }[],
   claims_allowed: '',
   claims_forbidden: '',
   notes: '',
@@ -79,12 +78,10 @@ watch(() => product.name, (name) => {
 })
 
 function editProduct(row?: Row<'products'>) {
-  const values = (row?.slot_values ?? {}) as Record<string, unknown>
   Object.assign(product, {
     id: row?.id ?? '',
     name: row?.name ?? '',
     slug: row?.slug ?? '',
-    slots: Object.entries(values).map(([key, value]) => ({ key, value: String(value ?? '') })),
     claims_allowed: row?.claims_allowed ?? '',
     claims_forbidden: row?.claims_forbidden ?? '',
     notes: row?.notes ?? '',
@@ -101,24 +98,13 @@ function moveFeature(index: number, by: number) {
   list.splice(index + by, 0, moved!)
 }
 
-const slotList = (row: Row<'products'>) =>
-  Object.keys((row.slot_values ?? {}) as object).map(key => `{{${key}}}`).join(' ') || 'No custom slots'
-
-const slotKey = (key: string) => key.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')
-const reservedSlots = computed(() => product.slots.map(slot => slotKey(slot.key)).filter(key => (BUILT_IN_SLOTS as readonly string[]).includes(key)))
 const productShoots = computed(() => shoots.value.filter(shoot => shoot.product_id === product.id))
 
 async function saveProduct() {
   saving.value = true
   const ok = await run(async () => {
-    const slot_values: Record<string, string> = {}
-    for (const slot of product.slots) {
-      const key = slotKey(slot.key)
-      if (key) slot_values[key] = slot.value.trim()
-    }
     const fields = {
       name: product.name.trim(),
-      slot_values,
       claims_allowed: product.claims_allowed.trim() || null,
       claims_forbidden: product.claims_forbidden.trim() || null,
       notes: product.notes.trim() || null
@@ -235,9 +221,6 @@ async function saveProduct() {
                   <p class="truncate text-xs text-muted">
                     {{ featuresOf(row.id).length ? featuresOf(row.id).map(feature => feature.name).join(' · ') : 'No features yet' }}
                   </p>
-                  <p class="truncate text-xs text-dimmed">
-                    {{ slotList(row) }}
-                  </p>
                   <CreatedBy :by="row.created_by" :at="row.created_at" />
                 </div>
                 <UBadge
@@ -294,33 +277,6 @@ async function saveProduct() {
                 />
                 <p v-if="featuresOf(product.id || undefined).some(feature => !product.features.some(kept => kept.id === feature.id))" class="text-xs text-warning">
                   VOs about a removed feature stay in the Library but need a new feature before they can go on a shoot.
-                </p>
-              </div>
-            </UFormField>
-
-            <UFormField label="Slot values" help="Custom slots scripts can use, e.g. benefit → calmer walks fills {{benefit}}">
-              <div class="space-y-2">
-                <div v-for="(slot, index) in product.slots" :key="index" class="flex gap-2">
-                  <UInput v-model="slot.key" placeholder="benefit" class="w-36 shrink-0 font-mono" />
-                  <UInput v-model="slot.value" placeholder="calmer walks" class="flex-1" />
-                  <UButton
-                    icon="i-lucide-x"
-                    color="neutral"
-                    variant="ghost"
-                    aria-label="Remove slot"
-                    @click="product.slots.splice(index, 1)"
-                  />
-                </div>
-                <UButton
-                  icon="i-lucide-plus"
-                  label="Add slot"
-                  color="neutral"
-                  variant="subtle"
-                  size="sm"
-                  @click="product.slots.push({ key: '', value: '' })"
-                />
-                <p v-if="reservedSlots.length" class="text-xs text-warning">
-                  {{ reservedSlots.join(', ') }} {{ reservedSlots.length === 1 ? 'is' : 'are' }} built in and filled automatically; a custom value is ignored.
                 </p>
               </div>
             </UFormField>

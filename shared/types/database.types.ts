@@ -719,7 +719,6 @@ export type Database = {
           id: string
           name: string
           notes: string | null
-          slot_values: Json
           slug: string
           updated_at: string
         }
@@ -732,7 +731,6 @@ export type Database = {
           id?: string
           name: string
           notes?: string | null
-          slot_values?: Json
           slug: string
           updated_at?: string
         }
@@ -745,7 +743,6 @@ export type Database = {
           id?: string
           name?: string
           notes?: string | null
-          slot_values?: Json
           slug?: string
           updated_at?: string
         }
@@ -1227,6 +1224,7 @@ export type Database = {
           reverted_at: string | null
           runway_target: number
           shoot_date: string | null
+          slot_values: Json
           started_at: string | null
           started_by: string | null
           status: string
@@ -1251,6 +1249,7 @@ export type Database = {
           reverted_at?: string | null
           runway_target?: number
           shoot_date?: string | null
+          slot_values?: Json
           started_at?: string | null
           started_by?: string | null
           status?: string
@@ -1275,6 +1274,7 @@ export type Database = {
           reverted_at?: string | null
           runway_target?: number
           shoot_date?: string | null
+          slot_values?: Json
           started_at?: string | null
           started_by?: string | null
           status?: string

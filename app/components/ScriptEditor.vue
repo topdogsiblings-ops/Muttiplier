@@ -1,9 +1,9 @@
 <script setup lang="ts">
 // A textarea with `{{slot}}` highlighting: a styled copy of the text sits behind a
 // transparent textarea, both in the same grid cell so they wrap and grow together.
-// Recognised slots (built-in, or a custom slot on some product) are highlighted as soon
-// as the closing braces are typed; anything else is flagged. While the editor has focus,
-// a palette of every available slot is shown and clicking one inserts it at the cursor.
+// Slots are highlighted as soon as the closing braces are typed: built-ins in one colour,
+// custom slots (filled in on each shoot) in another. While the editor has focus, a palette of
+// the built-in slots is shown and clicking one inserts it at the cursor.
 const props = withDefaults(defineProps<{
   placeholder?: string
   disabled?: boolean
@@ -15,17 +15,17 @@ const props = withDefaults(defineProps<{
 
 const model = defineModel<string>({ default: '' })
 
-const { slots, isKnown } = useSlotNames()
+const { slots, isBuiltIn } = useSlotNames()
 const segments = computed(() => renderSegments(model.value))
-const unknown = computed(() => extractSlots(model.value).filter(name => !isKnown(name)))
+const custom = computed(() => extractSlots(model.value).filter(name => !isBuiltIn(name)))
 // "owner" is too cold: flagged in the text and suggested away (shared/utils/wording.ts)
 const flagged = computed(() => flaggedWords(model.value))
 const suggestions = computed(() => [...new Map(flagged.value.map(word => [word.text.toLowerCase(), word])).values()])
 
 function slotClass(name: string) {
   if (props.invalidSlots?.includes(name)) return 'bg-error/20 text-error'
-  if (isKnown(name)) return 'bg-primary/20 text-primary'
-  return 'bg-warning/15 text-warning underline decoration-dotted underline-offset-2'
+  if (isBuiltIn(name)) return 'bg-primary/20 text-primary'
+  return 'bg-info/15 text-info'
 }
 
 /** `{{name}}`, built in script because braces can't be written inside a template interpolation */
@@ -77,8 +77,8 @@ function insert(name: string) {
       />
     </div>
 
-    <p v-if="unknown.length" class="text-xs text-warning">
-      Not recognised: {{ unknown.map(token).join(', ') }}. It isn't built in or a custom slot on any product, so it will show as unfilled.
+    <p v-if="custom.length" class="text-xs text-muted">
+      Custom {{ custom.length === 1 ? 'slot' : 'slots' }} {{ custom.map(token).join(', ') }}: filled in on each shoot.
     </p>
 
     <p v-if="flagged.length" class="flex items-start gap-1 text-xs text-warning">
@@ -110,8 +110,8 @@ function insert(name: string) {
           {{ token(slot.name) }}
         </button>
       </UTooltip>
-      <span v-if="!slots.some(slot => !slot.builtIn)" class="text-xs text-dimmed">
-        No custom slots yet. Add them to a product in Brands.
+      <span class="text-xs text-dimmed">
+        or type your own, like {{ token('benefit') }}, and fill it in on the shoot.
       </span>
     </div>
   </div>
