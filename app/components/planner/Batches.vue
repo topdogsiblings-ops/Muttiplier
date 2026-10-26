@@ -6,8 +6,9 @@ import type { Recipe } from '#shared/utils/recipes'
 // Batches (spec §14), once a shoot is ready for batching. Every valid recipe comes from the
 // latest manifest; a batch takes the shoot's share of them (Best in Show: no repeated hook + VO
 // pair, spread across people, formats and angles, nothing batched twice, nothing rated bad).
-// Generating one writes recipes.json, batches/B01.json (+ CSV) and an empty renders/B01/ for
-// the stitcher. Ratings (good / bad per person's hook, VO and CTA) shape later batches.
+// Generating one writes recipes.json, batches/B01.json (+ CSV) and an empty renders/B01/<channel>/
+// per channel for the stitcher; all of it grouped by channel. Ratings (good / bad per person's
+// hook, VO and CTA) shape later batches.
 const props = defineProps<{ bundle: LoadedShoot }>()
 const emit = defineEmits<{ changed: [] }>()
 
@@ -50,7 +51,8 @@ async function generate() {
   }
   generating.value = true
   const code = nextCode.value
-  const chosen = chooseBatch(recipes.value, { size: size.value, exclude: batched.value, ratings: ratings.value })
+  // written grouped by channel, in pick order within each
+  const chosen = batchOrder(chooseBatch(recipes.value, { size: size.value, exclude: batched.value, ratings: ratings.value }))
   const ok = await run(async () => {
     if (!chosen.length) throw new Error('Nothing left to batch: every valid recipe has been batched or has a part rated bad')
     const generatedAt = new Date().toISOString()
@@ -65,18 +67,21 @@ async function generate() {
       recipes: recipes.value
     }, null, 2))
     await dropboxUploader.writeText(`${base.value}/batches/${code}.json`, JSON.stringify({
-      schema_version: 1,
+      // 2: renders split by channel
+      schema_version: 2,
       shoot: shoot.value.code,
       batch: code,
       manifest_version: manifestVersion,
       generated_at: generatedAt,
-      // the recipes are in ../recipes.json; render each into renders/<batch>/<recipe id>.mp4
+      // the recipes are in ../recipes.json; render each into renders/<batch>/<channel>/<recipe id>.mp4
       recipes_file: 'recipes.json',
       renders_folder: `renders/${code}`,
       recipes: chosen.map(recipe => recipe.id)
     }, null, 2))
     await dropboxUploader.writeText(`${base.value}/batches/${code}.csv`, batchCsv(chosen))
-    await dropboxEnsureFolder(`${base.value}/renders/${code}`)
+    for (const channel of new Set(chosen.map(recipe => recipe.channel))) {
+      await dropboxEnsureFolder(`${base.value}/${renderFolder(code, channel)}`)
+    }
     must(await db.from('shoot_shortlists').insert({
       shoot_id: shoot.value.id,
       code,

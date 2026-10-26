@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BrollClip, Manifest, TakeClip } from '../shared/utils/manifest'
-import { batchSize, buildRecipes, chooseBatch, nextBatchCode } from '../shared/utils/recipes'
+import type { Recipe } from '../shared/utils/recipes'
+import { batchCsv, batchOrder, batchSize, buildRecipes, byChannel, chooseBatch, nextBatchCode, renderFolder } from '../shared/utils/recipes'
 
 const take = (kind: TakeClip['kind'], code: string, person: string, channel: string, extra: Partial<TakeClip> = {}): TakeClip => ({
   kind, code, person, channel, item_id: `${channel}-${person}-${code}`, beat: null, format: null, mode: kind === 'cta' ? 'sync' : null,
@@ -92,6 +93,20 @@ describe('buildRecipes', () => {
     const clips = [take('hook', 'H01', 'joe', 'nix'), ...vo('V01', 'joe', 'nix', [['problem', 3]]), take('cta', 'C01', 'joe', 'nix'), ...nixBroll]
     expect(buildRecipes(manifest(clips))[0]!.id).toBe(buildRecipes(manifest([...clips].reverse()))[0]!.id)
   })
+
+  it('lists recipes grouped by channel, then by id', () => {
+    const recipes = buildRecipes(manifest([
+      ...['whiskey', 'nix'].flatMap(channel => [
+        take('hook', 'H02', 'joe', channel), take('hook', 'H01', 'joe', channel),
+        ...vo('V01', 'joe', channel, [['problem', 2]]), take('cta', 'C01', 'joe', channel),
+        ...nixBroll.map(c => ({ ...c, channel, file: c.file.replace('nix/', `${channel}/`) }))
+      ])
+    ]))
+    expect(recipes.map(recipe => `${recipe.channel} ${recipe.hook.code}`)).toEqual(['nix H01', 'nix H02', 'whiskey H01', 'whiskey H02'])
+    // by the channel field itself, not the id prefix
+    const fake = (id: string, channel: string) => ({ id, channel }) as Recipe
+    expect([fake('a', 'whiskey'), fake('z', 'nix'), fake('b', 'nix')].sort(byChannel).map(recipe => recipe.id)).toEqual(['b', 'z', 'a'])
+  })
 })
 
 describe('batches', () => {
@@ -132,6 +147,17 @@ describe('batches', () => {
   it('favours parts rated good', () => {
     const [pick] = chooseBatch(recipes, { size: 1, ratings: new Map([['nix-sam-C02', 'good']]) })
     expect(pick!.cta.item_id).toBe('nix-sam-C02')
+  })
+
+  it('writes a batch grouped by channel, keeping the pick order within each channel', () => {
+    const pick = (id: string, channel: string) => ({ id, channel, person: 'joe', hook: { code: 'H01' }, vo: { code: 'V01', format: 'F01' }, cta: { code: 'C01' } }) as Recipe
+    const chosen = [pick('w2', 'whiskey'), pick('n3', 'nix'), pick('w1', 'whiskey'), pick('n1', 'nix'), pick('s1', 'siblings')]
+    const ordered = batchOrder(chosen)
+    expect(ordered.map(recipe => recipe.id)).toEqual(['n3', 'n1', 's1', 'w2', 'w1'])
+    // the same recipes, only reordered; the CSV follows
+    expect([...ordered].sort(byChannel)).toEqual([...chosen].sort(byChannel))
+    expect(batchCsv(ordered).split('\r\n').slice(1, -1).map(row => row.split(',')[0])).toEqual(['n3', 'n1', 's1', 'w2', 'w1'])
+    expect(renderFolder('B01', 'topdognix')).toBe('renders/B01/topdognix')
   })
 
   it('numbers batches B01, B02…', () => {

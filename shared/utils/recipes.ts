@@ -137,8 +137,11 @@ export function buildRecipes(manifest: Manifest): Recipe[] {
       }
     }
   }
-  return recipes.sort((a, b) => a.id.localeCompare(b.id))
+  return recipes.sort(byChannel)
 }
+
+/** Recipes grouped by channel, then by ID: everything a shoot produces is split by channel first. */
+export const byChannel = (a: Recipe, b: Recipe) => a.channel.localeCompare(b.channel) || a.id.localeCompare(b.id)
 
 // --- batches (Best in Show) ---------------------------------------------------------------
 
@@ -214,6 +217,18 @@ export function chooseBatch(recipes: Recipe[], options: BatchOptions): Recipe[] 
   return chosen
 }
 
+/**
+ * A batch as it's written out: grouped by channel (in channel order), keeping the order the
+ * recipes were picked in within each channel. Which recipes are in it doesn't change.
+ */
+export function batchOrder(chosen: Recipe[]): Recipe[] {
+  const channels = [...new Set(chosen.map(recipe => recipe.channel))].sort((a, b) => a.localeCompare(b))
+  return channels.flatMap(channel => chosen.filter(recipe => recipe.channel === channel))
+}
+
+/** The folder a batch's renders for one channel go in, relative to the shoot folder (each is <recipe id>.mp4). */
+export const renderFolder = (batch: string, channel: string) => `renders/${batch}/${channel}`
+
 /** B01, B02…: the next batch code after the existing ones. */
 export function nextBatchCode(existing: string[]) {
   const n = Math.max(0, ...existing.map(code => Number(code.replace(/^B/, '')) || 0)) + 1
@@ -225,7 +240,7 @@ const csvCell = (value: unknown) => {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
 }
 
-/** One row per recipe in a batch, for people. */
+/** One row per recipe in a batch, for people, in the order given (batchOrder). */
 export function batchCsv(recipes: Recipe[]) {
   const rows: unknown[][] = [['recipe', 'channel', 'person', 'hook', 'vo', 'cta', 'format', 'angle']]
   for (const recipe of recipes) {

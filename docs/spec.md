@@ -424,7 +424,7 @@ Items: `file` is the edited clip (what the worker reads) and `raw_file` where Mu
 
 Download a zip of empty folders (each with a `.keep` file) plus the plan's `manifest.json`, to unzip into the Dropbox `UGC/` root folder. With Dropbox connected, the same tree is created directly in Dropbox instead (§12).
 
-Everything from a shoot lives in its shoot folder. `raw/` and `edited/` have exactly the same tree: Muttiplier only uploads to `raw/`; editors edit each clip and put it in the same place under `edited/`.
+Everything from a shoot lives in its shoot folder, and everything a shoot produces is split by channel first: clips, recipes and renders. `raw/` and `edited/` have exactly the same tree: Muttiplier only uploads to `raw/`; editors edit each clip and put it in the same place under `edited/`.
 
 ```
 UGC/
@@ -441,9 +441,12 @@ UGC/
                                            beats filed by name across formats
           b-roll/general/                  general product shots
       edited/                              same tree as raw/
-      batches/                             B01.json, B01.csv… (recipe references)
-      recipes.json                         every valid recipe
-      renders/                             B01/, B02/…: each batch's renders
+      batches/                             B01.json, B01.csv… (recipe references, grouped by channel)
+      recipes.json                         every valid recipe, grouped by channel
+      renders/
+        B01/                               one folder per batch
+          [channel]/[recipe id].mp4        each recipe's video, in its channel's folder
+          report.json                      the stitcher's run report, entries grouped by channel
 ```
 
 - **Hooks, VOs and CTAs are files named by code**, keeping their own extension. Re-adding one replaces the file. Editors save the edited clip under the same name in `edited/` (the extension can differ).
@@ -508,7 +511,7 @@ Once a shoot is ready for batching, the shoot page shows **Batches**, working fr
 - **Spread**: each pick is the recipe whose person, then format, then angle has been used least so far, so every person and format appears before any repeats; parts rated good are favoured; CTAs and b-roll only break ties.
 - **Never batch a recipe ID twice** (`shoot_shortlists.entry_ids`), and leave out recipes with a part rated bad.
 - **Ratings**: once ready for batching, each person's hooks, VOs and CTAs can be marked good or bad ("What worked"; stored on their items for every channel).
-- **Files**: `recipes.json` (every valid recipe, with its b-roll per beat and the manifest version), `batches/B01.json` (the recipe IDs, in order, with the manifest version; plus `B01.csv` for people) and an empty `renders/B01/` for the stitcher, which renders each recipe to `renders/B01/<recipe id>.mp4` from `edited/`.
+- **Files**: `recipes.json` (every valid recipe, with its b-roll per beat and the manifest version, sorted by channel then ID), `batches/B01.json` (the recipe IDs grouped by channel, in pick order within each, with the manifest version; plus `B01.csv` for people, in the same order) and an empty `renders/B01/<channel>/` for each channel in the batch. The stitcher renders each recipe to `renders/B01/<channel>/<recipe id>.mp4` from `edited/` (`<channel>` is the recipe's `channel`) and writes `renders/B01/report.json`.
 
 ## 13. Build phases and acceptance criteria
 
