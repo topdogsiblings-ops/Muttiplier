@@ -64,12 +64,15 @@ describe('checkEdits', () => {
 
 describe('buildManifest', () => {
   it('indexes every take with its script, files, captions and length, and the b-roll with its shot', () => {
-    const manifest = buildManifest(bundle(), edited, durations, {
+    const manifest = buildManifest(bundle(), edited, raw, durations, {
       version: 1,
       generatedAt: '2026-10-21T10:00:00Z',
       brollShots: new Map([['topdognix/b-roll/problem/img_1.mov', 'b1']])
     })
     expect(manifest.version).toBe(1)
+    // the edited clip and the raw one it came from, each under its own extension
+    expect(manifest.clips[0]).toMatchObject({ file: 'topdognix/hooks/joe/H01.mp4', raw_file: 'topdognix/hooks/joe/H01.mov' })
+    expect(manifest.clips[4]).toMatchObject({ file: 'topdognix/b-roll/problem/IMG_1.mp4', raw_file: 'topdognix/b-roll/problem/IMG_1.MOV' })
     expect(manifest.clips.map(clip => clip.kind === 'broll' ? `broll ${clip.file}` : `${clip.code} ${clip.beat ?? ''}`.trim())).toEqual([
       'H01', 'V01 problem', 'V01 product', 'C01',
       'broll topdognix/b-roll/problem/IMG_1.mp4', 'broll topdognix/b-roll/general/IMG_9.mp4'
@@ -82,7 +85,7 @@ describe('buildManifest', () => {
   })
 
   it('records the problems it was marked ready with, and leaves out what\'s missing', () => {
-    const manifest = buildManifest(bundle(), edited.filter(file => !file.includes('C01')), durations, {
+    const manifest = buildManifest(bundle(), edited.filter(file => !file.includes('C01')), raw, durations, {
       version: 2, generatedAt: '', overridden: ['C01 (Joe, topdognix): no video file at edited/topdognix/ctas/joe/C01']
     })
     expect(manifest.overridden).toHaveLength(1)

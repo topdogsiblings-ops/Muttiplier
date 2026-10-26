@@ -33,6 +33,7 @@ const checking = ref(false)
 const reading = reactive({ done: 0, total: 0 })
 const result = ref<EditsCheck | null>(null)
 let editedFiles: string[] = []
+let rawFiles: string[] = []
 let durations = new Map<string, number | null>()
 let brollShots = new Map<string, string>()
 
@@ -72,7 +73,8 @@ async function check() {
     }))
 
     editedFiles = edited.map(file => file.path)
-    result.value = checkEdits(props.bundle, raw.map(file => file.path), editedFiles, {
+    rawFiles = raw.map(file => file.path)
+    result.value = checkEdits(props.bundle, rawFiles, editedFiles, {
       onPhones: rows.filter(row => row.state === 'saved').length,
       durations
     })
@@ -99,7 +101,7 @@ async function writeManifest(override = false) {
   saving.value = true
   const version = (latest.value?.version ?? 0) + 1
   const ok = await run(async () => {
-    const manifest = buildManifest(props.bundle, editedFiles, durations, {
+    const manifest = buildManifest(props.bundle, editedFiles, rawFiles, durations, {
       version,
       generatedAt: new Date().toISOString(),
       brollShots,

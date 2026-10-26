@@ -94,9 +94,12 @@ export function checkEdits(
 
 interface ClipBase {
   channel: string
-  /** relative to edited/ (what the stitcher reads) and raw/ (where it was uploaded) */
+  /**
+   * relative to edited/ (what the stitcher reads) and raw/ (where it was uploaded); each keeps
+   * its own extension, and raw_file is null when there's no clip at that place in raw/
+   */
   file: string
-  raw_file: string
+  raw_file: string | null
   /** seconds, read from the edited file */
   duration: number | null
 }
@@ -145,19 +148,23 @@ export interface Manifest {
 }
 
 /**
- * The manifest for a shoot whose edits check out. `brollShots` maps a b-roll clip's raw path
- * to the shot it was added for (from the checklist's clip records); clips added some other way
- * count as product shots only when they're in general/.
+ * The manifest for a shoot whose edits check out, from the edited/ and raw/ listings. `brollShots`
+ * maps a b-roll clip's raw path to the shot it was added for (from the checklist's clip records);
+ * clips added some other way count as product shots only when they're in general/.
  */
 export function buildManifest(
   bundle: ShootBundle,
   edited: string[],
+  raw: string[],
   durations: Map<string, number | null>,
   options: { version: number, generatedAt: string, brollShots?: Map<string, string>, overridden?: string[] }
 ): Manifest {
   const clips: ManifestClip[] = []
   const personSlug = (id: string) => bundle.people.find(p => p.id === id)?.slug ?? 'unknown'
   const editedClips = edited.filter(isClip)
+  // the raw clip at the same place, under its own extension (editors re-export, so it can differ)
+  const rawByPlace = new Map(raw.filter(isClip).map(file => [withoutExtension(file).toLowerCase(), file]))
+  const rawOf = (file: string) => rawByPlace.get(withoutExtension(file).toLowerCase()) ?? null
 
   for (const { item, beat, spot } of expectedSpots(bundle)) {
     const file = filesAt(spot, editedClips)[0]
@@ -176,7 +183,7 @@ export function buildManifest(
       angle: item.angle,
       script: beat ? script.beats?.find(b => b.beat === beat)?.script ?? '' : script.text ?? '',
       file,
-      raw_file: file,
+      raw_file: rawOf(file),
       caption,
       duration: durations.get(file) ?? null
     })
@@ -197,7 +204,7 @@ export function buildManifest(
       channel,
       section,
       file,
-      raw_file: file,
+      raw_file: rawOf(file),
       duration: durations.get(file) ?? null,
       shot: shot ? { id: shot.id!, description: shot.description, beat: shot.beat, general: !shot.format_id } : null,
       product_visible: shot ? shot.product_visible : section === 'general'
