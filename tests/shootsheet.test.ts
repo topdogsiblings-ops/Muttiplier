@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ShootBundle } from '../shared/utils/shootsheet'
 import {
+  brollFolder,
   buildCsv,
   buildShootsheet,
   groupShotList,
@@ -220,7 +221,17 @@ describe('skeleton zip', () => {
     expect(folders).toEqual(expect.arrayContaining([`${shoot}/raw`, `${shoot}/edited`, `${shoot}/renders`]))
     // everything lives in the shoot folder
     expect(folders.every(folder => folder.startsWith(shoot))).toBe(true)
-    expect(JSON.parse(files[`${shoot}/manifest.json`]!)).toEqual({ schema_version: 2, version: 0, generated_at: null, plan: sheet, clips: [] })
+    expect(JSON.parse(files[`${shoot}/manifest.json`]!)).toEqual({ schema_version: 3, version: 0, generated_at: null, plan: sheet, clips: [] })
+  })
+
+  it('files b-roll for a product feature a level down in its beat folder', () => {
+    const b = bundle()
+    const shot = { ...b.broll.find(s => s.format_id)!, feature: { slug: 'joint-support', name: 'Joint support' } }
+    const generic = brollFolder(b, { ...shot, feature: null }, b.channels[0]!.id)
+    expect(brollFolder(b, shot, b.channels[0]!.id)).toBe(`${generic}/joint-support`)
+    b.broll = [...b.broll, shot]
+    const folders = Object.keys(skeletonFiles(b)).map(path => path.slice(0, path.lastIndexOf('/')))
+    expect(folders).toContain(`${generic.replace('/raw/', '/edited/')}/joint-support`)
   })
 })
 

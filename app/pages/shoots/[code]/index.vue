@@ -212,6 +212,36 @@ async function addItems(picked: PickedItems) {
   }, `Added ${entries.length} item${entries.length === 1 ? '' : 's'} to the structure`)
 }
 
+// --- writing a hook here ----------------------------------------------------
+// A hook written in the shoot is this shoot's own: it isn't in the Library, and goes on the shot
+// list for everyone like a picked one. If it works, "Save to product" (on its row) keeps it for
+// the product's later shoots.
+const writeHookOpen = ref(false)
+const newHook = reactive({ script: '', caption: '', filming_notes: '' })
+const requestWriteHookOpen = useGuardedClose(writeHookOpen, newHook)
+function openWriteHook() {
+  Object.assign(newHook, { script: '', caption: '', filming_notes: '' })
+  writeHookOpen.value = true
+}
+const savingHook = ref(false)
+async function writeHook() {
+  const script = newHook.script.trim()
+  if (!script) return
+  savingHook.value = true
+  const ok = await run(async () => {
+    const hook = mustOne(await db.from('hook_templates').insert({
+      script,
+      caption: newHook.caption.trim() || null,
+      filming_notes: newHook.filming_notes.trim() || null,
+      est_seconds: estimateSeconds(script, Number(settings.value?.words_per_second) || DEFAULT_WORDS_PER_SECOND) || null,
+      shoot_id: shoot.value.id
+    }).select('*').single())
+    await addItems({ hooks: [hook], bodies: [], ctas: [] })
+  })
+  savingHook.value = false
+  if (ok) writeHookOpen.value = false
+}
+
 /** Shared fields (channel, location) apply to everyone's item. */
 /** Shared by everyone filming a group: channel, location, or (edit for everyone) the shoot's own copy of the script. */
 async function updateGroup(group: ShotGroup, patch: { channel_id?: string | null, location?: string | null, script_snapshot?: string | Beat[] }) {
@@ -232,6 +262,8 @@ async function updateItem(item: BundleItem, patch: { channel_id?: string | null,
 async function removeGroup(group: ShotGroup) {
   await run(async () => {
     must(await db.from('shoot_items').delete().in('id', group.items.map(item => item.id)))
+    // a hook written here exists nowhere else: it goes with its line
+    if (group.items[0]?.hook_home === 'shoot') must(await db.from('hook_templates').delete().eq('id', group.template_id).eq('shoot_id', shoot.value.id))
     await refresh()
   })
 }
@@ -789,6 +821,15 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
                     <UButton label="Clear" icon="i-lucide-trash-2" trailing-icon="i-lucide-chevron-down" size="xs" color="neutral" variant="ghost" />
                   </UDropdownMenu>
                   <UButton
+                    label="Write a hook"
+                    icon="i-lucide-pen-line"
+                    size="sm"
+                    color="neutral"
+                    variant="subtle"
+                    :disabled="!bundle.people.length"
+                    @click="openWriteHook"
+                  />
+                  <UButton
                     label="Add from Library"
                     icon="i-lucide-plus"
                     size="sm"
@@ -919,6 +960,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
             <PlannerBroll
               :shoot-id="shoot.id"
               :shoot-code="shoot.code"
+              :product-id="shoot.product_id"
               :shots="bundle.broll"
               :formats="shootFormats"
               :draft="isDraft"
@@ -1012,6 +1054,34 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
           <div class="flex w-full justify-end gap-2">
             <UButton label="Cancel" color="neutral" variant="ghost" @click="close" />
             <UButton label="Clear" color="error" icon="i-lucide-trash-2" :loading="clearing" @click="runClear" />
+          </div>
+        </template>
+      </UModal>
+
+      <UModal
+        :open="writeHookOpen"
+        title="Write a hook"
+        description="For this shoot only. If it works, save it to the product from its row so later shoots can use it."
+        :ui="{ content: 'sm:max-w-xl' }"
+        @update:open="requestWriteHookOpen"
+      >
+        <template #body>
+          <div class="space-y-4">
+            <UFormField label="Script" required help="On camera, sync audio. Slots work: {{brand}}, {{product}}, {{dog}} or your own, filled in on this shoot.">
+              <ScriptEditor v-model="newHook.script" placeholder="Nobody told me {{product}} could do this…" />
+            </UFormField>
+            <UFormField label="Suggested caption" help="Optional post caption for this hook">
+              <ScriptEditor v-model="newHook.caption" :palette="false" />
+            </UFormField>
+            <UFormField label="How to film it" help="Optional: framing, action, props, delivery">
+              <UTextarea v-model="newHook.filming_notes" autoresize :rows="2" class="w-full" />
+            </UFormField>
+          </div>
+        </template>
+        <template #footer>
+          <div class="flex w-full justify-end gap-2">
+            <UButton label="Cancel" color="neutral" variant="ghost" @click="requestWriteHookOpen(false)" />
+            <UButton label="Add to the shot list" icon="i-lucide-plus" :disabled="!newHook.script.trim()" :loading="savingHook" @click="writeHook" />
           </div>
         </template>
       </UModal>

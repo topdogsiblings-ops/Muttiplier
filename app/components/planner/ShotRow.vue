@@ -121,8 +121,28 @@ async function saveLibrary() {
   editingLibrary.value = false
 }
 
+// --- a hook written in this shoot: keep it for the product ----------------------
+const savingToProduct = ref(false)
+async function saveToProduct() {
+  // on a draft, the shoot's copy is the latest wording (slots unfilled); a planned shoot's copy is
+  // frozen with slots filled in, so the hook keeps the wording it was written with
+  const script = props.draft && typeof primary.value.script_snapshot === 'string' ? primary.value.script_snapshot : null
+  savingToProduct.value = true
+  const ok = await run(async () => {
+    must(await db.from('hook_templates')
+      .update({ shoot_id: null, product_id: props.productId, ...(script ? { script } : {}) })
+      .eq('id', primary.value.template_id))
+    for (const item of props.group.items) item.hook_home = 'product'
+  }, `Saved to ${props.bundle.product.name}: it's in the Library for its later shoots`)
+  savingToProduct.value = false
+  return ok
+}
+
 /** One Edit button: change the line for everyone here, permanently in the Library, or per person. */
 const editItems = computed<DropdownMenuItem[]>(() => [
+  ...(primary.value.hook_home === 'shoot'
+    ? [{ label: `Save to ${props.bundle.product.name}`, description: 'Keep it in the Library for this product\'s later shoots', icon: 'i-lucide-bookmark-plus', onSelect: saveToProduct }]
+    : []),
   { label: 'For everyone', icon: 'i-lucide-pencil', onSelect: startEditAll },
   {
     label: expanded.value ? 'Hide per person' : 'Per person',
@@ -201,6 +221,8 @@ const editItems = computed<DropdownMenuItem[]>(() => [
         </p>
 
         <div class="flex flex-wrap items-center gap-1.5">
+          <UBadge v-if="primary.hook_home === 'shoot'" label="Written here" icon="i-lucide-pen-line" color="warning" variant="subtle" size="sm" />
+          <UBadge v-else-if="primary.hook_home === 'product'" :label="`${bundle.product.name} hook`" icon="i-lucide-package" color="primary" variant="subtle" size="sm" />
           <UBadge v-if="primary.angle" :label="primary.angle" color="neutral" variant="subtle" size="sm" />
           <UBadge v-if="primary.format" :label="primary.format.code" color="info" variant="subtle" size="sm" />
           <UBadge v-if="writer" :label="`${writer}'s own`" icon="i-lucide-user" color="primary" variant="subtle" size="sm" />
@@ -241,7 +263,7 @@ const editItems = computed<DropdownMenuItem[]>(() => [
       <div class="flex shrink-0 items-center gap-1">
         <UDropdownMenu v-if="!editingAll && !editingLibrary" :items="editItems" :content="{ align: 'end' }">
           <UButton
-            :loading="loadingLibrary"
+            :loading="loadingLibrary || savingToProduct"
             icon="i-lucide-pencil"
             trailing-icon="i-lucide-chevron-down"
             size="xs"

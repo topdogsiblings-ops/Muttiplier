@@ -288,6 +288,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           description: string
+          feature_id: string | null
           format_id: string | null
           id: string
           min_clips: number
@@ -304,6 +305,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string
+          feature_id?: string | null
           format_id?: string | null
           id?: string
           min_clips?: number
@@ -320,6 +322,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string
+          feature_id?: string | null
           format_id?: string | null
           id?: string
           min_clips?: number
@@ -330,6 +333,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "broll_shots_feature_id_fkey"
+            columns: ["feature_id"]
+            isOneToOne: false
+            referencedRelation: "product_features"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "broll_shots_format_id_fkey"
             columns: ["format_id"]
@@ -544,7 +554,9 @@ export type Database = {
           id: string
           is_universal: boolean
           notes: string | null
+          product_id: string | null
           script: string
+          shoot_id: string | null
           source_url: string | null
           tags: string[]
           updated_at: string
@@ -560,7 +572,9 @@ export type Database = {
           id?: string
           is_universal?: boolean
           notes?: string | null
+          product_id?: string | null
           script: string
+          shoot_id?: string | null
           source_url?: string | null
           tags?: string[]
           updated_at?: string
@@ -576,7 +590,9 @@ export type Database = {
           id?: string
           is_universal?: boolean
           notes?: string | null
+          product_id?: string | null
           script?: string
+          shoot_id?: string | null
           source_url?: string | null
           tags?: string[]
           updated_at?: string
@@ -587,6 +603,20 @@ export type Database = {
             columns: ["angle_id"]
             isOneToOne: false
             referencedRelation: "angles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hook_templates_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hook_templates_shoot_id_fkey"
+            columns: ["shoot_id"]
+            isOneToOne: false
+            referencedRelation: "shoots"
             referencedColumns: ["id"]
           },
         ]
@@ -669,6 +699,7 @@ export type Database = {
           id: string
           name: string
           product_id: string
+          slug: string
           sort_order: number
           updated_at: string
         }
@@ -679,6 +710,7 @@ export type Database = {
           id?: string
           name: string
           product_id: string
+          slug?: string
           sort_order?: number
           updated_at?: string
         }
@@ -689,6 +721,7 @@ export type Database = {
           id?: string
           name?: string
           product_id?: string
+          slug?: string
           sort_order?: number
           updated_at?: string
         }

@@ -12,10 +12,13 @@ export interface LoadedShoot extends ShootBundle {
   product: Row<'products'>
   people: Row<'people'>[]
   channels: Row<'channels'>[]
-  broll: Row<'broll_shots'>[]
+  broll: BrollShot[]
   /** formats added to the plan by hand (VO formats are included separately, from the items) */
   plannedFormats: PlannedFormat[]
 }
+
+/** A b-roll shot with the product feature it's for (null = generic b-roll). */
+export type BrollShot = Row<'broll_shots'> & { feature: { slug: string, name: string } | null }
 
 export interface PlannedFormat {
   id: string
@@ -29,11 +32,11 @@ export interface PlannedFormat {
 }
 
 type ItemRow = Row<'shoot_items'> & {
-  hook: { filming_notes: string | null, source_url: string | null, angle: { name: string } | null } | null
+  hook: { filming_notes: string | null, source_url: string | null, shoot_id: string | null, product_id: string | null, angle: { name: string } | null } | null
   cta: { source_url: string | null } | null
   body: {
     title: string | null
-    feature: { name: string } | null
+    feature: { name: string, slug: string } | null
     person_id: string | null
     source_url: string | null
     angle: { name: string } | null
@@ -42,9 +45,9 @@ type ItemRow = Row<'shoot_items'> & {
 }
 
 const ITEM_SELECT = `*,
-  hook:hook_templates(filming_notes, source_url, angle:angles(name)),
+  hook:hook_templates(filming_notes, source_url, shoot_id, product_id, angle:angles(name)),
   cta:cta_templates(source_url),
-  body:body_templates(title, feature:product_features(name), person_id, source_url, angle:angles(name), format:formats(id, code, name, description, cta_modes, beats, beat_descriptions, beat_broll))`
+  body:body_templates(title, feature:product_features(name, slug), person_id, source_url, angle:angles(name), format:formats(id, code, name, description, cta_modes, beats, beat_descriptions, beat_broll))`
 
 function unwrap<T>(result: { data: T | null, error: { message: string } | null }): T {
   if (result.error) throw new Error(result.error.message)
@@ -64,6 +67,8 @@ function toBundleItem(row: ItemRow): BundleItem {
     location: row.location,
     status: row.status,
     rating: row.rating === 'good' || row.rating === 'bad' ? row.rating : null,
+    hook_home: row.hook?.shoot_id ? 'shoot' : row.hook?.product_id ? 'product' : null,
+    feature_slug: row.body?.feature?.slug ?? null,
     take_notes: row.take_notes,
     sort_order: row.sort_order,
     template_id: (row.hook_template_id ?? row.body_template_id ?? row.cta_template_id)!,
@@ -90,7 +95,7 @@ export async function loadShootBundle(db: SupabaseClient<Database>, code: string
     db.from('shoot_people').select('person:people(*)').eq('shoot_id', shoot.id),
     db.from('shoot_channels').select('channel:channels(*)').eq('shoot_id', shoot.id),
     db.from('shoot_items').select(ITEM_SELECT).eq('shoot_id', shoot.id).order('sort_order').order('created_at'),
-    db.from('broll_shots').select('*').eq('shoot_id', shoot.id).order('sort_order').order('created_at'),
+    db.from('broll_shots').select('*, feature:product_features(slug, name)').eq('shoot_id', shoot.id).order('sort_order').order('created_at'),
     db.from('person_channels').select('person_id, channel_id'),
     db.from('shoot_formats').select('format:formats(id, code, name, description, beats, beat_descriptions, beat_broll)').eq('shoot_id', shoot.id)
   ])
@@ -105,7 +110,7 @@ export async function loadShootBundle(db: SupabaseClient<Database>, code: string
     people: peopleRows,
     channels: channelRows,
     items: (unwrap(items) as unknown as ItemRow[]).map(toBundleItem),
-    broll: unwrap(broll),
+    broll: unwrap(broll) as BrollShot[],
     channelPeople: channelPeopleFor(peopleRows, channelRows, unwrap(links)),
     plannedFormats: unwrap(planned).map(row => row.format as unknown as PlannedFormat).filter(Boolean)
   }

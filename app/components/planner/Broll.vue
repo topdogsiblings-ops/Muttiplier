@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import type { AccordionItem } from '@nuxt/ui'
 import type { Row, Update } from '#shared/types/models'
+import type { BrollShot } from '#shared/utils/loadShoot'
 
 // B-roll shot list: one collapsible panel per format on the plan (managed in the Formats section), with its
 // description), a section per beat (with what the beat is for), then general product
-// shots. Shared by every channel. Panels start collapsed.
+// shots. Shared by every channel. Panels start collapsed. A shot can be for one product feature:
+// its clips go in b-roll/<beat>/<feature>/ and only under VOs about that feature; otherwise it's
+// generic b-roll for its beat. The feature is set while the shoot is a draft (it names the folder).
 export interface BrollFormat {
   id: string
   code: string
@@ -23,7 +26,9 @@ export interface BrollFormat {
 const props = defineProps<{
   shootId: string
   shootCode: string
-  shots: Row<'broll_shots'>[]
+  /** the shoot's product: its features are what b-roll can be tied to */
+  productId: string
+  shots: BrollShot[]
   formats: BrollFormat[]
   draft: boolean
 }>()
@@ -31,7 +36,8 @@ const emit = defineEmits<{ changed: [] }>()
 
 const db = useDb()
 const run = useAction()
-const { settings } = useRefData()
+const { settings, featureOptions } = useRefData()
+const features = computed(() => featureOptions(props.productId))
 export interface BrollSection extends AccordionItem {
   value: string
   label: string
@@ -283,6 +289,20 @@ async function remove(shot: Row<'broll_shots'>) {
                 size="sm"
                 class="min-w-48 flex-1"
                 @change="update(shot, { description: ($event.target as HTMLInputElement).value })"
+              />
+              <USelectMenu
+                v-if="features.length"
+                :model-value="shot.feature_id ?? undefined"
+                :items="features"
+                value-key="value"
+                placeholder="Generic"
+                icon="i-lucide-sparkles"
+                size="sm"
+                class="w-48"
+                :clear="!!shot.feature_id"
+                :disabled="!props.draft"
+                :title="props.draft ? 'Only goes under VOs about this feature; Generic goes under any VO' : 'Set while the shoot is a draft: it names the clips\' folder'"
+                @update:model-value="update(shot, { feature_id: ($event as string | undefined) ?? null })"
               />
               <UCheckbox
                 :model-value="shot.product_visible"

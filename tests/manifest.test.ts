@@ -31,7 +31,8 @@ const raw = [
   'topdognix/hooks/joe/H01.mov', 'topdognix/hooks/joe/H01.srt',
   'topdognix/vo/joe/problem/V01.m4a', 'topdognix/vo/joe/product/V01.m4a',
   'topdognix/ctas/joe/C01.mov',
-  'topdognix/b-roll/problem/IMG_1.MOV', 'topdognix/b-roll/general/IMG_9.MOV'
+  'topdognix/b-roll/problem/IMG_1.MOV', 'topdognix/b-roll/general/IMG_9.MOV',
+  'topdognix/b-roll/problem/calming/IMG_5.MOV'
 ]
 const edited = [...raw.map(file => file.replace(/\.(mov|MOV)$/, '.mp4')), 'topdognix/vo/joe/problem/V01.srt']
 const durations = new Map(edited.map(file => [file, 2.5]))
@@ -75,8 +76,12 @@ describe('buildManifest', () => {
     expect(manifest.clips[4]).toMatchObject({ file: 'topdognix/b-roll/problem/IMG_1.mp4', raw_file: 'topdognix/b-roll/problem/IMG_1.MOV' })
     expect(manifest.clips.map(clip => clip.kind === 'broll' ? `broll ${clip.file}` : `${clip.code} ${clip.beat ?? ''}`.trim())).toEqual([
       'H01', 'V01 problem', 'V01 product', 'C01',
-      'broll topdognix/b-roll/problem/IMG_1.mp4', 'broll topdognix/b-roll/general/IMG_9.mp4'
+      'broll topdognix/b-roll/problem/IMG_1.mp4', 'broll topdognix/b-roll/general/IMG_9.mp4',
+      'broll topdognix/b-roll/problem/calming/IMG_5.mp4'
     ])
+    // a clip in a feature folder is for that feature; the rest are generic
+    expect(manifest.clips[6]).toMatchObject({ section: 'problem', feature: 'calming' })
+    expect(manifest.clips[4]).toMatchObject({ feature: null })
     expect(manifest.clips[0]).toMatchObject({ kind: 'hook', channel: 'topdognix', person: 'joe', script: 'Watch my Doberman go', duration: 2.5 })
     expect(manifest.clips[1]).toMatchObject({ kind: 'vo', beat: 'problem', script: 'My dog pulled', caption: 'topdognix/vo/joe/problem/V01.srt' })
     // the clip added for shot b1 isn't a product shot; one in general/ is

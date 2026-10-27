@@ -43,6 +43,10 @@ export interface BundleItem {
   source_url?: string | null
   /** how the filmed clip did, for later shortlists: good ones favoured, bad ones left out */
   rating?: 'good' | 'bad' | null
+  /** hooks: where the hook lives. 'shoot' = written in this shoot only; 'product' = kept for the product; null = a general Library hook */
+  hook_home?: 'shoot' | 'product' | null
+  /** VOs: the slug of the product feature it's about (matches feature b-roll folders) */
+  feature_slug?: string | null
   format: {
     code: string
     cta_modes: string[]
@@ -68,6 +72,8 @@ export interface BundleBroll {
   min_clips: number
   status: string
   sort_order?: number
+  /** the product feature this b-roll is for (its folder and the VOs it can go under); null = generic */
+  feature?: { slug: string, name: string } | null
 }
 
 export interface ShootBundle {
@@ -336,10 +342,13 @@ export function itemPath(bundle: ShootBundle, item: BundleItem, stage: ClipStage
  * A b-roll shot's folder for one channel, each channel filming its own:
  * `<channel>/b-roll/<beat>` for a format's shots (beats are filed by name, so the same beat in
  * different formats shares a folder) and `<channel>/b-roll/general` for general product shots.
+ * B-roll for one product feature goes a level down, `…/b-roll/<beat>/<feature slug>`, and only
+ * under VOs about that feature; what's directly in the beat folder is generic.
  */
-export function brollFolder(bundle: ShootBundle, shot: Pick<BundleBroll, 'format_id' | 'beat'>, channelId: string | null, stage: ClipStage = 'raw'): string {
+export function brollFolder(bundle: ShootBundle, shot: Pick<BundleBroll, 'format_id' | 'beat' | 'feature'>, channelId: string | null, stage: ClipStage = 'raw'): string {
   const section = shot.format_id ? slugify(shot.beat) || 'misc' : 'general'
-  return `${shootFolder(bundle)}/${stage}/${channelFolder(bundle, channelId)}/b-roll/${section}`
+  const feature = shot.feature?.slug ? `/${shot.feature.slug}` : ''
+  return `${shootFolder(bundle)}/${stage}/${channelFolder(bundle, channelId)}/b-roll/${section}${feature}`
 }
 
 // --- recordings ----------------------------------------------------------------
@@ -450,7 +459,7 @@ export function buildShootsheet(bundle: ShootBundle) {
           file: itemPath(bundle, item, 'edited', beat.beat),
           raw_file: itemPath(bundle, item, 'raw', beat.beat)
         }))
-        return { ...base, format: item.format?.code ?? null, angle: item.angle, beats }
+        return { ...base, format: item.format?.code ?? null, feature: item.feature_slug ?? null, angle: item.angle, beats }
       }
       return { ...base, cta_mode: item.cta_mode, script: script.text ?? '', ...folders }
     }),
@@ -460,6 +469,8 @@ export function buildShootsheet(bundle: ShootBundle) {
         channel: channelSlug(bundle, channelId),
         general: !shot.format_id,
         beat: shot.beat,
+        /** the feature slug (its folder); null = generic */
+        feature: shot.feature?.slug ?? null,
         description: shot.description,
         product_visible: shot.product_visible,
         min_clips: shot.min_clips,
@@ -537,7 +548,8 @@ export function skeletonFolders(bundle: ShootBundle): string[] {
   return [...folders].sort()
 }
 
-export const MANIFEST_SCHEMA_VERSION = 2
+/** 3: clips carry `feature` (VOs: the feature they're about; b-roll: its feature folder, or null) */
+export const MANIFEST_SCHEMA_VERSION = 3
 
 /**
  * The manifest before the edits are in (spec §14): just the plan, version 0, no clips. Written

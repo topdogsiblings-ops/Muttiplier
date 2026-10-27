@@ -4,13 +4,13 @@ import type { Recipe } from '../shared/utils/recipes'
 import { batchCsv, batchOrder, batchSize, buildRecipes, byChannel, chooseBatch, nextBatchCode, renderFolder } from '../shared/utils/recipes'
 
 const take = (kind: TakeClip['kind'], code: string, person: string, channel: string, extra: Partial<TakeClip> = {}): TakeClip => ({
-  kind, code, person, channel, item_id: `${channel}-${person}-${code}`, beat: null, format: null, mode: kind === 'cta' ? 'sync' : null,
+  kind, code, person, channel, item_id: `${channel}-${person}-${code}`, beat: null, format: null, feature: null, mode: kind === 'cta' ? 'sync' : null,
   angle: null, script: '', file: `${channel}/${kind}/${person}/${code}.mp4`, raw_file: '', caption: null, duration: 3, ...extra
 })
 const vo = (code: string, person: string, channel: string, beats: [string, number][], format = 'F01') =>
   beats.map(([beat, duration]) => take('vo', code, person, channel, { beat, duration, format, file: `${channel}/vo/${person}/${beat}/${code}.m4a` }))
-const clip = (channel: string, section: string, name: string, duration: number, productVisible = section === 'general'): BrollClip => ({
-  kind: 'broll', channel, section, file: `${channel}/b-roll/${section}/${name}.mp4`, raw_file: '', duration, shot: null, product_visible: productVisible
+const clip = (channel: string, section: string, name: string, duration: number, productVisible = section === 'general', feature: string | null = null): BrollClip => ({
+  kind: 'broll', channel, section, feature, file: `${channel}/b-roll/${section}/${feature ? `${feature}/` : ''}${name}.mp4`, raw_file: '', duration, shot: null, product_visible: productVisible
 })
 
 function manifest(clips: Manifest['clips']): Manifest {
@@ -71,6 +71,23 @@ describe('buildRecipes', () => {
       take('hook', 'H01', 'joe', 'nix'), ...vo('V01', 'joe', 'nix', [['product', 1]]), take('cta', 'C01', 'joe', 'nix'),
       clip('nix', 'product', 'pr2', 2)
     ]))).toEqual([])
+  })
+
+  it('uses feature b-roll only under VOs about that feature, and generic b-roll under any', () => {
+    const feature = (name: string, slug: string) => clip('nix', 'problem', name, 2, false, slug)
+    const recipes = buildRecipes(manifest([
+      take('hook', 'H01', 'joe', 'nix'),
+      ...vo('V01', 'joe', 'nix', [['problem', 6]]).map(t => ({ ...t, feature: 'joints' })),
+      ...vo('V02', 'joe', 'nix', [['problem', 6]]).map(t => ({ ...t, feature: 'coat' })),
+      take('cta', 'C01', 'joe', 'nix'),
+      clip('nix', 'problem', 'any1', 2), clip('nix', 'problem', 'any2', 2),
+      feature('j1', 'joints'), feature('c1', 'coat')
+    ]))
+    const brollOf = (code: string) => recipes.find(recipe => recipe.vo.code === code)!.vo.beats[0]!.broll
+    expect(brollOf('V01')).not.toContain('nix/b-roll/problem/coat/c1.mp4')
+    expect(brollOf('V02')).not.toContain('nix/b-roll/problem/joints/j1.mp4')
+    expect(brollOf('V01')).toContain('nix/b-roll/problem/joints/j1.mp4')
+    expect(brollOf('V02')).toContain('nix/b-roll/problem/coat/c1.mp4')
   })
 
   it('lays product shots under a VO CTA', () => {

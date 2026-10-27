@@ -7,6 +7,8 @@
 // slowed), topped up with general product shots only when the beat's own clips run short. The
 // product beat must include a clip with the product visible, and no clip repeats within one
 // video. A VO CTA plays over b-roll too: product shots first. The stitcher trims.
+// B-roll filed for a product feature (b-roll/<beat>/<feature>/) only goes under VOs about that
+// feature; generic b-roll goes under any VO.
 //
 // Paths are relative to the shoot's edited/ folder.
 
@@ -91,11 +93,14 @@ export function buildRecipes(manifest: Manifest): Recipe[] {
     // a VO is its beats, in the format's order; every beat needs its recording
     const vos = new Map<string, TakeClip[]>()
     for (const take of group.filter(take => take.kind === 'vo')) vos.set(take.item_id, [...(vos.get(take.item_id) ?? []), take])
-    const channelBroll = broll.filter(clip => clip.channel === channel)
-    const productShots = channelBroll.filter(clip => clip.section === 'general')
+    const channelBrollAll = broll.filter(clip => clip.channel === channel)
 
     for (const hook of hooks) {
       for (const beats of vos.values()) {
+        // generic b-roll, plus b-roll for the feature this VO is about
+        const voFeature = beats[0]!.feature ?? null
+        const channelBroll = channelBrollAll.filter(clip => !clip.feature || clip.feature === voFeature)
+        const productShots = channelBroll.filter(clip => clip.section === 'general')
         // every beat of the VO's format, each with a length (a manifest marked ready anyway can be short of some)
         const formatBeats = manifest.plan.formats?.find(format => format.code === beats[0]!.format)?.beats
         if (formatBeats && formatBeats.some(name => !beats.some(beat => beat.beat === name))) continue

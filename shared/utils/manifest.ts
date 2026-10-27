@@ -114,6 +114,8 @@ export interface TakeClip extends ClipBase {
   beat: string | null
   /** VOs: the format */
   format: string | null
+  /** VOs: the slug of the product feature it's about; feature b-roll only goes under VOs about its feature */
+  feature: string | null
   /** CTAs: sync (on camera) or vo (over b-roll) */
   mode: string | null
   angle: string | null
@@ -126,6 +128,8 @@ export interface BrollClip extends ClipBase {
   kind: 'broll'
   /** the beat folder it's filed in ("problem", "product"…), or "general" for product shots */
   section: string
+  /** the feature folder inside it (b-roll/<beat>/<feature>/), a feature slug; null = generic, for any VO */
+  feature: string | null
   /** the b-roll shot it was filmed for, when it was added in the checklist */
   shot: { id: string, description: string, beat: string, general: boolean } | null
   product_visible: boolean
@@ -179,6 +183,7 @@ export function buildManifest(
       code: item.code,
       beat,
       format: item.format?.code ?? null,
+      feature: item.kind === 'body' ? item.feature_slug ?? null : null,
       mode: item.cta_mode,
       angle: item.angle,
       script: beat ? script.beats?.find(b => b.beat === beat)?.script ?? '' : script.text ?? '',
@@ -190,19 +195,21 @@ export function buildManifest(
   }
 
   // b-roll: every clip in each channel's b-roll folders, matched to its shot by name (editors
-  // keep the name, the extension can change)
+  // keep the name, the extension can change). A clip in a feature folder (b-roll/<beat>/<feature>/)
+  // is for that feature; one directly in the beat folder is generic.
   const shots = new Map(bundle.broll.filter(shot => shot.id).map(shot => [shot.id!, shot]))
   const shotByName = new Map([...(options.brollShots ?? [])].map(([path, id]) => [withoutExtension(path).toLowerCase(), id]))
   for (const file of editedClips) {
-    const match = file.match(/^([^/]+)\/b-roll\/([^/]+)\/[^/]+$/)
+    const match = file.match(/^([^/]+)\/b-roll\/([^/]+)\/(?:([^/]+)\/)?[^/]+$/)
     if (!match) continue
-    const [, channel, section] = match as unknown as [string, string, string]
+    const [, channel, section, feature] = match as unknown as [string, string, string, string | undefined]
     const shotId = shotByName.get(withoutExtension(file).toLowerCase())
     const shot = shotId ? shots.get(shotId) ?? null : null
     clips.push({
       kind: 'broll',
       channel,
       section,
+      feature: feature ?? null,
       file,
       raw_file: rawOf(file),
       duration: durations.get(file) ?? null,

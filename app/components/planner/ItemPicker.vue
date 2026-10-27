@@ -27,7 +27,7 @@ const open = defineModel<boolean>('open', { required: true })
 
 const db = useDb()
 const run = useAction()
-const { formats, people, angleName, angleOptions } = useRefData()
+const { formats, people, angleName, angleOptions, productOf } = useRefData()
 const personName = (id: string | null) => people.value.find(person => person.id === id)?.name ?? null
 
 const hooks = shallowRef<Row<'hook_templates'>[]>([])
@@ -55,7 +55,9 @@ watch(open, async (isOpen) => {
   search.value = ''
   loading.value = true
   await run(async () => {
-    hooks.value = must(await db.from('hook_templates').select('*').eq('archived', false).order('created_at', { ascending: false }))
+    // general hooks and this product's own; hooks written in other shoots stay with them
+    hooks.value = must(await db.from('hook_templates').select('*').eq('archived', false).is('shoot_id', null)
+      .or(`product_id.is.null,product_id.eq.${props.productId}`).order('created_at', { ascending: false }))
     allBodies.value = must(await db.from('body_templates').select('*, feature:product_features(name, product_id)').eq('archived', false).order('created_at'))
     ctas.value = must(await db.from('cta_templates').select('*').eq('archived', false).order('created_at', { ascending: false }))
   })
@@ -86,7 +88,10 @@ const options = computed<Option[]>(() => {
       id: row.id,
       title: null,
       text: row.script,
-      badges: angleName(row.angle_id) ? [angleName(row.angle_id)!] : [],
+      badges: [
+        ...(row.product_id ? [`${productOf(row.product_id)?.name ?? 'This product'} only`] : []),
+        ...(angleName(row.angle_id) ? [angleName(row.angle_id)!] : [])
+      ],
       tags: row.tags,
       angleId: row.angle_id
     }))

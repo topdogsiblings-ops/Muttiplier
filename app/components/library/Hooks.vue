@@ -3,20 +3,26 @@ import type { Row } from '#shared/types/models'
 
 const db = useDb()
 const run = useAction()
-const { angleName, angleOptions } = useRefData()
+const { angleName, angleOptions, productOptions, productOf } = useRefData()
 const { context } = usePreviewContext()
 const library = useLibrary('hook_templates', { usageKind: 'hook', text: row => row.script })
 
 const angle = ref('all')
 const tag = ref('all')
+/** 'all', 'general' (every product) or a product id: hooks kept for one product */
+const product = ref('all')
 const angleFilter = computed(() => [{ label: 'All angles', value: 'all' }, ...angleOptions.value])
+const productFilter = computed(() => [{ label: 'All products', value: 'all' }, { label: 'General', value: 'general' }, ...productOptions.value])
 
+// hooks written in a shoot stay with that shoot until someone saves them to the product
 const visible = computed(() => library.visible(row =>
-  (angle.value === 'all' || row.angle_id === angle.value)
+  !row.shoot_id
+  && (angle.value === 'all' || row.angle_id === angle.value)
   && (tag.value === 'all' || row.tags.includes(tag.value))
+  && (product.value === 'all' || (product.value === 'general' ? !row.product_id : row.product_id === product.value))
 ))
 const pageRows = computed(() => library.paginate(visible.value))
-watch([angle, tag], library.resetPage)
+watch([angle, tag, product], library.resetPage)
 
 // --- editor ----------------------------------------------------------------
 const open = ref(false)
@@ -30,7 +36,9 @@ const form = reactive({
   notes: '',
   source_url: '',
   filming_notes: '',
-  caption: ''
+  caption: '',
+  /** kept for one product (offered only on its shoots); none = general */
+  product_id: undefined as string | undefined
 })
 const requestOpen = useGuardedClose(open, form)
 
@@ -44,7 +52,8 @@ function edit(row?: Partial<Row<'hook_templates'>>, duplicate = false) {
     notes: row?.notes ?? '',
     source_url: row?.source_url ?? '',
     filming_notes: row?.filming_notes ?? '',
-    caption: row?.caption ?? ''
+    caption: row?.caption ?? '',
+    product_id: row?.product_id ?? undefined
   })
   open.value = true
 }
@@ -62,7 +71,8 @@ async function save() {
       notes: form.notes.trim() || null,
       source_url: normalizeUrl(form.source_url),
       filming_notes: form.filming_notes.trim() || null,
-      caption: form.caption.trim() || null
+      caption: form.caption.trim() || null,
+      product_id: form.product_id ?? null
     }
     if (form.id) must(await db.from('hook_templates').update(fields).eq('id', form.id))
     else must(await db.from('hook_templates').insert(fields))
@@ -83,6 +93,7 @@ async function save() {
       sortable
       @create="edit()"
     >
+      <USelect v-model="product" :items="productFilter" class="w-44" />
       <USelect v-model="angle" :items="angleFilter" class="w-36" />
       <USelect v-model="tag" :items="tagOptions(library.rows.value)" class="w-32" />
       <template #actions>
@@ -106,6 +117,7 @@ async function save() {
             <ScriptPreview :text="row.caption" />
           </p>
           <div class="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+            <UBadge v-if="row.product_id" :label="`${productOf(row.product_id)?.name ?? 'One product'} only`" icon="i-lucide-package" color="primary" variant="subtle" size="sm" />
             <UTooltip v-if="row.filming_notes" :text="row.filming_notes">
               <UBadge label="Filming notes" icon="i-lucide-video" color="neutral" variant="subtle" size="sm" />
             </UTooltip>
@@ -150,6 +162,10 @@ async function save() {
 
           <UFormField label="How to film it" help="Shown on the shot sheet: framing, action, props, delivery, e.g. “Close-up, start mid-sentence, dog enters frame on ‘this’”">
             <UTextarea v-model="form.filming_notes" autoresize :rows="2" class="w-full" />
+          </UFormField>
+
+          <UFormField label="Product" help="Keep this hook for one product: it's offered only on that product's shoots. Leave empty for a general hook offered on every shoot.">
+            <USelectMenu v-model="form.product_id" :items="productOptions" value-key="value" placeholder="General: every product" class="w-full" />
           </UFormField>
 
           <div class="grid gap-4 sm:grid-cols-2">
