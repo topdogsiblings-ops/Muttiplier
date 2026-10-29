@@ -67,8 +67,6 @@ async function add() {
       format_id: shot.format_id,
       beat: shot.beat,
       description: shot.description,
-      product_visible: shot.product_visible,
-      min_clips: shot.min_clips,
       sort_order: props.nextOrder + index
     }))))
   }, `Added ${rows.length} b-roll shot${rows.length === 1 ? '' : 's'}`)
@@ -114,8 +112,6 @@ async function add() {
             >
               <UCheckbox :model-value="picked.has(index)" class="mt-0.5" @update:model-value="toggle(index)" />
               <span class="min-w-0 flex-1 text-sm text-highlighted">{{ shot.description }}</span>
-              <UBadge v-if="shot.product_visible" label="product" icon="i-lucide-package" color="neutral" variant="subtle" size="sm" />
-              <span class="shrink-0 text-xs text-muted tabular-nums">{{ shot.min_clips }} clips</span>
             </label>
           </div>
         </div>

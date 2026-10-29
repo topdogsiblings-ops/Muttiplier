@@ -120,6 +120,8 @@ export type Database = {
           id: string
           notes: string | null
           person_id: string | null
+          product_id: string
+          shoot_id: string | null
           source_url: string | null
           tags: string[]
           title: string | null
@@ -137,6 +139,8 @@ export type Database = {
           id?: string
           notes?: string | null
           person_id?: string | null
+          product_id: string
+          shoot_id?: string | null
           source_url?: string | null
           tags?: string[]
           title?: string | null
@@ -154,6 +158,8 @@ export type Database = {
           id?: string
           notes?: string | null
           person_id?: string | null
+          product_id?: string
+          shoot_id?: string | null
           source_url?: string | null
           tags?: string[]
           title?: string | null
@@ -291,8 +297,6 @@ export type Database = {
           feature_id: string | null
           format_id: string | null
           id: string
-          min_clips: number
-          product_visible: boolean
           shoot_id: string
           sort_order: number
           status: string
@@ -308,8 +312,6 @@ export type Database = {
           feature_id?: string | null
           format_id?: string | null
           id?: string
-          min_clips?: number
-          product_visible?: boolean
           shoot_id: string
           sort_order?: number
           status?: string
@@ -325,8 +327,6 @@ export type Database = {
           feature_id?: string | null
           format_id?: string | null
           id?: string
-          min_clips?: number
-          product_visible?: boolean
           shoot_id?: string
           sort_order?: number
           status?: string
@@ -411,7 +411,9 @@ export type Database = {
           id: string
           mode: string
           notes: string | null
+          product_id: string | null
           script: string
+          shoot_id: string | null
           source_url: string | null
           tags: string[]
           updated_at: string
@@ -424,7 +426,9 @@ export type Database = {
           id?: string
           mode: string
           notes?: string | null
+          product_id?: string | null
           script: string
+          shoot_id?: string | null
           source_url?: string | null
           tags?: string[]
           updated_at?: string
@@ -437,7 +441,9 @@ export type Database = {
           id?: string
           mode?: string
           notes?: string | null
+          product_id?: string | null
           script?: string
+          shoot_id?: string | null
           source_url?: string | null
           tags?: string[]
           updated_at?: string
@@ -1265,6 +1271,7 @@ export type Database = {
           updated_at: string
           upload_requested_at: string | null
           upload_requested_by: string | null
+          vo_variations: number
         }
         Insert: {
           broll_variations?: number
@@ -1290,6 +1297,7 @@ export type Database = {
           updated_at?: string
           upload_requested_at?: string | null
           upload_requested_by?: string | null
+          vo_variations?: number
         }
         Update: {
           broll_variations?: number
@@ -1315,6 +1323,7 @@ export type Database = {
           updated_at?: string
           upload_requested_at?: string | null
           upload_requested_by?: string | null
+          vo_variations?: number
         }
         Relationships: [
           {
@@ -1329,6 +1338,105 @@ export type Database = {
             columns: ["upload_requested_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vo_cast: {
+        Row: {
+          body_template_id: string
+          created_at: string
+          person_id: string
+        }
+        Insert: {
+          body_template_id: string
+          created_at?: string
+          person_id: string
+        }
+        Update: {
+          body_template_id?: string
+          created_at?: string
+          person_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vo_cast_body_template_id_fkey"
+            columns: ["body_template_id"]
+            isOneToOne: false
+            referencedRelation: "body_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vo_cast_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "people"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vo_cta_links: {
+        Row: {
+          body_template_id: string
+          created_at: string
+          cta_template_id: string
+        }
+        Insert: {
+          body_template_id: string
+          created_at?: string
+          cta_template_id: string
+        }
+        Update: {
+          body_template_id?: string
+          created_at?: string
+          cta_template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vo_cta_links_body_template_id_fkey"
+            columns: ["body_template_id"]
+            isOneToOne: false
+            referencedRelation: "body_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vo_cta_links_cta_template_id_fkey"
+            columns: ["cta_template_id"]
+            isOneToOne: false
+            referencedRelation: "cta_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vo_hook_links: {
+        Row: {
+          body_template_id: string
+          created_at: string
+          hook_template_id: string
+        }
+        Insert: {
+          body_template_id: string
+          created_at?: string
+          hook_template_id: string
+        }
+        Update: {
+          body_template_id?: string
+          created_at?: string
+          hook_template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vo_hook_links_body_template_id_fkey"
+            columns: ["body_template_id"]
+            isOneToOne: false
+            referencedRelation: "body_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vo_hook_links_hook_template_id_fkey"
+            columns: ["hook_template_id"]
+            isOneToOne: false
+            referencedRelation: "hook_templates"
             referencedColumns: ["id"]
           },
         ]

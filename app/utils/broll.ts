@@ -1,7 +1,6 @@
 /** A suggested b-roll shot, written on a format's beat or in Settings (general product shots). */
 export interface BrollSuggestion {
   description: string
-  product_visible: boolean
 }
 
 /** Read a stored suggestions list defensively; empty descriptions are dropped. */
@@ -9,7 +8,7 @@ export function parseSuggestions(value: unknown): BrollSuggestion[] {
   if (!Array.isArray(value)) return []
   return value
     .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
-    .map(entry => ({ description: String(entry.description ?? '').trim(), product_visible: entry.product_visible === true }))
+    .map(entry => ({ description: String(entry.description ?? '').trim() }))
     .filter(entry => entry.description)
 }
 

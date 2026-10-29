@@ -67,8 +67,8 @@ async function generate() {
       recipes: recipes.value
     }, null, 2))
     await dropboxUploader.writeText(`${base.value}/batches/${code}.json`, JSON.stringify({
-      // 2: renders split by channel
-      schema_version: 2,
+      // 3: mixed VOs (recipe.mixed; each beat, hook and CTA says whose it is). 2: renders split by channel
+      schema_version: 3,
       shoot: shoot.value.code,
       batch: code,
       manifest_version: manifestVersion,

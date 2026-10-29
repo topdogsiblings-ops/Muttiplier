@@ -22,7 +22,7 @@ function bundle(): ShootBundle {
     people: [{ id: 'p1', slug: 'joe', name: 'Joe' }],
     channels: [{ id: 'c1', name: 'topdognix', slug: 'topdognix', folder_slug: 'nix', dogs: ['nix'], dog_phrase: 'my Doberman' }],
     items: [item('h', 'H01', 'hook', 'c1'), item('v', 'V01', 'body', 'c1'), item('c', 'C01', 'cta', 'c1'), item('s', 'H02', 'hook', 'c1', { status: 'skipped' })],
-    broll: [{ id: 'b1', channel_id: null, format_id: 'f1', beat: 'problem', description: 'pacing', product_visible: false, min_clips: 1, status: 'filmed' }],
+    broll: [{ id: 'b1', channel_id: null, format_id: 'f1', beat: 'problem', description: 'pacing', status: 'filmed' }],
     channelPeople: { c1: ['p1'] }
   }
 }
@@ -84,9 +84,10 @@ describe('buildManifest', () => {
     expect(manifest.clips[4]).toMatchObject({ feature: null })
     expect(manifest.clips[0]).toMatchObject({ kind: 'hook', channel: 'topdognix', person: 'joe', script: 'Watch my Doberman go', duration: 2.5 })
     expect(manifest.clips[1]).toMatchObject({ kind: 'vo', beat: 'problem', script: 'My dog pulled', caption: 'topdognix/vo/joe/problem/V01.srt' })
-    // the clip added for shot b1 isn't a product shot; one in general/ is
-    expect(manifest.clips[4]).toMatchObject({ section: 'problem', shot: { id: 'b1' }, product_visible: false })
-    expect(manifest.clips[5]).toMatchObject({ section: 'general', shot: null, product_visible: true })
+    // the clip added for shot b1 knows its shot; one added some other way doesn't
+    expect(manifest.clips[4]).toMatchObject({ section: 'problem', shot: { id: 'b1' } })
+    expect(manifest.clips[5]).toMatchObject({ section: 'general', shot: null })
+    expect(manifest.clips[4]).not.toHaveProperty('product_visible')
   })
 
   it('records the problems it was marked ready with, and leaves out what\'s missing', () => {

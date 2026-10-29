@@ -1,20 +1,22 @@
 <script setup lang="ts">
 import type { Row } from '#shared/types/models'
 
-// Searchable multi-select over the Library. Picked items go on the shoot's shared shot list,
-// which everyone on the shoot films, except VOs: each is written by one person on the cast
-// about a feature of one product, and only they perform it. VOs show when they're about a
-// feature of the shoot's product and written by someone on the shoot.
+// Searchable multi-select. Hooks and CTAs come from the Library and go on the shoot's shared
+// shot list, which everyone on the shoot films. VOs are written in shoots, each for one product
+// by one person who alone performs it: here the ones written for this product on earlier shoots
+// can be used again, when their writer is on this shoot.
 export interface PickedItems {
   hooks: Row<'hook_templates'>[]
-  bodies: BodyWithProducts[]
+  bodies: Row<'body_templates'>[]
   ctas: Row<'cta_templates'>[]
 }
-type BodyWithProducts = Row<'body_templates'> & { feature: { name: string, product_id: string } | null }
+type BodyWithProducts = Row<'body_templates'> & { feature: { name: string } | null }
 
 const props = defineProps<{
   /** template ids already on the structure, so they can't be added twice */
   existing: string[]
+  /** what can be picked: hooks (Hooks tab), CTAs (CTAs tab) or VOs (VOs tab) */
+  kinds: ('hook' | 'body' | 'cta')[]
   /** opened from a format: only that format's VOs */
   format?: { id: string, code: string, name: string } | null
   /** the shoot's product: VOs for other products are left out */
@@ -32,10 +34,9 @@ const personName = (id: string | null) => people.value.find(person => person.id 
 
 const hooks = shallowRef<Row<'hook_templates'>[]>([])
 const allBodies = shallowRef<BodyWithProducts[]>([])
-const fitsShoot = (row: BodyWithProducts) =>
-  !!row.person_id && props.peopleIds.includes(row.person_id) && row.feature?.product_id === props.productId
+const fitsShoot = (row: BodyWithProducts) => !!row.person_id && props.peopleIds.includes(row.person_id)
 const bodies = computed(() => allBodies.value.filter(fitsShoot))
-/** VOs in this view left out: for another product, by someone not on the shoot, or still needing a feature */
+/** this product's VOs in this view left out: by someone not on the shoot */
 const hiddenBodies = computed(() => allBodies.value.filter(row => !props.format || row.format_id === props.format.id).length
   - bodies.value.filter(row => !props.format || row.format_id === props.format.id).length)
 const ctas = shallowRef<Row<'cta_templates'>[]>([])
@@ -51,24 +52,34 @@ const requestOpen = useGuardedClose(open, () => [...selected.value])
 watch(open, async (isOpen) => {
   if (!isOpen) return
   selected.value = new Set()
-  kind.value = props.format ? 'body' : 'hook'
+  kind.value = props.kinds[0] ?? 'hook'
   search.value = ''
   loading.value = true
   await run(async () => {
     // general hooks and this product's own; hooks written in other shoots stay with them
-    hooks.value = must(await db.from('hook_templates').select('*').eq('archived', false).is('shoot_id', null)
-      .or(`product_id.is.null,product_id.eq.${props.productId}`).order('created_at', { ascending: false }))
-    allBodies.value = must(await db.from('body_templates').select('*, feature:product_features(name, product_id)').eq('archived', false).order('created_at'))
-    ctas.value = must(await db.from('cta_templates').select('*').eq('archived', false).order('created_at', { ascending: false }))
+    if (props.kinds.includes('hook')) {
+      hooks.value = must(await db.from('hook_templates').select('*').eq('archived', false).is('shoot_id', null)
+        .or(`product_id.is.null,product_id.eq.${props.productId}`).order('created_at', { ascending: false }))
+    }
+    if (props.kinds.includes('body')) {
+      allBodies.value = must(await db.from('body_templates').select('*, feature:product_features(name)')
+        .eq('archived', false).eq('product_id', props.productId).order('created_at'))
+    }
+    if (props.kinds.includes('cta')) {
+      // general CTAs and this product's own; CTAs written in other shoots stay with them
+      ctas.value = must(await db.from('cta_templates').select('*').eq('archived', false).is('shoot_id', null)
+        .or(`product_id.is.null,product_id.eq.${props.productId}`).order('created_at', { ascending: false }))
+    }
   })
   loading.value = false
 })
 
-const kinds = computed(() => [
+const kindTabs = computed(() => [
   { label: `Hooks (${hooks.value.length})`, value: 'hook' },
   { label: `VOs (${bodies.value.length})`, value: 'body' },
   { label: `CTAs (${ctas.value.length})`, value: 'cta' }
-])
+].filter(tab => props.kinds.includes(tab.value as 'hook' | 'body' | 'cta')))
+const onlyVos = computed(() => props.kinds.length === 1 && props.kinds[0] === 'body')
 const angleFilter = computed(() => [{ label: 'All angles', value: 'all' }, ...angleOptions.value])
 const tags = computed(() => tagOptions([...hooks.value, ...bodies.value, ...ctas.value]))
 const formatOf = (id: string) => formats.value.find(format => format.id === id)
@@ -99,7 +110,7 @@ const options = computed<Option[]>(() => {
   if (kind.value === 'body') {
     return bodies.value.filter(row => !props.format || row.format_id === props.format.id).map(row => ({
       id: row.id,
-      title: row.feature?.name ?? null,
+      title: row.feature?.name ?? `${productOf(props.productId)?.name ?? 'The product'} as a whole`,
       text: joinBeats(parseBeats(row.beats)),
       badges: [
         formatOf(row.format_id)?.code ?? '?',
@@ -110,7 +121,14 @@ const options = computed<Option[]>(() => {
       angleId: row.angle_id
     }))
   }
-  return ctas.value.map(row => ({ id: row.id, title: null, text: row.script, badges: [row.mode], tags: row.tags, angleId: null }))
+  return ctas.value.map(row => ({
+    id: row.id,
+    title: null,
+    text: row.script,
+    badges: [row.mode, ...(row.product_id ? [`${productOf(row.product_id)?.name ?? 'This product'} only`] : [])],
+    tags: row.tags,
+    angleId: null
+  }))
 })
 
 const visible = computed(() => {
@@ -153,13 +171,13 @@ function add() {
   <UModal
     :open="open"
     @update:open="requestOpen"
-    :title="props.format ? `Add ${props.format.code} VOs` : 'Add to the structure'"
-    :description="props.format ? `VOs written for ${props.format.name}.` : 'Pick hooks, VOs and CTAs from the Library.'"
+    :title="onlyVos ? (props.format ? `Earlier ${props.format.code} VOs` : 'Earlier VOs') : props.kinds.length === 1 ? `Add ${props.kinds[0] === 'hook' ? 'hooks' : 'CTAs'} from the Library` : 'Add from the Library'"
+    :description="onlyVos ? `VOs written for ${productOf(props.productId)?.name ?? 'this product'} on its earlier shoots.` : 'Everyone on the shoot films what you pick.'"
     :ui="{ content: 'sm:max-w-3xl' }"
   >
     <template #body>
       <div class="space-y-3">
-        <UTabs v-if="!props.format" v-model="kind" :items="kinds" :content="false" class="w-full" />
+        <UTabs v-if="kindTabs.length > 1" v-model="kind" :items="kindTabs" :content="false" class="w-full" />
         <div class="flex flex-wrap gap-2">
           <UInput v-model="search" icon="i-lucide-search" placeholder="Search scripts" class="min-w-40 flex-1" />
           <USelect v-if="kind !== 'cta'" v-model="angle" :items="angleFilter" class="w-36" />
@@ -195,18 +213,18 @@ function add() {
             </div>
           </label>
           <p v-if="!visible.length" class="px-3 py-8 text-center text-sm text-muted">
-            {{ loading ? 'Loading…' : 'Nothing in the Library matches.' }}
+            {{ loading ? 'Loading…' : onlyVos ? 'No earlier VOs for this product match.' : 'Nothing in the Library matches.' }}
           </p>
         </div>
         <p v-if="kind === 'body' && hiddenBodies" class="text-xs text-muted">
-          {{ hiddenBodies }} VO{{ hiddenBodies === 1 ? '' : 's' }} not shown: about another product, by someone who isn't on this shoot, or still needing a feature (Library → VOs).
+          {{ hiddenBodies }} VO{{ hiddenBodies === 1 ? '' : 's' }} not shown: written by someone who isn't on this shoot.
         </p>
       </div>
     </template>
 
     <template #footer>
       <div class="flex w-full flex-wrap items-center justify-between gap-3">
-        <span class="text-sm text-muted">Everyone on the shoot films every item, except VOs written by one person.</span>
+        <span class="text-sm text-muted">{{ onlyVos ? 'Each VO is performed by its writer only.' : 'Everyone on the shoot films every item.' }}</span>
         <UButton
           class="ml-auto"
           :label="`Add ${selected.size} item${selected.size === 1 ? '' : 's'}`"

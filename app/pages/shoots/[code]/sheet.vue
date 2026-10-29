@@ -85,8 +85,8 @@ const sections = computed(() => {
 })
 
 /**
- * Every channel films its own clips of a b-roll shot: a shared shot (no channel) needs its
- * min_clips for each of the shoot's channels, a channel's own shot only for that channel.
+ * Every channel films its own clips of a b-roll shot: a shared shot (no channel) is filmed for
+ * each of the shoot's channels, a channel's own shot only for that channel.
  * Filtered to a person, only the channels they're linked to show.
  */
 const brollChannels = (shot: Row<'broll_shots'>): { id: string | null, name: string | null }[] => {
@@ -205,12 +205,20 @@ function toggleSkip(items: BundleItem[]) {
   }
 }
 
-/** Every clip is the keeper, so b-roll is ticked off clip by clip: min_clips per channel. */
-const clipCount = (shot: Row<'broll_shots'>) => Math.max(1, shot.min_clips)
-/** How many channels film a shot (all of them, not just the ones on screen). */
-const allBrollChannels = (shot: Row<'broll_shots'>) =>
-  shot.channel_id ? 1 : Math.max(1, bundle.value.channels.length)
-const requiredClips = (shot: Row<'broll_shots'>) => clipCount(shot) * allBrollChannels(shot)
+/**
+ * A shot takes as many clips as you like on each channel: they fill numbered slots, and there's
+ * always one more free slot to add to. The shot is filmed once every channel has as many clips
+ * as the shoot has b-roll variations (each variation picks different clips).
+ */
+const clipsNeeded = computed(() => Math.max(1, bundle.value.shoot.broll_variations || 1))
+const MAX_BROLL_CLIPS = 40
+const brollSlots = (shot: Row<'broll_shots'>, channelId: string | null) =>
+  Array.from({ length: MAX_BROLL_CLIPS }, (_, index) => index).filter(index => taken(clipTarget.broll(shot.id, channelId, index)))
+const nextBrollSlot = (shot: Row<'broll_shots'>, channelId: string | null) => {
+  const used = brollSlots(shot, channelId)
+  return Array.from({ length: MAX_BROLL_CLIPS }, (_, index) => index).find(index => !used.includes(index)) ?? null
+}
+const brollDone = (shot: Row<'broll_shots'>) => allChannelIds(shot).every(channelId => brollSlots(shot, channelId).length >= clipsNeeded.value)
 const allChannelIds = (shot: Row<'broll_shots'>): (string | null)[] =>
   shot.channel_id ? [shot.channel_id] : bundle.value.channels.length ? bundle.value.channels.map(channel => channel.id) : [null]
 async function saveBroll(shot: Row<'broll_shots'>, patch: { status: string, clips_filmed: number }) {
@@ -222,14 +230,12 @@ async function saveBroll(shot: Row<'broll_shots'>, patch: { status: string, clip
 }
 
 /**
- * After a clip is added or removed: count the shot's clip slots with footage on any phone
- * (every channel, on screen or not); the shot is filmed once all of them are in.
+ * After a clip is added or removed: count the shot's clips with footage on any phone (every
+ * channel, on screen or not); the shot is filmed once every channel has one.
  */
 function brollClipChanged(shot: Row<'broll_shots'>) {
-  const slots = allChannelIds(shot).flatMap(channelId =>
-    Array.from({ length: clipCount(shot) }, (_, index) => clipTarget.broll(shot.id, channelId, index)))
-  const next = slots.filter(target => taken(target)).length
-  const status = shot.status === 'skipped' ? 'skipped' : next >= requiredClips(shot) ? 'filmed' : 'planned'
+  const next = allChannelIds(shot).reduce((sum, channelId) => sum + brollSlots(shot, channelId).length, 0)
+  const status = shot.status === 'skipped' ? 'skipped' : brollDone(shot) ? 'filmed' : 'planned'
   saveBroll(shot, { clips_filmed: next, status })
 }
 
@@ -328,7 +334,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
   const skipped = shot.status === 'skipped'
   saveBroll(shot, {
     clips_filmed: shot.clips_filmed,
-    status: skipped ? (shot.clips_filmed >= requiredClips(shot) ? 'filmed' : 'planned') : 'skipped'
+    status: skipped ? (brollDone(shot) ? 'filmed' : 'planned') : 'skipped'
   })
 }
 
@@ -625,11 +631,10 @@ function skipBroll(shot: Row<'broll_shots'>) {
                   {{ shot.description || 'Untitled shot' }}
                 </p>
                 <p class="text-xs text-muted">
-                  {{ Math.min(shot.clips_filmed, requiredClips(shot)) }}/{{ requiredClips(shot) }} clips<template v-if="allBrollChannels(shot) > 1">
-                    · {{ clipCount(shot) }} per channel
-                  </template>
-                  <template v-if="shot.product_visible">
-                    · product visible
+                  {{ shot.clips_filmed }}/{{ clipsNeeded * allChannelIds(shot).length }} clips<template v-if="allChannelIds(shot).length > 1">
+                    · {{ clipsNeeded }} per channel
+                  </template><template v-else-if="clipsNeeded > 1">
+                    · at least {{ clipsNeeded }}
                   </template>
                 </p>
               </div>
@@ -641,25 +646,24 @@ function skipBroll(shot: Row<'broll_shots'>) {
                 @click="skipBroll(shot)"
               />
             </div>
-            <!-- per channel: one add-clip button per required clip; each clip shows below once added -->
+            <!-- per channel: an add-clip button for the next free slot; each clip shows below once added -->
             <div v-for="channel in brollChannels(shot)" :key="channel.id ?? 'shared'" class="mt-2">
               <div v-if="shot.status !== 'skipped'" class="flex flex-wrap items-center gap-2">
                 <UBadge v-if="channel.name" :label="channel.name" color="neutral" variant="outline" size="sm" class="w-20 justify-center" />
                 <ClipCapture
-                  v-for="(_, index) in clipCount(shot)"
-                  :key="index"
+                  v-if="nextBrollSlot(shot, channel.id) !== null"
                   part="actions"
                   :shoot="shoot.code"
-                  :target="clipTarget.broll(shot.id, channel.id, index)"
+                  :target="clipTarget.broll(shot.id, channel.id, nextBrollSlot(shot, channel.id)!)"
                   :path="brollClipFolder(shot, channel.id)"
                   :rules="clipRules"
-                  :label="brollClipLabel(shot, channel.name, index)"
+                  :label="brollClipLabel(shot, channel.name, nextBrollSlot(shot, channel.id)!)"
                   @saved="brollClipChanged(shot)"
                   @removed="brollClipChanged(shot)"
                 />
               </div>
               <ClipCapture
-                v-for="(_, index) in clipCount(shot)"
+                v-for="index in brollSlots(shot, channel.id)"
                 :key="index"
                 part="clip"
                 class="mt-2"

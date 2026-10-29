@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BrollClip, Manifest, TakeClip } from '../shared/utils/manifest'
 import type { Recipe } from '../shared/utils/recipes'
-import { batchCsv, batchOrder, batchSize, buildRecipes, byChannel, chooseBatch, nextBatchCode, renderFolder } from '../shared/utils/recipes'
+import { batchCsv, batchOrder, batchSize, beatMixes, buildRecipes, byChannel, chooseBatch, nextBatchCode, renderFolder } from '../shared/utils/recipes'
 
 const take = (kind: TakeClip['kind'], code: string, person: string, channel: string, extra: Partial<TakeClip> = {}): TakeClip => ({
   kind, code, person, channel, item_id: `${channel}-${person}-${code}`, beat: null, format: null, feature: null, mode: kind === 'cta' ? 'sync' : null,
@@ -9,8 +9,8 @@ const take = (kind: TakeClip['kind'], code: string, person: string, channel: str
 })
 const vo = (code: string, person: string, channel: string, beats: [string, number][], format = 'F01') =>
   beats.map(([beat, duration]) => take('vo', code, person, channel, { beat, duration, format, file: `${channel}/vo/${person}/${beat}/${code}.m4a` }))
-const clip = (channel: string, section: string, name: string, duration: number, productVisible = section === 'general', feature: string | null = null): BrollClip => ({
-  kind: 'broll', channel, section, feature, file: `${channel}/b-roll/${section}/${feature ? `${feature}/` : ''}${name}.mp4`, raw_file: '', duration, shot: null, product_visible: productVisible
+const clip = (channel: string, section: string, name: string, duration: number, feature: string | null = null): BrollClip => ({
+  kind: 'broll', channel, section, feature, file: `${channel}/b-roll/${section}/${feature ? `${feature}/` : ''}${name}.mp4`, raw_file: '', duration, shot: null
 })
 
 function manifest(clips: Manifest['clips']): Manifest {
@@ -19,7 +19,7 @@ function manifest(clips: Manifest['clips']): Manifest {
 
 const nixBroll = [
   clip('nix', 'problem', 'p1', 2), clip('nix', 'problem', 'p2', 2), clip('nix', 'problem', 'p3', 2),
-  clip('nix', 'product', 'pr1', 2, true), clip('nix', 'product', 'pr2', 2),
+  clip('nix', 'product', 'pr1', 2), clip('nix', 'product', 'pr2', 2),
   clip('nix', 'general', 'g1', 3)
 ]
 
@@ -36,7 +36,7 @@ describe('buildRecipes', () => {
     expect(recipes[0]!.id).toMatch(/^S001_nix_joe_H01_V01_C01_[0-9a-f]{8}$/)
   })
 
-  it('covers each beat by length from its own clips, with a product shot in the product beat, and never repeats a clip', () => {
+  it('covers each beat by length from its own clips, and never repeats a clip', () => {
     const [recipe] = buildRecipes(manifest([
       take('hook', 'H01', 'joe', 'nix'),
       ...vo('V01', 'joe', 'nix', [['problem', 5], ['product', 3]]),
@@ -47,8 +47,8 @@ describe('buildRecipes', () => {
     // 5s of problem: three 2s clips from problem/
     expect(problem!.broll).toHaveLength(3)
     expect(problem!.broll.every(file => file.includes('/problem/'))).toBe(true)
-    // the product beat starts with the product-visible clip, then tops up to 3s
-    expect(product!.broll[0]).toBe('nix/b-roll/product/pr1.mp4')
+    // 3s of product: both 2s clips from product/
+    expect([...product!.broll].sort()).toEqual(['nix/b-roll/product/pr1.mp4', 'nix/b-roll/product/pr2.mp4'])
     const all = recipe!.vo.beats.flatMap(beat => beat.broll)
     expect(new Set(all).size).toBe(all.length)
   })
@@ -63,18 +63,14 @@ describe('buildRecipes', () => {
     expect(recipe!.vo.beats[0]!.broll.at(-1)).toBe('nix/b-roll/general/g1.mp4')
   })
 
-  it('drops a recipe whose b-roll can\'t cover a beat, or whose product beat has no product shot', () => {
+  it('drops a recipe whose b-roll can\'t cover a beat', () => {
     expect(buildRecipes(manifest([
       take('hook', 'H01', 'joe', 'nix'), ...vo('V01', 'joe', 'nix', [['problem', 30]]), take('cta', 'C01', 'joe', 'nix'), ...nixBroll
-    ]))).toEqual([])
-    expect(buildRecipes(manifest([
-      take('hook', 'H01', 'joe', 'nix'), ...vo('V01', 'joe', 'nix', [['product', 1]]), take('cta', 'C01', 'joe', 'nix'),
-      clip('nix', 'product', 'pr2', 2)
     ]))).toEqual([])
   })
 
   it('uses feature b-roll only under VOs about that feature, and generic b-roll under any', () => {
-    const feature = (name: string, slug: string) => clip('nix', 'problem', name, 2, false, slug)
+    const feature = (name: string, slug: string) => clip('nix', 'problem', name, 2, slug)
     const recipes = buildRecipes(manifest([
       take('hook', 'H01', 'joe', 'nix'),
       ...vo('V01', 'joe', 'nix', [['problem', 6]]).map(t => ({ ...t, feature: 'joints' })),
@@ -88,6 +84,23 @@ describe('buildRecipes', () => {
     expect(brollOf('V02')).not.toContain('nix/b-roll/problem/joints/j1.mp4')
     expect(brollOf('V01')).toContain('nix/b-roll/problem/joints/j1.mp4')
     expect(brollOf('V02')).toContain('nix/b-roll/problem/coat/c1.mp4')
+  })
+
+  it('pairs a VO linked to hooks / CTAs only with those, while they still go with other VOs', () => {
+    const recipes = buildRecipes(manifest([
+      take('hook', 'H01', 'joe', 'nix'), take('hook', 'H02', 'joe', 'nix'),
+      ...vo('V01', 'joe', 'nix', [['problem', 2]]).map(t => ({ ...t, hooks: ['H02'], ctas: ['C01'] })),
+      ...vo('V02', 'joe', 'nix', [['problem', 2]]),
+      take('cta', 'C01', 'joe', 'nix'), take('cta', 'C02', 'joe', 'nix'),
+      ...nixBroll
+    ]))
+    const pairs = (code: string) => recipes.filter(recipe => recipe.vo.code === code).map(recipe => `${recipe.hook.code} ${recipe.cta.code}`).sort()
+    expect(pairs('V01')).toEqual(['H02 C01'])
+    expect(pairs('V02')).toEqual(['H01 C01', 'H01 C02', 'H02 C01', 'H02 C02'])
+    // linked to a hook that isn't on the shoot: no recipes
+    expect(buildRecipes(manifest([
+      take('hook', 'H01', 'joe', 'nix'), ...vo('V01', 'joe', 'nix', [['problem', 2]]).map(t => ({ ...t, hooks: [] })), take('cta', 'C01', 'joe', 'nix'), ...nixBroll
+    ]))).toEqual([])
   })
 
   it('lays product shots under a VO CTA', () => {
@@ -123,6 +136,58 @@ describe('buildRecipes', () => {
     // by the channel field itself, not the id prefix
     const fake = (id: string, channel: string) => ({ id, channel }) as Recipe
     expect([fake('a', 'whiskey'), fake('z', 'nix'), fake('b', 'nix')].sort(byChannel).map(recipe => recipe.id)).toEqual(['b', 'z', 'a'])
+  })
+})
+
+describe('variations', () => {
+  const withVariations = (clips: Manifest['clips'], broll_variations: number, vo_variations = 0) => {
+    const m = manifest(clips)
+    m.plan = { ...m.plan, shoot: { ...m.plan.shoot, broll_variations, vo_variations } }
+    return m
+  }
+
+  it('gives each hook + VO + CTA up to broll_variations different b-roll selections, keeping the first one\u2019s id', () => {
+    const clips = [take('hook', 'H01', 'joe', 'nix'), ...vo('V01', 'joe', 'nix', [['problem', 3]]), take('cta', 'C01', 'joe', 'nix'), ...nixBroll]
+    const [single] = buildRecipes(manifest(clips))
+    const recipes = buildRecipes(withVariations(clips, 2))
+    expect(recipes).toHaveLength(2)
+    expect(recipes.map(recipe => recipe.id)).toContain(single!.id)
+    expect(recipes[0]!.vo.beats[0]!.broll).not.toEqual(recipes[1]!.vo.beats[0]!.broll)
+    // never two of them in one batch: they share the hook + VO pair
+    expect(chooseBatch(recipes, { size: 2 })).toHaveLength(1)
+  })
+
+  it('stops at as many different selections as the b-roll allows', () => {
+    const clips = [take('hook', 'H01', 'joe', 'nix'), ...vo('V01', 'joe', 'nix', [['problem', 1]]), take('cta', 'C01', 'joe', 'nix'), clip('nix', 'problem', 'only', 2)]
+    expect(buildRecipes(withVariations(clips, 5))).toHaveLength(1)
+  })
+
+  it('mixes the beats of a VO cast on several people, with anyone\u2019s hook and CTA on the channel', () => {
+    const clips = [
+      take('hook', 'H01', 'joe', 'nix'), take('cta', 'C01', 'sam', 'nix'),
+      ...vo('V01', 'joe', 'nix', [['problem', 2], ['product', 2]]),
+      ...vo('V01', 'sam', 'nix', [['problem', 2], ['product', 2]]),
+      ...nixBroll
+    ]
+    // without mixing: Joe has no CTA and Sam no hook, so nothing
+    expect(buildRecipes(withVariations(clips, 1, 0))).toEqual([])
+    const recipes = buildRecipes(withVariations(clips, 1, 2))
+    expect(recipes).toHaveLength(2)
+    for (const recipe of recipes) {
+      expect(recipe.mixed).toBe(true)
+      expect(recipe.person).toBe('joe+sam')
+      expect(recipe.id).toMatch(/^S001_nix_mix_joe-H01_V01-(joe\.sam|sam\.joe)_sam-C01_[0-9a-f]{8}$/)
+      expect(new Set(recipe.vo.beats.map(beat => beat.person)).size).toBe(2)
+      expect(recipe.vo.item_ids).toHaveLength(2)
+    }
+  })
+
+  it('picks mixes that never come from one person, up to the number asked for', () => {
+    const mixes = beatMixes(['joe', 'sam'], 3, 10, 'seed')
+    expect(mixes).toHaveLength(6)
+    expect(mixes.every(mix => new Set(mix).size > 1)).toBe(true)
+    expect(beatMixes(['joe', 'sam'], 3, 2, 'seed')).toEqual(mixes.slice(0, 2))
+    expect(beatMixes(['joe'], 3, 2, 'seed')).toEqual([])
   })
 })
 

@@ -5,6 +5,7 @@ import {
   buildCsv,
   buildShootsheet,
   groupShotList,
+  linkedCodes,
   nextItemCodes,
   planSnapshots,
   resolveItemScript,
@@ -48,8 +49,8 @@ function bundle(): ShootBundle {
       }
     ],
     broll: [
-      { channel_id: 'c1', format_id: 'f2', beat: 'problem', description: 'anxious pacing', product_visible: false, min_clips: 3, status: 'planned' },
-      { channel_id: null, beat: 'product', description: 'pack shot', product_visible: true, min_clips: 2, status: 'planned' }
+      { channel_id: 'c1', format_id: 'f2', beat: 'problem', description: 'anxious pacing', status: 'planned' },
+      { channel_id: null, beat: 'product', description: 'pack shot', status: 'planned' }
     ]
   }
 }
@@ -93,7 +94,7 @@ describe('shared shot list', () => {
 
   it('files a shared b-roll shot under every channel, by beat for a format\'s shots', () => {
     const b = bundle()
-    b.broll.push({ channel_id: null, format_id: 'f2', beat: 'result', description: 'happy dog', product_visible: false, min_clips: 2, status: 'planned' })
+    b.broll.push({ channel_id: null, format_id: 'f2', beat: 'result', description: 'happy dog', status: 'planned' })
     expect(buildShootsheet(b).broll.map(shot => shot.raw_folder)).toEqual(expect.arrayContaining([
       'pawco/calming-chews/shoots/S014/raw/topdognix/b-roll/result',
       'pawco/calming-chews/shoots/S014/raw/topdogwhiskey/b-roll/result'
@@ -159,7 +160,7 @@ describe('planSnapshots', () => {
 describe('buildShootsheet', () => {
   it('matches the worker contract', () => {
     const sheet = buildShootsheet(bundle())
-    expect(sheet.schema_version).toBe(2)
+    expect(sheet.schema_version).toBe(4)
     // custom slots are the shoot's own
     expect(sheet.shoot.slot_values).toEqual({ benefit: 'calmer walks' })
     expect(sheet.shoot).toMatchObject({ code: 'S014', date: '2026-10-20', broll_variations: 3, submission_rate: 0.15 })
@@ -221,7 +222,7 @@ describe('skeleton zip', () => {
     expect(folders).toEqual(expect.arrayContaining([`${shoot}/raw`, `${shoot}/edited`, `${shoot}/renders`]))
     // everything lives in the shoot folder
     expect(folders.every(folder => folder.startsWith(shoot))).toBe(true)
-    expect(JSON.parse(files[`${shoot}/manifest.json`]!)).toEqual({ schema_version: 3, version: 0, generated_at: null, plan: sheet, clips: [] })
+    expect(JSON.parse(files[`${shoot}/manifest.json`]!)).toEqual({ schema_version: 5, version: 0, generated_at: null, plan: sheet, clips: [] })
   })
 
   it('files b-roll for a product feature a level down in its beat folder', () => {
@@ -245,5 +246,20 @@ describe('buildCsv', () => {
     expect(lines[4]).toContain('[problem] My dog pulled [product] PawCo Calming Chews [result] calmer walks')
     expect(lines[5]).toBe('S014,,broll,,topdognix,,,,[problem] anxious pacing,planned,pawco/calming-chews/shoots/S014/raw/topdognix/b-roll/problem')
     expect(lines[6]).toBe('S014,,broll,,topdognix,,,,[general] pack shot,planned,pawco/calming-chews/shoots/S014/raw/topdognix/b-roll/general')
+  })
+})
+
+describe('linkedCodes', () => {
+  it('gives the codes of the hooks / CTAs a VO is linked to, null when it isn\u2019t linked', () => {
+    const b = bundle()
+    const vo = b.items.find(item => item.kind === 'body')!
+    expect(linkedCodes(b, vo, 'hook')).toBeNull()
+    vo.linked_hooks = ['1a2b3c4d-0000-0000-0000-000000000002', 'not-on-the-shoot']
+    vo.linked_ctas = ['not-on-the-shoot']
+    expect(linkedCodes(b, vo, 'hook')).toEqual(['U01'])
+    // linked, but none of them on the shoot: it goes with none
+    expect(linkedCodes(b, vo, 'cta')).toEqual([])
+    const sheetVo = buildShootsheet(b).items.find(item => item.kind === 'body')
+    expect(sheetVo).toMatchObject({ hooks: ['U01'], ctas: [] })
   })
 })

@@ -15,9 +15,7 @@ const outputSchema = z.object({
     /** a format code from the brief, or "general" */
     section: z.string(),
     beat: z.string(),
-    description: z.string(),
-    product_visible: z.boolean(),
-    min_clips: z.number().int()
+    description: z.string()
   }))
 })
 
@@ -25,8 +23,6 @@ export interface DraftBrollShot {
   format_id: string | null
   beat: string
   description: string
-  product_visible: boolean
-  min_clips: number
 }
 
 const SYSTEM = `You plan b-roll for short-form UGC ads for topdogugc, an agency whose creators film ads for dog products with their own dogs. Each video is Hook (on camera) → Body (a voiceover over b-roll, split into beats) → CTA. B-roll is filmed once per shoot and cut under the voiceover beat by beat, on every channel.
@@ -122,7 +118,7 @@ export default defineEventHandler(async (event): Promise<{ shots: DraftBrollShot
   const task = [
     'Plan b-roll for every section and beat below.',
     'For each beat of each format section, write 3 or 4 shots that would sit under that beat of the voiceovers listed. For the "general" section, write 4 or 5 product shots.',
-    'For each shot give: section (the section code exactly, or "general"), beat (exactly one of that section\'s beats), description, product_visible (is the product in frame), and min_clips (how many clips to capture, usually 2 to 4).',
+    'For each shot give: section (the section code exactly, or "general"), beat (exactly one of that section\'s beats) and description.',
     existing ? `These shots are already planned. Don't repeat them:\n${existing}` : ''
   ].filter(Boolean).join('\n')
 
@@ -151,9 +147,9 @@ export default defineEventHandler(async (event): Promise<{ shots: DraftBrollShot
       const format = byCode.get(shot.section.trim().toLowerCase())
       if (format) {
         if (!format.beats.includes(beat)) continue
-        shots.push({ format_id: format.id, beat, description, product_visible: shot.product_visible, min_clips: Math.min(10, Math.max(1, shot.min_clips)) })
+        shots.push({ format_id: format.id, beat, description })
       } else if (shot.section.trim().toLowerCase() === 'general') {
-        shots.push({ format_id: null, beat: 'product', description, product_visible: true, min_clips: Math.min(10, Math.max(1, shot.min_clips)) })
+        shots.push({ format_id: null, beat: 'product', description })
       }
     }
     return { shots }

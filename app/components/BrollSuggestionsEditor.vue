@@ -1,10 +1,10 @@
 <script setup lang="ts">
-// Edit a list of suggested b-roll shots: what to film, and whether the product is in frame.
+// Edit a list of suggested b-roll shots: what to film.
 const props = defineProps<{ placeholder?: string }>()
 const list = defineModel<BrollSuggestion[]>({ required: true })
 
 function add() {
-  list.value = [...list.value, { description: '', product_visible: false }]
+  list.value = [...list.value, { description: '' }]
 }
 function remove(index: number) {
   list.value = list.value.filter((_, i) => i !== index)
@@ -15,7 +15,6 @@ function remove(index: number) {
   <div class="space-y-1.5">
     <div v-for="(shot, index) in list" :key="index" class="flex items-center gap-2">
       <UInput v-model="shot.description" size="sm" :placeholder="props.placeholder ?? 'Describe the shot'" class="flex-1" />
-      <UCheckbox v-model="shot.product_visible" label="Product" size="sm" />
       <UButton icon="i-lucide-x" size="xs" color="neutral" variant="ghost" aria-label="Remove suggestion" @click="remove(index)" />
     </div>
     <UButton label="Add suggested shot" icon="i-lucide-plus" size="xs" color="neutral" variant="subtle" @click="add" />

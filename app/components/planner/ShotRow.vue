@@ -9,7 +9,8 @@ import type { Beat } from '#shared/utils/slots'
 // version (per-person override) and their own filmed/skipped status. "Edit for everyone"
 // rewrites the shoot's own copy of the line (every person's snapshot): this shoot only, never
 // the library, and own versions stay on top of it. "Permanently" (hooks and CTAs) edits the
-// Library template itself, for later shoots, and updates this shoot's copy to match.
+// Library template itself, for later shoots, and updates this shoot's copy to match. A VO's
+// "The VO" opens it in the VO editor (it's written in the shoot).
 const props = defineProps<{
   group: ShotGroup
   bundle: LoadedShoot
@@ -20,9 +21,11 @@ const emit = defineEmits<{
   updateGroup: [patch: { channel_id?: string | null, location?: string | null, script_snapshot?: string | Beat[] }]
   remove: []
   updateItem: [item: BundleItem, patch: { channel_id?: string | null, location?: string | null, script_override?: string | Beat[] | null, script_snapshot?: string | Beat[] }]
+  editVo: []
 }>()
 
 const primary = computed(() => props.group.items[0]!)
+const { canEditVo } = useMe()
 // one line for every channel it's filmed for: {{dog}} reads "my Vizsla / our two dogs", and on a
 // planned shoot (dog phrases already filled in) the channels' versions are merged the same way
 const context = computed(() => groupSlotContext(props.bundle, props.group.items.map(item => item.channel_id)))
@@ -33,9 +36,15 @@ const beats = computed(() => {
 })
 const text = computed(() => mergeVariants(props.group.items.map(item => typeof item.script_snapshot === 'string' ? item.script_snapshot : '')))
 
+/** VOs: the codes of the hooks / CTAs it only goes with (null = any) */
+const linkedHooks = computed(() => primary.value.kind === 'body' ? linkedCodes(props.bundle, primary.value, 'hook') : null)
+const linkedCtas = computed(() => primary.value.kind === 'body' ? linkedCodes(props.bundle, primary.value, 'cta') : null)
+
 const personName = (id: string) => props.bundle.people.find(person => person.id === id)?.name ?? 'Unknown'
 /** a VO one person on the cast wrote for themselves: only they perform it */
 const writer = computed(() => primary.value.writer_id ? personName(primary.value.writer_id) : null)
+/** a VO's writer and the people cast on it: they all perform it */
+const performers = computed(() => primary.value.writer_id ? [primary.value.writer_id, ...(primary.value.cast_ids ?? [])].map(personName) : [])
 const overrides = computed(() => props.group.items.filter(item => item.script_override !== null && item.script_override !== undefined).length)
 const done = computed(() => props.group.items.filter(item => item.status !== 'planned').length)
 const unfilled = computed(() => {
@@ -121,26 +130,29 @@ async function saveLibrary() {
   editingLibrary.value = false
 }
 
-// --- a hook written in this shoot: keep it for the product ----------------------
+// --- a hook or CTA written in this shoot: keep it for the product ----------------
 const savingToProduct = ref(false)
 async function saveToProduct() {
   // on a draft, the shoot's copy is the latest wording (slots unfilled); a planned shoot's copy is
-  // frozen with slots filled in, so the hook keeps the wording it was written with
+  // frozen with slots filled in, so the line keeps the wording it was written with
   const script = props.draft && typeof primary.value.script_snapshot === 'string' ? primary.value.script_snapshot : null
   savingToProduct.value = true
   const ok = await run(async () => {
-    must(await db.from('hook_templates')
+    must(await db.from(libraryTable.value)
       .update({ shoot_id: null, product_id: props.productId, ...(script ? { script } : {}) })
       .eq('id', primary.value.template_id))
-    for (const item of props.group.items) item.hook_home = 'product'
+    for (const item of props.group.items) item.home = 'product'
   }, `Saved to ${props.bundle.product.name}: it's in the Library for its later shoots`)
   savingToProduct.value = false
   return ok
 }
 
-/** One Edit button: change the line for everyone here, permanently in the Library, or per person. */
+/**
+ * Hooks and CTAs: one Edit menu to change the line for everyone here, permanently in the Library,
+ * or per person. (A VO's Edit button opens the VO editor instead: it's its writer's.)
+ */
 const editItems = computed<DropdownMenuItem[]>(() => [
-  ...(primary.value.hook_home === 'shoot'
+  ...(primary.value.home === 'shoot'
     ? [{ label: `Save to ${props.bundle.product.name}`, description: 'Keep it in the Library for this product\'s later shoots', icon: 'i-lucide-bookmark-plus', onSelect: saveToProduct }]
     : []),
   { label: 'For everyone', icon: 'i-lucide-pencil', onSelect: startEditAll },
@@ -150,9 +162,7 @@ const editItems = computed<DropdownMenuItem[]>(() => [
     suffix: overrides.value ? `${overrides.value} own` : undefined,
     onSelect: () => (expanded.value = !expanded.value)
   },
-  ...(primary.value.kind === 'body'
-  ? []
-  : [{ label: 'Permanently', description: 'In the Library, for later shoots', icon: 'i-lucide-book-marked', onSelect: startEditLibrary }])
+  { label: 'Permanently', description: 'In the Library, for later shoots', icon: 'i-lucide-book-marked', onSelect: startEditLibrary }
 ])
 
 </script>
@@ -168,8 +178,8 @@ const editItems = computed<DropdownMenuItem[]>(() => [
       />
 
       <div class="min-w-0 flex-1 space-y-1.5">
-        <p v-if="primary.title" class="text-sm font-medium text-highlighted">
-          {{ primary.title }}
+        <p v-if="primary.title || primary.kind === 'body'" class="text-sm font-medium text-highlighted">
+          {{ primary.title ?? `${bundle.product.name} as a whole` }}
         </p>
         <!-- permanently: the Library template, and this shoot with it -->
         <div v-if="editingLibrary" class="space-y-2 rounded-lg border border-primary/40 p-2.5">
@@ -221,11 +231,13 @@ const editItems = computed<DropdownMenuItem[]>(() => [
         </p>
 
         <div class="flex flex-wrap items-center gap-1.5">
-          <UBadge v-if="primary.hook_home === 'shoot'" label="Written here" icon="i-lucide-pen-line" color="warning" variant="subtle" size="sm" />
-          <UBadge v-else-if="primary.hook_home === 'product'" :label="`${bundle.product.name} hook`" icon="i-lucide-package" color="primary" variant="subtle" size="sm" />
+          <UBadge v-if="primary.home === 'shoot'" label="Written here" icon="i-lucide-pen-line" color="warning" variant="subtle" size="sm" />
+          <UBadge v-else-if="primary.home === 'product'" :label="`${bundle.product.name} ${primary.kind === 'hook' ? 'hook' : 'CTA'}`" icon="i-lucide-package" color="primary" variant="subtle" size="sm" />
+          <UBadge v-if="linkedHooks" :label="linkedHooks.length ? `Only with ${linkedHooks.join(', ')}` : 'Linked hooks not on this shoot'" icon="i-lucide-link" :color="linkedHooks.length ? 'secondary' : 'error'" variant="subtle" size="sm" />
+          <UBadge v-if="linkedCtas" :label="linkedCtas.length ? `Only with ${linkedCtas.join(', ')}` : 'Linked CTAs not on this shoot'" icon="i-lucide-link" :color="linkedCtas.length ? 'secondary' : 'error'" variant="subtle" size="sm" />
           <UBadge v-if="primary.angle" :label="primary.angle" color="neutral" variant="subtle" size="sm" />
           <UBadge v-if="primary.format" :label="primary.format.code" color="info" variant="subtle" size="sm" />
-          <UBadge v-if="writer" :label="`${writer}'s own`" icon="i-lucide-user" color="primary" variant="subtle" size="sm" />
+          <UBadge v-if="writer" :label="performers.join(' + ')" :icon="performers.length > 1 ? 'i-lucide-users' : 'i-lucide-user'" color="primary" variant="subtle" size="sm" />
           <UBadge v-if="primary.cta_mode" :label="primary.cta_mode" color="info" variant="subtle" size="sm" />
           <SourceLink :url="primary.source_url ?? null" />
           <UBadge
@@ -247,7 +259,9 @@ const editItems = computed<DropdownMenuItem[]>(() => [
             @click="expanded = !expanded"
           />
           <UBadge v-if="done" :label="`${done}/${group.items.length} filmed or skipped`" color="success" variant="subtle" size="sm" />
+          <!-- VOs are voiceover: no filming location -->
           <UInput
+            v-if="primary.kind !== 'body'"
             v-model="location"
             size="xs"
             variant="ghost"
@@ -261,7 +275,21 @@ const editItems = computed<DropdownMenuItem[]>(() => [
       </div>
 
       <div class="flex shrink-0 items-center gap-1">
-        <UDropdownMenu v-if="!editingAll && !editingLibrary" :items="editItems" :content="{ align: 'end' }">
+        <!-- a VO is its writer's: Edit opens it straight in the VO editor (writer or admin, drafts only) -->
+        <template v-if="primary.kind === 'body'">
+          <UButton
+            v-if="draft && canEditVo(primary.writer_id)"
+            icon="i-lucide-pencil"
+            size="xs"
+            color="neutral"
+            variant="ghost"
+            aria-label="Edit this VO"
+            @click="emit('editVo')"
+          >
+            <span class="hidden sm:inline">Edit</span>
+          </UButton>
+        </template>
+        <UDropdownMenu v-else-if="!editingAll && !editingLibrary" :items="editItems" :content="{ align: 'end' }">
           <UButton
             :loading="loadingLibrary || savingToProduct"
             icon="i-lucide-pencil"
@@ -289,7 +317,12 @@ const editItems = computed<DropdownMenuItem[]>(() => [
     <div v-if="expanded" class="mt-2 divide-y divide-default rounded-lg border border-default sm:ml-12">
       <p class="px-3 py-1.5 text-xs text-muted">
         <template v-if="writer">
-          Only {{ writer }} performs this: they wrote it.
+          <template v-if="performers.length > 1">
+            Performed by {{ performers.join(', ') }}: {{ writer }} wrote it. Where they share a channel, their beats can be mixed.
+          </template>
+          <template v-else>
+            Only {{ writer }} performs this: they wrote it.
+          </template>
         </template>
         <template v-else>
           Everyone films this, once per channel they're on. Edit someone's line to give them their own wording.

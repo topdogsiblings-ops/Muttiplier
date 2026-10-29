@@ -7,6 +7,13 @@ export interface CalcItem {
   kind: ItemKind
   /** every item is filmed for one channel (a person films it once per channel they're linked to) */
   channelId?: string | null
+  /** the template it's from: VOs link to hook / CTA templates */
+  templateId?: string
+  /** VOs: the hook / CTA templates it only goes with; empty = any */
+  linkedHooks?: string[]
+  linkedCtas?: string[]
+  /** VOs: how many beats it has (for working out how many ways it can be mixed) */
+  beats?: number
   /** CTAs only: sync (on camera) or vo; decides filming vs recording time */
   ctaMode?: string | null
   label?: string
@@ -30,9 +37,13 @@ export interface CalcInput {
   people: { id: string, name: string }[]
   channels: { id: string, name: string }[]
   items: CalcItem[]
-  brollShots?: { channelId: string | null, minClips: number, status?: string }[]
+  brollShots?: { channelId: string | null, status?: string }[]
   /** the share of valid recipes batched for submission */
   submissionRate: number
+  /** b-roll selections per hook + VO + CTA, each its own recipe (default 1) */
+  brollVariations?: number
+  /** mixed versions per VO per channel, beats swapped between the people cast on it (default 0) */
+  voVariations?: number
   settings: CalcSettings
 }
 
@@ -58,8 +69,8 @@ export interface ChannelResult {
   recipes: number
   concepts: number
   submissions: number
-  /** Σ min_clips of this channel's own b-roll shots plus every shared shot: each channel films its own */
-  brollClips: number
+  /** b-roll shots this channel films: its own plus every shared shot (each channel films its own clips) */
+  brollShots: number
 }
 
 export interface CalcResult {
@@ -76,9 +87,9 @@ export interface CalcResult {
     onCameraHours: number
     voHours: number
     shootDays: number
-    brollClips: number
-    /** Σ min_clips of the shared shots, which every channel films (once if the shoot has no channels) */
-    sharedBrollClips: number
+    brollShots: number
+    /** shared shots, which every channel films (once if the shoot has no channels) */
+    sharedBrollShots: number
   }
   warnings: string[]
 }
@@ -94,7 +105,11 @@ export const DEFAULT_CALC_SETTINGS: CalcSettings = {
 /**
  * Recipes follow the batching rules (spec §14): one hook, one VO and one CTA, all from the same
  * person and the same channel (a person only films for channels they're linked to). So for each
- * person on each channel: recipes = hooks × VOs × CTAs. Time counts each recording once: a
+ * person on each channel: recipes = hooks × VOs × CTAs, except that a VO linked to hooks and/or
+ * CTAs only counts the ones it's linked to. A VO cast on several people on a channel also makes
+ * up to `voVariations` mixes there (beats from different people), each with anyone's hooks and
+ * CTAs on the channel. Every hook + VO + CTA makes up to `brollVariations` recipes (different
+ * b-roll): an upper bound, as the footage may not stretch to that many different selections. Time counts each recording once: a
  * script that doesn't name the dog is filmed once and used on every channel.
  */
 export function calculate(input: CalcInput): CalcResult {
@@ -106,8 +121,8 @@ export function calculate(input: CalcInput): CalcResult {
     if (!warnings.includes(message)) warnings.push(message)
   }
 
-  // Shared shots (no channel) are filmed min_clips times for every channel.
-  const sharedBroll = broll.filter(shot => shot.channelId === null).reduce((sum, shot) => sum + shot.minClips, 0)
+  // Shared shots (no channel) are filmed for every channel.
+  const sharedBroll = broll.filter(shot => shot.channelId === null).length
   const perChannel: ChannelResult[] = channels.map(channel => ({
     id: channel.id,
     name: channel.name,
@@ -115,7 +130,7 @@ export function calculate(input: CalcInput): CalcResult {
     recipes: 0,
     concepts: 0,
     submissions: 0,
-    brollClips: broll.filter(shot => shot.channelId === channel.id).reduce((sum, shot) => sum + shot.minClips, 0) + sharedBroll
+    brollShots: broll.filter(shot => shot.channelId === channel.id).length + sharedBroll
   }))
 
   /** one entry per recording: items sharing a recording key were filmed once */
@@ -157,20 +172,51 @@ export function calculate(input: CalcInput): CalcResult {
   })
   const personResult = (id: string) => perPerson.find(person => person.id === id)!
 
+  const brollVariations = Math.max(1, input.brollVariations ?? 1)
+  const voVariations = Math.max(0, input.voVariations ?? 0)
+  // a VO linked to hooks / CTAs only goes with those
+  const allowed = (pool: CalcItem[], links: string[] | undefined) =>
+    links?.length ? pool.filter(item => item.templateId && links.includes(item.templateId)).length : pool.length
+
   channels.forEach((channel, index) => {
     const result = perChannel[index]!
     for (const person of people) {
-      const of = (kind: ItemKind) => items.filter(item => item.personId === person.id && item.channelId === channel.id && item.kind === kind).length
-      const [hooks, bodies, ctas] = [of('hook'), of('body'), of('cta')]
+      const of = (kind: ItemKind) => items.filter(item => item.personId === person.id && item.channelId === channel.id && item.kind === kind)
+      const [hookItems, bodyItems, ctaItems] = [of('hook'), of('body'), of('cta')]
+      const [hooks, bodies, ctas] = [hookItems.length, bodyItems.length, ctaItems.length]
       if (!hooks && !bodies && !ctas) continue
       if (bodies && !ctas) warn(`${person.name} on ${channel.name}: no CTAs, so their VOs can't make recipes`)
-      const recipes = hooks * bodies * ctas
-      const concepts = hooks * bodies
+      let recipes = 0
+      let concepts = 0
+      for (const body of bodyItems) {
+        const [withHooks, withCtas] = [allowed(hookItems, body.linkedHooks), allowed(ctaItems, body.linkedCtas)]
+        if ((body.linkedHooks?.length && !withHooks) || (body.linkedCtas?.length && !withCtas)) {
+          warn(`${body.label ?? 'A VO'}: none of its linked ${!withHooks && body.linkedHooks?.length ? 'hooks' : 'CTAs'} are on this shoot for ${person.name} on ${channel.name}`)
+        }
+        recipes += withHooks * withCtas * brollVariations
+        concepts += withHooks
+      }
       result.hooks += hooks
       result.recipes += recipes
       result.concepts += concepts
       personResult(person.id).recipes += recipes
       personResult(person.id).concepts += concepts
+    }
+
+    // mixed VOs: a VO cast on more than one person here, its beats swapped between them
+    if (!voVariations) return
+    const onChannel = items.filter(item => item.channelId === channel.id)
+    const vos = new Map<string, CalcItem[]>()
+    for (const body of onChannel.filter(item => item.kind === 'body' && item.templateId)) vos.set(body.templateId!, [...(vos.get(body.templateId!) ?? []), body])
+    for (const performances of vos.values()) {
+      const performers = new Set(performances.map(body => body.personId)).size
+      const beats = performances[0]!.beats ?? 0
+      if (performers < 2 || beats < 2) continue
+      const mixes = Math.min(voVariations, performers ** beats - performers)
+      const withHooks = allowed(onChannel.filter(item => item.kind === 'hook'), performances[0]!.linkedHooks)
+      const withCtas = allowed(onChannel.filter(item => item.kind === 'cta'), performances[0]!.linkedCtas)
+      result.recipes += mixes * withHooks * withCtas * brollVariations
+      result.concepts += mixes * withHooks
     }
   })
 
@@ -201,8 +247,8 @@ export function calculate(input: CalcInput): CalcResult {
       voHours: sum(perPerson, p => p.voMin) / 60,
       // rounded up to the nearest half day
       shootDays: Math.ceil(days * 2 - 1e-9) / 2,
-      brollClips: channels.length ? sum(perChannel, c => c.brollClips) : sharedBroll,
-      sharedBrollClips: sharedBroll
+      brollShots: channels.length ? sum(perChannel, c => c.brollShots) : sharedBroll,
+      sharedBrollShots: sharedBroll
     },
     warnings
   }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
 import type { Json } from '#shared/types/database.types'
-import type { Insert, Update } from '#shared/types/models'
+import type { Insert, Row, Update } from '#shared/types/models'
 import type { LoadedShoot } from '#shared/utils/loadShoot'
 import type { BundleItem, ShotGroup } from '#shared/utils/shootsheet'
 import type { Beat } from '#shared/utils/slots'
@@ -9,6 +9,7 @@ import type { PickedItems } from '~/components/planner/ItemPicker.vue'
 import type { BrollFormat } from '~/components/planner/Broll.vue'
 
 const route = useRoute()
+const router = useRouter()
 const db = useDb()
 const run = useAction()
 const { confirmDialog } = useConfirm()
@@ -29,12 +30,33 @@ const isDraft = computed(() => shoot.value.status === 'draft')
 const channelIds = computed(() => bundle.value.channels.map(channel => channel.id))
 const busy = ref(false)
 
+// --- tabs ------------------------------------------------------------------
+// General (setup, slots, what's left to do), Formats, then the video in order: Hooks, VOs
+// (written here), CTAs, and B-roll. The open tab lives in the URL so it survives reloads and can
+// be linked.
+const TAB_VALUES = ['general', 'formats', 'hooks', 'vos', 'ctas', 'broll'] as const
+type ShootTab = typeof TAB_VALUES[number]
+const tab = computed<ShootTab>({
+  get: () => TAB_VALUES.includes(route.query.tab as ShootTab) ? route.query.tab as ShootTab : 'general',
+  set: value => router.replace({ query: { ...route.query, tab: value === 'general' ? undefined : value } })
+})
+const tabItems = computed(() => [
+  { label: 'General', value: 'general', icon: 'i-lucide-settings-2' },
+  { label: 'Formats', value: 'formats', icon: 'i-lucide-layout-template', badge: shootFormats.value.length || undefined },
+  { label: 'Hooks', value: 'hooks', icon: 'i-lucide-anchor', badge: groupsOf('hook').length || undefined },
+  { label: 'VOs', value: 'vos', icon: 'i-lucide-mic', badge: groupsOf('body').length || undefined },
+  { label: 'CTAs', value: 'ctas', icon: 'i-lucide-megaphone', badge: groupsOf('cta').length || undefined },
+  { label: 'B-roll', value: 'broll', icon: 'i-lucide-film', badge: bundle.value.broll.length || undefined }
+].map(item => ({ ...item, badge: item.badge === undefined ? undefined : { label: String(item.badge), color: 'neutral' as const, variant: 'subtle' as const } })))
+
 // --- setup -----------------------------------------------------------------
 const form = reactive({
   product_id: '',
   shoot_date: '',
   submission_pct: 5,
   runway_target: 60,
+  broll_variations: 1,
+  vo_variations: 1,
   kit: 'custom',
   location_notes: '',
   notes: ''
@@ -45,6 +67,8 @@ watch(shoot, (value) => {
     shoot_date: value.shoot_date ?? '',
     submission_pct: Math.round(Number(value.submission_rate) * 1000) / 10,
     runway_target: value.runway_target,
+    broll_variations: value.broll_variations,
+    vo_variations: value.vo_variations,
     kit: value.kit,
     location_notes: value.location_notes ?? '',
     notes: value.notes ?? ''
@@ -66,6 +90,8 @@ const saveSetup = () => patchShoot({
   shoot_date: form.shoot_date || null,
   submission_rate: Math.min(100, Math.max(0, Number(form.submission_pct) || 0)) / 100,
   runway_target: Math.max(1, Math.round(Number(form.runway_target) || 1)),
+  broll_variations: Math.min(10, Math.max(1, Math.round(Number(form.broll_variations) || 1))),
+  vo_variations: Math.min(50, Math.max(0, Math.round(Number(form.vo_variations) || 0))),
   kit: form.kit,
   location_notes: form.location_notes.trim() || null,
   notes: form.notes.trim() || null
@@ -132,7 +158,7 @@ async function fillMissingItems(): Promise<number> {
     .in('person_id', personIds.value).in('channel_id', channelIds.value))
   const have = new Set(bundle.value.items.map(item => `${item.template_id}|${item.person_id}|${item.channel_id}`))
   const rows = groups.value.flatMap(group => links
-    .filter(link => !group.items[0]!.writer_id || group.items[0]!.writer_id === link.person_id)
+    .filter(link => performs(group.items[0]!, link.person_id))
     .filter(link => !have.has(`${group.template_id}|${link.person_id}|${link.channel_id}`))
     .map(link => copyFor(group, link.person_id, link.channel_id)))
   if (rows.length) must(await db.from('shoot_items').insert(rows))
@@ -175,6 +201,25 @@ function copyFor(group: ShotGroup, person_id: string, channel_id: string): Inser
 
 async function addItems(picked: PickedItems) {
   if (!bundle.value.people.length) return
+  // a VO linked to hooks / CTAs only goes with those, so they come onto the shoot with it; and
+  // it's performed by its writer and the people cast on it
+  const cast = new Map<string, string[]>()
+  if (picked.bodies.length) {
+    const ok = await run(async () => {
+      const voIds = picked.bodies.map(body => body.id)
+      for (const member of must(await db.from('vo_cast').select('body_template_id, person_id').in('body_template_id', voIds))) {
+        cast.set(member.body_template_id, [...(cast.get(member.body_template_id) ?? []), member.person_id])
+      }
+      const have = new Set([...existingTemplates.value, ...picked.hooks.map(hook => hook.id), ...picked.ctas.map(cta => cta.id)])
+      const hookIds = must(await db.from('vo_hook_links').select('hook_template_id').in('body_template_id', voIds))
+        .map(link => link.hook_template_id).filter(id => !have.has(id))
+      const ctaIds = must(await db.from('vo_cta_links').select('cta_template_id').in('body_template_id', voIds))
+        .map(link => link.cta_template_id).filter(id => !have.has(id))
+      if (hookIds.length) picked = { ...picked, hooks: [...picked.hooks, ...must(await db.from('hook_templates').select('*').in('id', [...new Set(hookIds)]))] }
+      if (ctaIds.length) picked = { ...picked, ctas: [...picked.ctas, ...must(await db.from('cta_templates').select('*').in('id', [...new Set(ctaIds)]))] }
+    })
+    if (!ok) return
+  }
   const codes = groups.value.map(group => group.code)
   let order = Math.max(0, ...bundle.value.items.map(item => item.sort_order))
   const take = (prefix: string) => {
@@ -184,7 +229,7 @@ async function addItems(picked: PickedItems) {
   }
 
   // one entry per template, then one item per person (only the writer, for their own VOs)
-  const entries: (Omit<Insert<'shoot_items'>, 'shoot_id' | 'person_id'> & { writer_id?: string | null })[] = []
+  const entries: (Omit<Insert<'shoot_items'>, 'shoot_id' | 'person_id'> & { performers?: string[] })[] = []
   for (const hook of picked.hooks.filter(hook => !existingTemplates.value.includes(hook.id))) entries.push({
     kind: 'hook',
     hook_template_id: hook.id,
@@ -194,17 +239,18 @@ async function addItems(picked: PickedItems) {
     sort_order: ++order
   })
   for (const body of picked.bodies.filter(body => !existingTemplates.value.includes(body.id))) {
-    entries.push({ kind: 'body', body_template_id: body.id, code: take('V'), script_snapshot: body.beats, sort_order: ++order, writer_id: body.person_id })
+    const performers = body.person_id ? [body.person_id, ...(cast.get(body.id) ?? [])] : undefined
+    entries.push({ kind: 'body', body_template_id: body.id, code: take('V'), script_snapshot: body.beats, sort_order: ++order, performers })
   }
   for (const cta of picked.ctas.filter(cta => !existingTemplates.value.includes(cta.id))) {
     entries.push({ kind: 'cta', cta_template_id: cta.id, code: take('C'), cta_mode: cta.mode, script_snapshot: cta.script, sort_order: ++order })
   }
   if (!entries.length) return
 
-  // one item per person per channel they're linked to (only the writer, for their own VOs)
+  // one item per person per channel they're linked to (a VO: only its writer and cast)
   const rows = bundle.value.people.flatMap(person => entries
-    .filter(entry => !entry.writer_id || entry.writer_id === person.id)
-    .flatMap(({ writer_id: _writer, ...entry }) => channelsFor(bundle.value, person.id)
+    .filter(entry => !entry.performers || entry.performers.includes(person.id))
+    .flatMap(({ performers: _performers, ...entry }) => channelsFor(bundle.value, person.id)
       .map(channel => ({ ...entry, shoot_id: shoot.value.id, person_id: person.id, channel_id: channel.id }) as Insert<'shoot_items'>)))
   await run(async () => {
     must(await db.from('shoot_items').insert(rows))
@@ -242,6 +288,34 @@ async function writeHook() {
   if (ok) writeHookOpen.value = false
 }
 
+// --- writing a CTA here -----------------------------------------------------
+// Like a hook written here: this shoot's own until "Save to product" on its row.
+const ctaModes = [{ label: 'Sync (on camera)', value: 'sync' }, { label: 'VO over b-roll', value: 'vo' }]
+const writeCtaOpen = ref(false)
+const newCta = reactive({ script: '', mode: 'sync' })
+const requestWriteCtaOpen = useGuardedClose(writeCtaOpen, newCta)
+function openWriteCta() {
+  Object.assign(newCta, { script: '', mode: 'sync' })
+  writeCtaOpen.value = true
+}
+const savingCta = ref(false)
+async function writeCta() {
+  const script = newCta.script.trim()
+  if (!script) return
+  savingCta.value = true
+  const ok = await run(async () => {
+    const cta = mustOne(await db.from('cta_templates').insert({
+      script,
+      mode: newCta.mode,
+      est_seconds: estimateSeconds(script, Number(settings.value?.words_per_second) || DEFAULT_WORDS_PER_SECOND) || null,
+      shoot_id: shoot.value.id
+    }).select('*').single())
+    await addItems({ hooks: [], bodies: [], ctas: [cta] })
+  })
+  savingCta.value = false
+  if (ok) writeCtaOpen.value = false
+}
+
 /** Shared fields (channel, location) apply to everyone's item. */
 /** Shared by everyone filming a group: channel, location, or (edit for everyone) the shoot's own copy of the script. */
 async function updateGroup(group: ShotGroup, patch: { channel_id?: string | null, location?: string | null, script_snapshot?: string | Beat[] }) {
@@ -262,11 +336,73 @@ async function updateItem(item: BundleItem, patch: { channel_id?: string | null,
 async function removeGroup(group: ShotGroup) {
   await run(async () => {
     must(await db.from('shoot_items').delete().in('id', group.items.map(item => item.id)))
-    // a hook written here exists nowhere else: it goes with its line
-    if (group.items[0]?.hook_home === 'shoot') must(await db.from('hook_templates').delete().eq('id', group.template_id).eq('shoot_id', shoot.value.id))
+    await deleteUnused(group.kind, [group.template_id])
     await refresh()
   })
 }
+
+const TEMPLATE_TABLES = {
+  hook: { table: 'hook_templates', column: 'hook_template_id' },
+  body: { table: 'body_templates', column: 'body_template_id' },
+  cta: { table: 'cta_templates', column: 'cta_template_id' }
+} as const
+/**
+ * Hooks, VOs and CTAs written in this shoot that no shoot uses any more are deleted with their
+ * last line. One written here that another shoot also uses (a VO reused later, or a hook / CTA
+ * it's linked to) stays; Library ones are never deleted. Only a VO's writer or an admin can
+ * delete it, so for anyone else it stays with the product.
+ */
+async function deleteUnused(kind: string, templateIds: string[]) {
+  const target = TEMPLATE_TABLES[kind as keyof typeof TEMPLATE_TABLES]
+  if (!target || !templateIds.length) return
+  const used = new Set(must(await db.from('shoot_items').select(target.column).in(target.column, templateIds))
+    .map(row => (row as Record<string, string | null>)[target.column]))
+  const unused = templateIds.filter(id => !used.has(id))
+  if (unused.length) must(await db.from(target.table).delete().in('id', unused).eq('shoot_id', shoot.value.id))
+}
+
+// --- writing VOs here -------------------------------------------------------
+// VOs are only written in a shoot: for its product (one feature, or the product as a whole), by
+// the signed-in user's person on the cast, who alone performs it (and, with admins, edits it).
+// Saving puts it on the plan for its writer on each of their channels; editing it keeps this
+// shoot's lines in step. A VO can be linked to some of the shoot's hooks / CTAs: it only goes with
+// those.
+const voEditor = useTemplateRef<{ edit: (row?: Partial<Row<'body_templates'>>) => void }>('voEditor')
+const writeVo = (format?: BrollFormat) => voEditor.value?.edit(format ? { format_id: format.id } : undefined)
+async function editVo(group: ShotGroup) {
+  await run(async () => {
+    voEditor.value?.edit(mustOne(await db.from('body_templates').select('*').eq('id', group.template_id).single()))
+  })
+}
+async function onVoSaved(vo: Row<'body_templates'>) {
+  const group = groupsOf('body').find(entry => entry.template_id === vo.id)
+  if (!group) {
+    await addItems({ hooks: [], bodies: [vo], ctas: [] })
+    return
+  }
+  await run(async () => {
+    must(await db.from('shoot_items').update({ script_snapshot: vo.beats }).in('id', group.items.map(item => item.id)))
+    // its writer and cast perform it, each on their channels: lines for anyone taken off go,
+    // anyone added gets theirs
+    const performers = [vo.person_id, ...must(await db.from('vo_cast').select('person_id').eq('body_template_id', vo.id)).map(member => member.person_id)]
+    const gone = group.items.filter(item => !performers.includes(item.person_id))
+    if (gone.length) must(await db.from('shoot_items').delete().in('id', gone.map(item => item.id)))
+    const have = new Set(group.items.map(item => `${item.person_id}|${item.channel_id}`))
+    const rows = performers.filter((id): id is string => !!id && bundle.value.people.some(person => person.id === id))
+      .flatMap(personId => channelsFor(bundle.value, personId)
+        .filter(channel => !have.has(`${personId}|${channel.id}`))
+        .map(channel => ({ ...copyFor(group, personId, channel.id), script_snapshot: vo.beats })))
+    if (rows.length) must(await db.from('shoot_items').insert(rows))
+    await refresh()
+  })
+}
+/** the shoot's hooks and CTAs, for the VO editor to link to */
+const linkOptions = (kind: 'hook' | 'cta') => groupsOf(kind).map(group => ({
+  template_id: group.template_id,
+  code: group.code,
+  script: typeof group.items[0]?.script_snapshot === 'string' ? group.items[0].script_snapshot : ''
+}))
+const voPickerOpen = ref(false)
 
 async function renumber() {
   await run(async () => {
@@ -275,15 +411,14 @@ async function renumber() {
   }, 'Codes re-numbered')
 }
 
-const sectionItems = [
-  { value: 'hook', label: 'Hooks', icon: 'i-lucide-anchor' },
-  { value: 'body', label: 'VOs', icon: 'i-lucide-mic' },
-  { value: 'cta', label: 'CTAs', icon: 'i-lucide-megaphone' }
-]
-// all panels start collapsed
-const openSections = ref<string[]>([])
+/** The Library picker opens on hooks (Hooks tab) or CTAs (CTAs tab). */
+const pickerKind = ref<'hook' | 'cta'>('hook')
+function openPicker(kind: 'hook' | 'cta') {
+  pickerKind.value = kind
+  pickerOpen.value = true
+}
 
-// VOs grouped by format inside the structure (collapsed to start)
+// VOs grouped by format (collapsed to start)
 const openFormats = ref<Set<string>>(new Set())
 function toggleFormat(id: string) {
   const next = new Set(openFormats.value)
@@ -293,11 +428,11 @@ function toggleFormat(id: string) {
 }
 const vosOfFormat = (formatId: string) => groupsOf('body').filter(group => group.items[0]?.format?.id === formatId)
 
-/** The picker opens on everything, or on one format's VOs. */
+/** Earlier VOs for this product: all of them, or one format's. */
 const pickerFormat = ref<BrollFormat | null>(null)
-function openPicker(format: BrollFormat | null = null) {
+function openVoPicker(format: BrollFormat | null = null) {
   pickerFormat.value = format
-  pickerOpen.value = true
+  voPickerOpen.value = true
 }
 
 /** Every person's copy of each format's VOs, so removing a format can take them off the structure. */
@@ -332,7 +467,10 @@ function clearStructure(kind: 'hook' | 'body' | 'cta' | null) {
         : `${plural(groupsOf('hook').length, 'hook')}, ${plural(groupsOf('body').length, 'VO')} and ${plural(groupsOf('cta').length, 'CTA')} come off the structure for everyone.`,
       'Per-person versions, locations and ticks on those items go too.'
     ],
-    action: () => deleteIds('shoot_items', ids)
+    action: async () => {
+      await deleteIds('shoot_items', ids)
+      for (const each of ['hook', 'body', 'cta']) await deleteUnused(each, targets.filter(group => group.kind === each).map(group => group.template_id))
+    }
   }
 }
 
@@ -348,6 +486,7 @@ function clearFormats() {
     ],
     action: async () => {
       await deleteIds('shoot_items', vos.flatMap(group => group.items.map(item => item.id)))
+      await deleteUnused('body', vos.map(group => group.template_id))
       await deleteIds('broll_shots', formatShots.map(shot => shot.id))
       must(await db.from('shoot_formats').delete().eq('shoot_id', shoot.value.id))
     }
@@ -376,14 +515,6 @@ async function runClear() {
   confirmClear.value = null
 }
 
-const clearStructureItems = computed(() => [
-  [
-    { label: 'Clear hooks', icon: 'i-lucide-anchor', disabled: !groupsOf('hook').length, onSelect: () => clearStructure('hook') },
-    { label: 'Clear VOs', icon: 'i-lucide-mic', disabled: !groupsOf('body').length, onSelect: () => clearStructure('body') },
-    { label: 'Clear CTAs', icon: 'i-lucide-megaphone', disabled: !groupsOf('cta').length, onSelect: () => clearStructure('cta') }
-  ],
-  [{ label: 'Clear everything', icon: 'i-lucide-trash-2', color: 'error' as const, disabled: !groups.value.length, onSelect: () => clearStructure(null) }]
-])
 
 const brollCounts = computed(() => {
   const counts: Record<string, number> = {}
@@ -430,7 +561,9 @@ const blockers = computed(() => {
   if (!shoot.value.shoot_date) list.push('Set a shoot date')
   if (!bundle.value.people.length) list.push('Add at least one person')
   if (!bundle.value.channels.length) list.push('Add at least one channel')
-  if (!bundle.value.items.length) list.push('Add items from the Library')
+  if (!groupsOf('hook').length) list.push('Add hooks (Hooks)')
+  if (!groupsOf('body').length) list.push('Write VOs (VOs)')
+  if (!groupsOf('cta').length) list.push('Add CTAs (CTAs)')
   const unlinked = bundle.value.people.filter(person => !channelsFor(bundle.value, person.id).length)
   const unfilmed = bundle.value.channels.filter(channel => !bundle.value.people.some(person => bundle.value.channelPeople?.[channel.id]?.includes(person.id)))
   if (unfilmed.length) {
@@ -643,8 +776,90 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
     </template>
 
     <template #body>
-      <div class="grid gap-6 pb-20 lg:grid-cols-[minmax(0,1fr)_22rem] lg:pb-0">
-        <div class="min-w-0 space-y-6">
+      <div class="mx-auto w-full max-w-5xl space-y-4">
+        <!-- Summary: the calculator's headline numbers; the full calculator opens from here -->
+        <section class="rounded-lg border border-default p-3 sm:p-4" aria-label="Shoot summary">
+          <div class="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-6">
+            <div>
+              <p class="text-xs text-muted">
+                Recipes
+              </p>
+              <p class="text-xl font-semibold text-highlighted tabular-nums">
+                {{ formatNumber(result.totals.recipes) }}
+              </p>
+            </div>
+            <div>
+              <p class="text-xs text-muted">
+                Est. submissions · {{ formatNumber(Number(shoot.submission_rate) * 100, 1) }}%
+              </p>
+              <p class="text-xl font-semibold text-primary tabular-nums">
+                {{ formatNumber(result.totals.submissions) }}
+              </p>
+            </div>
+            <div>
+              <p class="text-xs text-muted">
+                Hooks · VOs · CTAs
+              </p>
+              <p class="font-medium text-highlighted tabular-nums">
+                {{ groupsOf('hook').length }} · {{ groupsOf('body').length }} · {{ groupsOf('cta').length }}
+              </p>
+            </div>
+            <div>
+              <p class="text-xs text-muted">
+                People · channels
+              </p>
+              <p class="truncate font-medium text-highlighted" :title="bundle.people.map(person => person.name).join(', ')">
+                {{ bundle.people.length }} · {{ bundle.channels.length }}
+              </p>
+            </div>
+            <div>
+              <p class="text-xs text-muted">
+                {{ shoot.shoot_date ? new Date(`${shoot.shoot_date}T00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : 'No date yet' }}
+              </p>
+              <p class="font-medium text-highlighted tabular-nums">
+                {{ result.totals.shootDays }} day{{ result.totals.shootDays === 1 ? '' : 's' }}
+                <span class="text-xs font-normal text-muted">· {{ formatNumber(result.totals.onCameraHours, 1) }}h on camera</span>
+              </p>
+            </div>
+            <div class="flex items-center justify-between gap-2 max-lg:col-span-2 sm:max-lg:col-span-1">
+              <button
+                v-if="(isDraft ? blockers.length : 0) + result.warnings.length + unfilled.length"
+                type="button"
+                class="text-left"
+                @click="tab = 'general'"
+              >
+                <p class="text-xs text-muted">
+                  To check
+                </p>
+                <p class="flex items-center gap-1 font-medium text-warning tabular-nums">
+                  <UIcon name="i-lucide-triangle-alert" class="size-4" />
+                  {{ (isDraft ? blockers.length : 0) + result.warnings.length + unfilled.length }}
+                </p>
+              </button>
+              <div v-else>
+                <p class="text-xs text-muted">
+                  B-roll shots
+                </p>
+                <p class="font-medium text-highlighted tabular-nums">
+                  {{ result.totals.brollShots }}
+                </p>
+              </div>
+              <UButton icon="i-lucide-calculator" size="lg" color="neutral" variant="subtle" @click="calculatorOpen = true" />
+            </div>
+          </div>
+        </section>
+
+        <UTabs
+          v-model="tab"
+          :items="tabItems"
+          :content="false"
+          variant="link"
+          class="w-full min-w-0"
+          :ui="{ list: 'overflow-x-auto overflow-y-hidden', label: 'truncate max-sm:sr-only' }"
+        />
+
+        <!-- General: setup, slots and what's left to do -->
+        <div v-if="tab === 'general'" class="space-y-6">
           <UAlert
             v-if="isDraft && blockers.length"
             color="neutral"
@@ -668,6 +883,21 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
             title="Codes and scripts are frozen"
             :description="shoot.status === 'planned' ? 'Library and product edits no longer affect this shoot. You can still add per-person wording, locations and b-roll shots, or use Back to draft to change the plan.' : 'Library and product edits no longer affect this shoot. You can still add per-person wording, locations and b-roll shots.'"
           />
+          <UAlert
+            v-if="result.warnings.length"
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-triangle-alert"
+            :title="`${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'} from the calculator`"
+          >
+            <template #description>
+              <ul class="list-disc pl-4">
+                <li v-for="warning in result.warnings" :key="warning">
+                  {{ warning }}
+                </li>
+              </ul>
+            </template>
+          </UAlert>
           <!-- edits in: check them and build the manifest (filmed → ready for batching) -->
           <PlannerBatchReady v-if="shoot.status === 'filmed' || shoot.status === 'edited'" :bundle="bundle" @changed="refresh" />
           <PlannerBatches v-if="shoot.status === 'edited'" :bundle="bundle" @changed="refresh" />
@@ -694,7 +924,6 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
             </template>
           </UAlert>
 
-          <!-- 1. Setup -->
           <UCard>
             <template #header>
               <div class="flex flex-wrap items-baseline justify-between gap-2">
@@ -711,7 +940,8 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
                   :items="productOptions"
                   value-key="value"
                   class="w-full"
-                  :disabled="!isDraft"
+                  :disabled="!isDraft || groupsOf('body').length > 0"
+                  :title="groupsOf('body').length ? 'This shoot has VOs written for its product: remove them to change it' : undefined"
                   @update:model-value="saveSetup"
                 />
               </UFormField>
@@ -756,6 +986,12 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
                   </template>
                 </UInput>
               </UFormField>
+              <UFormField label="B-roll variations" help="Different b-roll selections per hook + VO + CTA, each its own recipe (used in later batches). Also the clips each channel films of every b-roll shot.">
+                <UInput v-model.number="form.broll_variations" type="number" min="1" max="10" class="w-full" :disabled="!isDraft" @change="saveSetup" />
+              </UFormField>
+              <UFormField label="VO variations" help="On a channel where a VO is cast on several people, how many mixes of their beats to make, alongside each person's own. 0 = no mixing.">
+                <UInput v-model.number="form.vo_variations" type="number" min="0" max="50" class="w-full" :disabled="!isDraft" @change="saveSetup" />
+              </UFormField>
               <UFormField label="Kit" help="Just a tag for this shoot (e.g. Audition = trial shoot for a new brand, Scale = full production). It doesn't change anything else.">
                 <USelect v-model="form.kit" :items="kits" class="w-full" @update:model-value="saveSetup" />
               </UFormField>
@@ -767,229 +1003,214 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
               </UFormField>
             </div>
           </UCard>
+        </div>
 
-          <!-- 2. Formats -->
-          <UCard>
-            <template #header>
-              <div class="flex items-start justify-between gap-2">
-                <div>
-                  <h2 class="font-semibold text-highlighted">
-                    Formats
-                  </h2>
-                  <p class="text-sm text-muted">
-                    The VO formats this shoot uses. Formats of the VOs you add are included automatically, and removing a format takes its VOs with it.
-                  </p>
-                </div>
+        <!-- Formats: the VO formats this shoot uses -->
+        <UCard v-else-if="tab === 'formats'">
+          <template #header>
+            <div class="flex items-start justify-between gap-2">
+              <p class="text-sm text-muted">
+                The VO formats this shoot uses. A VO's format is added when it's written, and removing a format takes its VOs with it.
+              </p>
+              <UButton
+                v-if="isDraft && shootFormats.length"
+                label="Clear"
+                icon="i-lucide-trash-2"
+                size="xs"
+                color="neutral"
+                variant="ghost"
+                @click="clearFormats"
+              />
+            </div>
+          </template>
+          <PlannerFormats
+            :shoot-id="shoot.id"
+            :formats="shootFormats"
+            :broll-counts="brollCounts"
+            :vo-item-ids="voItemIds"
+            :draft="isDraft"
+            @changed="refresh"
+          />
+        </UCard>
+
+        <!-- Hooks or CTAs: filmed by everyone -->
+        <UCard v-else-if="tab === 'hooks' || tab === 'ctas'" :ui="{ body: 'p-0 sm:p-0' }">
+          <template #header>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <p class="text-xs text-muted">
+                Filmed by everyone.
+              </p>
+              <div v-if="isDraft" class="flex items-center gap-1">
                 <UButton
-                  v-if="isDraft && shootFormats.length"
+                  v-if="groupsOf(tab === 'hooks' ? 'hook' : 'cta').length"
                   label="Clear"
                   icon="i-lucide-trash-2"
                   size="xs"
                   color="neutral"
                   variant="ghost"
-                  @click="clearFormats"
+                  @click="clearStructure(tab === 'hooks' ? 'hook' : 'cta')"
+                />
+                <UButton
+                  :label="tab === 'hooks' ? 'Write a hook' : 'Write a CTA'"
+                  icon="i-lucide-pen-line"
+                  size="sm"
+                  color="neutral"
+                  variant="subtle"
+                  :disabled="!bundle.people.length"
+                  @click="tab === 'hooks' ? openWriteHook() : openWriteCta()"
+                />
+                <UButton
+                  label="Add from Library"
+                  icon="i-lucide-plus"
+                  size="sm"
+                  :disabled="!bundle.people.length"
+                  @click="openPicker(tab === 'hooks' ? 'hook' : 'cta')"
                 />
               </div>
-            </template>
-            <PlannerFormats
-              :shoot-id="shoot.id"
-              :formats="shootFormats"
-              :broll-counts="brollCounts"
-              :vo-item-ids="voItemIds"
+            </div>
+          </template>
+
+          <p v-if="!bundle.people.length" class="px-4 py-8 text-center text-sm text-muted">
+            Add people in General first. Everyone films every {{ tab === 'hooks' ? 'hook' : 'CTA' }}.
+          </p>
+          <div v-else class="divide-y divide-default">
+            <PlannerShotRow
+              v-for="group in groupsOf(tab === 'hooks' ? 'hook' : 'cta')"
+              :key="group.key"
+              :group="group"
+              :bundle="bundle"
               :draft="isDraft"
-              @changed="refresh"
-            />
-          </UCard>
-
-          <!-- 3. Structure: everyone films every item -->
-          <UCard :ui="{ body: 'p-0 sm:p-0' }">
-            <template #header>
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h2 class="font-semibold text-highlighted">
-                    Structure
-                  </h2>
-                  <p class="text-xs text-muted">
-                    {{ groupsOf('hook').length }} hooks · {{ groupsOf('body').length }} VOs · {{ groupsOf('cta').length }} CTAs,
-                    filmed by everyone<template v-if="bundle.people.length">
-                      ({{ bundle.people.map(person => person.name).join(', ') }})
-                    </template>
-                  </p>
-                </div>
-                <div v-if="isDraft" class="flex items-center gap-1">
-                  <UDropdownMenu v-if="groups.length" :items="clearStructureItems">
-                    <UButton label="Clear" icon="i-lucide-trash-2" trailing-icon="i-lucide-chevron-down" size="xs" color="neutral" variant="ghost" />
-                  </UDropdownMenu>
-                  <UButton
-                    label="Write a hook"
-                    icon="i-lucide-pen-line"
-                    size="sm"
-                    color="neutral"
-                    variant="subtle"
-                    :disabled="!bundle.people.length"
-                    @click="openWriteHook"
-                  />
-                  <UButton
-                    label="Add from Library"
-                    icon="i-lucide-plus"
-                    size="sm"
-                    :disabled="!bundle.people.length"
-                    @click="openPicker()"
-                  />
-                </div>
-              </div>
-            </template>
-
-            <p v-if="!bundle.people.length" class="px-4 py-8 text-center text-sm text-muted">
-              Add people in Setup first, then pick hooks, VOs and CTAs from the Library. Everyone films every item.
-            </p>
-
-            <!-- Hooks, Formats & VOs, CTAs: collapsible, collapsed to start -->
-            <UAccordion
-              v-else
-              v-model="openSections"
-              type="multiple"
-              :items="sectionItems"
-              :unmount-on-hide="false"
-              :ui="{
-                item: 'border-b border-default last:border-b-0',
-                trigger: 'px-4 py-3 bg-elevated/40',
-                content: 'divide-y divide-default border-t border-default'
-              }"
-            >
-              <template #default="{ item }">
-                <span class="font-semibold text-highlighted">{{ item.label }}</span>
-                <span class="ml-auto pl-3 text-xs font-normal text-muted tabular-nums">{{ groupsOf(item.value).length }}</span>
-              </template>
-              <template #content="{ item }">
-                <!-- VOs, grouped by format like the Library's Formats & VOs -->
-                <template v-if="item.value === 'body'">
-                  <div v-for="format in shootFormats" :key="format.id">
-                    <div class="flex items-center gap-3 bg-elevated/20 px-4 py-2.5">
-                      <button
-                        type="button"
-                        class="flex min-w-0 flex-1 items-center gap-2 text-left"
-                        :aria-expanded="openFormats.has(format.id)"
-                        @click="toggleFormat(format.id)"
-                      >
-                        <UIcon
-                          name="i-lucide-chevron-right"
-                          class="size-4 shrink-0 text-muted transition-transform"
-                          :class="{ 'rotate-90': openFormats.has(format.id) }"
-                        />
-                        <span class="truncate text-sm text-highlighted">
-                          <span class="mr-1.5 font-mono font-semibold">{{ format.code }}</span>{{ format.name }}
-                        </span>
-                        <UBadge :label="`${vosOfFormat(format.id).length} VO${vosOfFormat(format.id).length === 1 ? '' : 's'}`" color="neutral" variant="outline" size="sm" class="shrink-0" />
-                      </button>
-                      <UButton
-                        v-if="isDraft"
-                        :label="`Add ${format.code} VOs`"
-                        icon="i-lucide-plus"
-                        size="xs"
-                        color="neutral"
-                        variant="subtle"
-                        @click="openPicker(format)"
-                      />
-                    </div>
-                    <div v-if="openFormats.has(format.id)" class="divide-y divide-default border-t border-default">
-                      <PlannerShotRow
-                        v-for="group in vosOfFormat(format.id)"
-                        :key="group.key"
-                        :group="group"
-                        :bundle="bundle"
-                        :draft="isDraft"
-                        :product-id="shoot.product_id"
-                        @update-group="updateGroup(group, $event)"
-                        @update-item="updateItem"
-                        @remove="removeGroup(group)"
-                      />
-                      <p v-if="!vosOfFormat(format.id).length" class="px-4 py-3 text-xs text-dimmed">
-                        No {{ format.code }} VOs yet.
-                      </p>
-                    </div>
-                  </div>
-                  <p v-if="!shootFormats.length" class="px-4 py-3 text-xs text-dimmed">
-                    Add a format in the Formats section, or add VOs from the Library.
-                  </p>
-                </template>
-
-                <template v-else>
-                  <PlannerShotRow
-                    v-for="group in groupsOf(item.value)"
-                    :key="group.key"
-                    :group="group"
-                    :bundle="bundle"
-                    :draft="isDraft"
-                    :product-id="shoot.product_id"
-                    @update-group="updateGroup(group, $event)"
-                    @update-item="updateItem"
-                    @remove="removeGroup(group)"
-                  />
-                  <p v-if="!groupsOf(item.value).length" class="px-4 py-3 text-xs text-dimmed">
-                    No {{ item.label }} yet.
-                  </p>
-                </template>
-              </template>
-            </UAccordion>
-          </UCard>
-
-          <!-- 4. B-roll -->
-          <UCard>
-            <template #header>
-              <div class="flex items-start justify-between gap-2">
-                <div>
-                  <h2 class="font-semibold text-highlighted">
-                    B-roll
-                  </h2>
-                  <p class="text-sm text-muted">
-                    A section for each format, by beat, plus general product shots. Shared by every channel.
-                  </p>
-                </div>
-                <UButton
-                  v-if="isDraft && bundle.broll.length"
-                  label="Clear"
-                  icon="i-lucide-trash-2"
-                  size="xs"
-                  color="neutral"
-                  variant="ghost"
-                  @click="clearBroll"
-                />
-              </div>
-            </template>
-            <PlannerBroll
-              :shoot-id="shoot.id"
-              :shoot-code="shoot.code"
               :product-id="shoot.product_id"
-              :shots="bundle.broll"
-              :formats="shootFormats"
-              :draft="isDraft"
-              @changed="refresh"
+              @update-group="updateGroup(group, $event)"
+              @update-item="updateItem"
+              @remove="removeGroup(group)"
             />
-          </UCard>        </div>
-
-        <!-- Calculator: sticky on desktop -->
-        <aside class="hidden lg:block">
-          <div class="sticky top-0 max-h-[calc(100dvh-7rem)] overflow-y-auto overscroll-contain rounded-lg border border-default p-4">
-            <h2 class="mb-3 font-semibold text-highlighted">
-              Calculator
-            </h2>
-            <PlannerCalculator :result="result" :submission-rate="Number(shoot.submission_rate)" :target="shoot.runway_target" :unfilled="unfilled" />
+            <p v-if="!groupsOf(tab === 'hooks' ? 'hook' : 'cta').length" class="px-4 py-8 text-center text-sm text-muted">
+              No {{ tab === 'hooks' ? 'hooks' : 'CTAs' }} yet. Write one here or add some from the Library.
+            </p>
           </div>
-        </aside>
+        </UCard>
+
+        <!-- VOs: written here, for this shoot's product, grouped by format -->
+        <UCard v-else-if="tab === 'vos'" :ui="{ body: 'p-0 sm:p-0' }">
+          <template #header>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <p class="text-xs text-muted">
+                Performed only by their writer.
+              </p>
+              <div v-if="isDraft" class="flex items-center gap-1">
+                <UButton
+                  label="Earlier VOs"
+                  icon="i-lucide-history"
+                  size="sm"
+                  color="neutral"
+                  variant="subtle"
+                  :disabled="!bundle.people.length"
+                  @click="openVoPicker()"
+                />
+                <UButton
+                  label="Write a VO"
+                  icon="i-lucide-pen-line"
+                  size="sm"
+                  :disabled="!bundle.people.length"
+                  @click="writeVo()"
+                />
+              </div>
+            </div>
+          </template>
+
+          <p v-if="!bundle.people.length" class="px-4 py-8 text-center text-sm text-muted">
+            Add people in General first: each VO is written by someone on the shoot.
+          </p>
+          <template v-else>
+            <div v-for="format in shootFormats" :key="format.id" class="border-b border-default last:border-b-0">
+              <div class="flex items-center gap-3 bg-elevated/20 px-4 py-2.5">
+                <button
+                  type="button"
+                  class="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  :aria-expanded="openFormats.has(format.id)"
+                  @click="toggleFormat(format.id)"
+                >
+                  <UIcon
+                    name="i-lucide-chevron-right"
+                    class="size-4 shrink-0 text-muted transition-transform"
+                    :class="{ 'rotate-90': openFormats.has(format.id) }"
+                  />
+                  <span class="truncate text-sm text-highlighted">
+                    <span class="mr-1.5 font-mono font-semibold">{{ format.code }}</span>{{ format.name }}
+                  </span>
+                  <UBadge :label="`${vosOfFormat(format.id).length} VO${vosOfFormat(format.id).length === 1 ? '' : 's'}`" color="neutral" variant="outline" size="sm" class="shrink-0" />
+                </button>
+                <UButton
+                  v-if="isDraft"
+                  :label="`Write ${format.code}`"
+                  icon="i-lucide-pen-line"
+                  size="xs"
+                  color="neutral"
+                  variant="subtle"
+                  @click="writeVo(format)"
+                />
+              </div>
+              <div v-if="openFormats.has(format.id)" class="divide-y divide-default border-t border-default">
+                <PlannerShotRow
+                  v-for="group in vosOfFormat(format.id)"
+                  :key="group.key"
+                  :group="group"
+                  :bundle="bundle"
+                  :draft="isDraft"
+                  :product-id="shoot.product_id"
+                  @update-group="updateGroup(group, $event)"
+                  @update-item="updateItem"
+                  @remove="removeGroup(group)"
+                  @edit-vo="editVo(group)"
+                />
+                <div v-if="!vosOfFormat(format.id).length" class="flex flex-wrap items-center gap-2 px-4 py-3 text-xs text-dimmed">
+                  No {{ format.code }} VOs yet.
+                  <UButton v-if="isDraft" :label="`Earlier ${format.code} VOs`" size="xs" color="neutral" variant="link" class="p-0" @click="openVoPicker(format)" />
+                </div>
+              </div>
+            </div>
+            <p v-if="!shootFormats.length" class="px-4 py-8 text-center text-sm text-muted">
+              No VOs yet. Write one (its format joins the plan), or pick formats in the Formats tab first.
+            </p>
+          </template>
+        </UCard>
+
+        <!-- B-roll: shots to film for each format's beats, plus general product shots -->
+        <UCard v-else>
+          <template #header>
+            <div class="flex items-start justify-between gap-2">
+              <p class="text-sm text-muted">
+                A section for each format, by beat, plus general product shots. Shared by every channel.
+              </p>
+              <UButton
+                v-if="isDraft && bundle.broll.length"
+                label="Clear"
+                icon="i-lucide-trash-2"
+                size="xs"
+                color="neutral"
+                variant="ghost"
+                @click="clearBroll"
+              />
+            </div>
+          </template>
+          <PlannerBroll
+            :shoot-id="shoot.id"
+            :shoot-code="shoot.code"
+            :product-id="shoot.product_id"
+            :shots="bundle.broll"
+            :formats="shootFormats"
+            :draft="isDraft"
+            @changed="refresh"
+          />
+        </UCard>
       </div>
 
-      <!-- Calculator: bottom sheet on mobile -->
-      <div class="fixed inset-x-0 bottom-0 z-10 border-t border-default bg-default p-3 lg:hidden">
-        <UButton block color="neutral" variant="subtle" icon="i-lucide-calculator" @click="calculatorOpen = true">
-          {{ formatNumber(result.totals.recipes) }} recipes · {{ formatNumber(result.totals.submissions) }} submissions
-        </UButton>
-      </div>
-      <UDrawer v-model:open="calculatorOpen" title="Calculator" :ui="{ content: 'max-h-[85dvh]', body: 'overflow-y-auto' }">
+      <USlideover v-model:open="calculatorOpen" title="Calculator" :ui="{ content: 'max-w-md' }">
         <template #body>
           <PlannerCalculator :result="result" :submission-rate="Number(shoot.submission_rate)" :target="shoot.runway_target" :unfilled="unfilled" />
         </template>
-      </UDrawer>
+      </USlideover>
 
       <UModal v-model:open="confirmPlan" :title="`Mark ${shoot.code} as planned?`">
         <template #body>
@@ -1086,13 +1307,58 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
         </template>
       </UModal>
 
+      <UModal
+        :open="writeCtaOpen"
+        title="Write a CTA"
+        description="For this shoot only. If it works, save it to the product from its row so later shoots can use it."
+        :ui="{ content: 'sm:max-w-xl' }"
+        @update:open="requestWriteCtaOpen"
+      >
+        <template #body>
+          <div class="space-y-4">
+            <UFormField label="Script" required help="Slots work: {{brand}}, {{product}}, {{dog}} or your own, filled in on this shoot.">
+              <ScriptEditor v-model="newCta.script" placeholder="Tap the link and try {{product}} today" />
+            </UFormField>
+            <UFormField label="Mode" help="Sync is said on camera; VO is recorded as voiceover over b-roll.">
+              <USelect v-model="newCta.mode" :items="ctaModes" class="w-full" />
+            </UFormField>
+          </div>
+        </template>
+        <template #footer>
+          <div class="flex w-full justify-end gap-2">
+            <UButton label="Cancel" color="neutral" variant="ghost" @click="requestWriteCtaOpen(false)" />
+            <UButton label="Add to the shot list" icon="i-lucide-plus" :disabled="!newCta.script.trim()" :loading="savingCta" @click="writeCta" />
+          </div>
+        </template>
+      </UModal>
+
       <PlannerItemPicker
         v-model:open="pickerOpen"
+        :kinds="[pickerKind]"
+        :existing="existingTemplates"
+        :product-id="shoot.product_id"
+        :people-ids="personIds"
+        @add="addItems"
+      />
+      <PlannerItemPicker
+        v-model:open="voPickerOpen"
+        :kinds="['body']"
         :existing="existingTemplates"
         :format="pickerFormat"
         :product-id="shoot.product_id"
         :people-ids="personIds"
         @add="addItems"
+      />
+      <PlannerVoEditor
+        ref="voEditor"
+        :shoot-id="shoot.id"
+        :product-id="shoot.product_id"
+        :people="bundle.people"
+        :hooks="linkOptions('hook')"
+        :ctas="linkOptions('cta')"
+        :channels="bundle.channels"
+        :channel-people="bundle.channelPeople ?? {}"
+        @saved="onVoSaved"
       />
     </template>
   </UDashboardPanel>

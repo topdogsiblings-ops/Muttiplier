@@ -4,8 +4,12 @@ import type { Beat, SlotContext } from './slots'
 import { buildSlotContext, joinBeats, parseBeats, renderBeats, renderScript, slugify } from './slots'
 import type { ItemKind } from './calculator'
 
-/** 2: custom slot values moved from plan.product to plan.shoot */
-export const SHOOTSHEET_SCHEMA_VERSION = 2
+/**
+ * 4: VO items carry `hooks` / `ctas`, the codes they're linked to (null = any), and the shoot
+ * carries `vo_variations` (with `broll_variations`, now used). 3: b-roll shots no
+ * longer carry product_visible or min_clips. 2: custom slot values moved to plan.shoot.
+ */
+export const SHOOTSHEET_SCHEMA_VERSION = 4
 export const DEFAULT_BEATS = ['problem', 'product', 'result']
 
 export interface BundleChannel {
@@ -37,14 +41,19 @@ export interface BundleItem {
   /** hooks: suggested post caption, copied from the template like the script and frozen when planned */
   caption?: string | null
   title?: string | null
-  /** VOs: the person on the cast who wrote it; only they perform it. Null = anyone. */
+  /** VOs: the person on the cast who wrote it; they perform it. Null = anyone. */
   writer_id?: string | null
+  /** VOs: people cast on it with the writer, who perform it too (same script, beat for beat) */
+  cast_ids?: string[]
   /** the Library template's source link, if it has one */
   source_url?: string | null
   /** how the filmed clip did, for later shortlists: good ones favoured, bad ones left out */
   rating?: 'good' | 'bad' | null
-  /** hooks: where the hook lives. 'shoot' = written in this shoot only; 'product' = kept for the product; null = a general Library hook */
-  hook_home?: 'shoot' | 'product' | null
+  /** hooks and CTAs: where it lives. 'shoot' = written in this shoot only; 'product' = kept for the product; null = a general Library one */
+  home?: 'shoot' | 'product' | null
+  /** VOs: the hook / CTA templates it's linked to; it only goes with those. Empty = any. */
+  linked_hooks?: string[]
+  linked_ctas?: string[]
   /** VOs: the slug of the product feature it's about (matches feature b-roll folders) */
   feature_slug?: string | null
   format: {
@@ -68,8 +77,6 @@ export interface BundleBroll {
   format_id?: string | null
   beat: string
   description: string
-  product_visible: boolean
-  min_clips: number
   status: string
   sort_order?: number
   /** the product feature this b-roll is for (its folder and the VOs it can go under); null = generic */
@@ -82,7 +89,10 @@ export interface ShootBundle {
     code: string
     shoot_date: string | null
     status: string
+    /** b-roll selections per hook + VO + CTA, and clips per channel per b-roll shot */
     broll_variations: number
+    /** mixed versions per VO per channel (beats swapped between the people cast on it) */
+    vo_variations?: number
     submission_rate: number
     /** custom slots filled in for this shoot ({{benefit}}…); built-ins fill themselves */
     slot_values?: unknown
@@ -100,6 +110,12 @@ export interface ShootBundle {
 // --- codes -----------------------------------------------------------------
 
 /** H = hook, V = body (VO), C = CTA */
+/** Who performs an item: everyone, or for a VO its writer and the people cast on it. */
+export function performs(item: Pick<BundleItem, 'kind' | 'writer_id' | 'cast_ids'>, personId: string): boolean {
+  if (item.kind !== 'body' || !item.writer_id) return true
+  return item.writer_id === personId || !!item.cast_ids?.includes(personId)
+}
+
 export function itemPrefix(kind: ItemKind): 'H' | 'V' | 'C' {
   if (kind === 'hook') return 'H'
   return kind === 'body' ? 'V' : 'C'
@@ -411,6 +427,17 @@ function channelSlug(bundle: ShootBundle, channelId: string | null): string | nu
   return bundle.channels.find(channel => channel.id === channelId)?.slug ?? null
 }
 
+/**
+ * The codes on this shoot of the hook (or CTA) templates a VO is linked to, or null when it isn't
+ * linked (it goes with any). Linked ones that aren't on the shoot are left out, so a VO whose links
+ * are all missing goes with none.
+ */
+export function linkedCodes(bundle: Pick<ShootBundle, 'items'>, item: BundleItem, kind: 'hook' | 'cta'): string[] | null {
+  const ids = kind === 'hook' ? item.linked_hooks : item.linked_ctas
+  if (!ids?.length) return null
+  return [...new Set(bundle.items.filter(other => other.kind === kind && ids.includes(other.template_id)).map(other => other.code))].sort()
+}
+
 /** The plan (spec §10c): the shoot, people, channels, formats, items and b-roll shots. Part of the manifest. */
 export function buildShootsheet(bundle: ShootBundle) {
   const formats = new Map<string, NonNullable<BundleItem['format']>>()
@@ -424,6 +451,7 @@ export function buildShootsheet(bundle: ShootBundle) {
       brand: { name: bundle.brand.name, slug: bundle.brand.slug },
       product: { name: bundle.product.name, slug: bundle.product.slug },
       broll_variations: bundle.shoot.broll_variations,
+      vo_variations: bundle.shoot.vo_variations ?? 0,
       submission_rate: Number(bundle.shoot.submission_rate),
       slot_values: bundle.shoot.slot_values ?? {}
     },
@@ -459,7 +487,11 @@ export function buildShootsheet(bundle: ShootBundle) {
           file: itemPath(bundle, item, 'edited', beat.beat),
           raw_file: itemPath(bundle, item, 'raw', beat.beat)
         }))
-        return { ...base, format: item.format?.code ?? null, feature: item.feature_slug ?? null, angle: item.angle, beats }
+        // linked hooks / CTAs: the only ones it goes with (null = any)
+        return {
+          ...base, format: item.format?.code ?? null, feature: item.feature_slug ?? null, angle: item.angle,
+          hooks: linkedCodes(bundle, item, 'hook'), ctas: linkedCodes(bundle, item, 'cta'), beats
+        }
       }
       return { ...base, cta_mode: item.cta_mode, script: script.text ?? '', ...folders }
     }),
@@ -472,8 +504,6 @@ export function buildShootsheet(bundle: ShootBundle) {
         /** the feature slug (its folder); null = generic */
         feature: shot.feature?.slug ?? null,
         description: shot.description,
-        product_visible: shot.product_visible,
-        min_clips: shot.min_clips,
         folder: brollFolder(bundle, shot, channelId, 'edited'),
         raw_folder: brollFolder(bundle, shot, channelId, 'raw')
       })))
@@ -548,8 +578,13 @@ export function skeletonFolders(bundle: ShootBundle): string[] {
   return [...folders].sort()
 }
 
-/** 3: clips carry `feature` (VOs: the feature they're about; b-roll: its feature folder, or null) */
-export const MANIFEST_SCHEMA_VERSION = 3
+/**
+ * 5: VO clips carry `hooks` / `ctas`, the codes they only go with (null = any); the plan carries
+ * the shoot's `vo_variations`. 4: b-roll clips no
+ * longer carry product_visible. 3: clips carry `feature` (VOs the feature they're about, b-roll its
+ * feature folder or null).
+ */
+export const MANIFEST_SCHEMA_VERSION = 5
 
 /**
  * The manifest before the edits are in (spec §14): just the plan, version 0, no clips. Written

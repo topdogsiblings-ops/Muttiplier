@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AccordionItem } from '@nuxt/ui'
+import type { AccordionItem, DropdownMenuItem } from '@nuxt/ui'
 import type { Row, Update } from '#shared/types/models'
 import type { BrollShot } from '#shared/utils/loadShoot'
 
@@ -82,8 +82,8 @@ const open = ref<string[]>([])
 const shotsFor = (section: BrollSection, beat: string) => props.shots.filter(shot =>
   shot.beat === beat && (section.formatId ? shot.format_id === section.formatId : isGeneral(shot)))
 const sectionShots = (section: BrollSection) => section.beats.flatMap(beat => shotsFor(section, beat))
-const clips = (shots: Row<'broll_shots'>[]) => shots.filter(shot => shot.status !== 'skipped').reduce((sum, shot) => sum + shot.min_clips, 0)
-const totalClips = computed(() => clips(props.shots))
+const count = (shots: Row<'broll_shots'>[]) => shots.filter(shot => shot.status !== 'skipped').length
+const totalShots = computed(() => count(props.shots))
 
 /** Suggestions are written by the team: on each format's beats, and in Settings for general product shots. */
 const presetsFor = (section: BrollSection, beat: string) => section.suggestions[beat] ?? []
@@ -103,8 +103,6 @@ async function add(section: BrollSection, beat: string, preset?: BrollSuggestion
       format_id: section.formatId,
       beat,
       description: preset?.description ?? '',
-      product_visible: preset?.product_visible ?? section.formatId === null,
-      min_clips: 3,
       sort_order: nextOrder()
     }))
     emit('changed')
@@ -126,8 +124,6 @@ async function addSectionSuggestions(section: BrollSection) {
       format_id: section.formatId,
       beat: suggestion.beat,
       description: suggestion.description,
-      product_visible: suggestion.product_visible,
-      min_clips: 3,
       sort_order: start + index
     }))))
     emit('changed')
@@ -144,12 +140,20 @@ async function addPresets(section: BrollSection, beat: string) {
       channel_id: null,
       format_id: section.formatId,
       beat,
-      ...preset,
-      min_clips: 3,
+      description: preset.description,
       sort_order: start + index
     }))))
     emit('changed')
   })
+}
+
+/** A beat's Suggested dropdown: every suggestion not added yet, and all of them at once. */
+function suggestionMenu(section: BrollSection, beat: string): DropdownMenuItem[][] {
+  const missing = suggestionsFor(section, beat)
+  return [
+    missing.map(suggestion => ({ label: suggestion.description, icon: 'i-lucide-plus', onSelect: () => add(section, beat, suggestion) })),
+    ...(missing.length > 1 ? [[{ label: `Add all ${missing.length}`, icon: 'i-lucide-wand', onSelect: () => addPresets(section, beat) }]] : [])
+  ]
 }
 
 async function update(shot: Row<'broll_shots'>, patch: Update<'broll_shots'>) {
@@ -171,7 +175,9 @@ async function remove(shot: Row<'broll_shots'>) {
   <div class="space-y-3">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <p class="text-sm text-muted">
-        {{ totalClips }} clips, shared by every channel.
+        {{ totalShots }} shot{{ totalShots === 1 ? '' : 's' }}, shared by every channel.<template v-if="totalShots">
+          Each channel films as many clips of each as it likes.
+        </template>
       </p>
       <PlannerBrollGenerator
         :shoot-id="props.shootId"
@@ -207,7 +213,7 @@ async function remove(shot: Row<'broll_shots'>) {
         <span class="min-w-0 flex-1 text-left">
           <span class="flex flex-wrap items-baseline gap-x-2">
             <span class="font-semibold text-highlighted">{{ item.label }}</span>
-            <span class="text-xs font-normal text-muted tabular-nums">· {{ clips(sectionShots(item as BrollSection)) }} clips</span>
+            <span class="text-xs font-normal text-muted tabular-nums">· {{ count(sectionShots(item as BrollSection)) }} shots</span>
           </span>
           <span v-if="item.description" class="block text-sm font-normal text-muted">{{ item.description }}</span>
         </span>
@@ -249,37 +255,29 @@ async function remove(shot: Row<'broll_shots'>) {
               </template>
             </UPopover>
             <div class="ml-auto flex gap-1">
-              <UButton
-                v-if="suggestionsFor(item as BrollSection, beat).length > 1"
-                label="Add this beat's"
-                icon="i-lucide-wand"
-                size="xs"
-                color="neutral"
-                variant="ghost"
-                @click="addPresets(item as BrollSection, beat)"
-              />
+              <!-- the beat's suggested shots, one tap each (or all at once), in a dropdown -->
+              <UDropdownMenu
+                v-if="suggestionsFor(item as BrollSection, beat).length"
+                :items="suggestionMenu(item as BrollSection, beat)"
+                :content="{ align: 'end' }"
+                :ui="{ content: 'max-w-sm', itemLabel: 'whitespace-normal' }"
+              >
+                <UButton
+                  :label="`Suggested (${suggestionsFor(item as BrollSection, beat).length})`"
+                  icon="i-lucide-wand"
+                  trailing-icon="i-lucide-chevron-down"
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                />
+              </UDropdownMenu>
               <UButton label="Custom shot" icon="i-lucide-plus" size="xs" color="neutral" variant="subtle" @click="add(item as BrollSection, beat)" />
             </div>
           </div>
 
           <p v-if="!presetsFor(item as BrollSection, beat).length" class="mb-2 text-xs text-dimmed">
-            No suggested shots yet. Add them {{ (item as BrollSection).formatId ? 'to this beat on the format in Library → Formats & VOs' : 'in Settings → Defaults' }}.
+            No suggested shots yet. Add them {{ (item as BrollSection).formatId ? 'to this beat on the format in Library → Formats' : 'in Settings → Defaults' }}.
           </p>
-          <!-- one-tap suggested shots -->
-          <div v-if="suggestionsFor(item as BrollSection, beat).length" class="mb-2 flex flex-wrap items-center gap-1">
-            <span class="text-xs text-dimmed">Suggested:</span>
-            <UButton
-              v-for="suggestion in suggestionsFor(item as BrollSection, beat)"
-              :key="suggestion.description"
-              :label="suggestion.description"
-              :icon="suggestion.product_visible ? 'i-lucide-package' : 'i-lucide-plus'"
-              size="xs"
-              color="neutral"
-              variant="outline"
-              class="rounded-full"
-              @click="add(item as BrollSection, beat, suggestion)"
-            />
-          </div>
 
           <div class="space-y-1.5">
             <div v-for="shot in shotsFor(item as BrollSection, beat)" :key="shot.id" class="flex flex-wrap items-center gap-2">
@@ -304,22 +302,6 @@ async function remove(shot: Row<'broll_shots'>) {
                 :title="props.draft ? 'Only goes under VOs about this feature; Generic goes under any VO' : 'Set while the shoot is a draft: it names the clips\' folder'"
                 @update:model-value="update(shot, { feature_id: ($event as string | undefined) ?? null })"
               />
-              <UCheckbox
-                :model-value="shot.product_visible"
-                label="Product visible"
-                @update:model-value="update(shot, { product_visible: $event === true })"
-              />
-              <label class="flex items-center gap-1 text-xs text-muted">
-                Min clips
-                <UInput
-                  :model-value="shot.min_clips"
-                  type="number"
-                  min="0"
-                  size="sm"
-                  class="w-16"
-                  @change="update(shot, { min_clips: Math.max(0, Number(($event.target as HTMLInputElement).value) || 0) })"
-                />
-              </label>
               <UBadge v-if="shot.status !== 'planned'" :label="shot.status" :color="ITEM_STATUS_COLORS[shot.status]" variant="subtle" size="sm" />
               <UButton
                 v-if="props.draft"

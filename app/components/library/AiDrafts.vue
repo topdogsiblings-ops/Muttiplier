@@ -1,28 +1,24 @@
 <script setup lang="ts">
 import type { Beat } from '#shared/utils/slots'
 
-// AI drafting for the Library (spec §11). Drafts open in the normal editor: nothing is
-// saved until a person reviews it and presses Save.
-const props = defineProps<{ kind: 'hook' | 'body' | 'cta' }>()
+// AI drafting for the Library's hooks and CTAs (spec §11). Drafts open in the normal editor:
+// nothing is saved until a person reviews it and presses Save. VOs are drafted in the shoot.
+const props = defineProps<{ kind: 'hook' | 'cta' }>()
 const emit = defineEmits<{
   use: [draft: {
     script?: string
     caption?: string
-    title?: string
-    beats?: Beat[]
     angle_id?: string
-    format_id?: string
     mode?: string
     tags?: string[]
-    product_id?: string
   }]
 }>()
 
 const run = useAction()
-const { formats, angles, angleOptions, productOptions } = useRefData()
+const { angles, angleOptions, productOptions } = useRefData()
 
-const TITLES = { hook: 'Draft hooks with AI', body: 'Draft a body with AI', cta: 'Draft CTAs with AI' }
-const MAX = { hook: 12, body: 4, cta: 12 }
+const TITLES = { hook: 'Draft hooks with AI', cta: 'Draft CTAs with AI' }
+const MAX = { hook: 12, cta: 12 }
 const modes = [{ label: 'Sync (on camera)', value: 'sync' }, { label: 'VO over b-roll', value: 'vo' }]
 
 const open = ref(false)
@@ -30,23 +26,13 @@ const loading = ref(false)
 const drafts = ref<{ title?: string, script?: string, caption?: string, beats?: Beat[] }[]>([])
 const form = reactive({
   angle_id: undefined as string | undefined,
-  format_id: undefined as string | undefined,
   product_id: undefined as string | undefined,
   mode: 'sync',
   tags: [] as string[],
-  count: props.kind === 'body' ? 2 : 6,
+  count: 6,
   brief: ''
 })
 const requestOpen = useGuardedClose(open, () => ({ form, drafts: drafts.value }))
-
-const formatOptions = computed(() =>
-  formats.value.filter(format => !format.archived).map(format => ({ label: `${format.code} — ${format.name}`, value: format.id }))
-)
-watch(open, (isOpen) => {
-  if (isOpen) form.format_id ??= formatOptions.value[0]?.value
-})
-
-const canGenerate = computed(() => props.kind !== 'body' || !!form.format_id)
 
 async function generate() {
   loading.value = true
@@ -55,9 +41,7 @@ async function generate() {
     const shared = { count: form.count, brief: form.brief.trim() || undefined, productId: form.product_id }
     const body = props.kind === 'hook'
       ? { type: 'hooks' as const, ...shared, angle, tags: form.tags }
-      : props.kind === 'cta'
-        ? { type: 'ctas' as const, ...shared, mode: form.mode as 'sync' | 'vo', tags: form.tags }
-        : { type: 'body' as const, ...shared, angle, formatId: form.format_id! }
+      : { type: 'ctas' as const, ...shared, mode: form.mode as 'sync' | 'vo', tags: form.tags }
     const response = await $fetch('/api/ai/draft', { method: 'POST', body })
     drafts.value = response.drafts
   })
@@ -66,9 +50,7 @@ async function generate() {
 
 function use(draft: { title?: string, script?: string, caption?: string, beats?: Beat[] }) {
   if (props.kind === 'hook') emit('use', { script: draft.script, caption: draft.caption, angle_id: form.angle_id, tags: [...form.tags] })
-  else if (props.kind === 'cta') emit('use', { script: draft.script, mode: form.mode, tags: [...form.tags] })
-  // a VO drafted for a product is for that product (its feature is picked in the editor)
-  else emit('use', { beats: draft.beats, format_id: form.format_id, angle_id: form.angle_id, product_id: form.product_id })
+  else emit('use', { script: draft.script, mode: form.mode, tags: [...form.tags] })
   open.value = false
 }
 </script>
@@ -86,9 +68,6 @@ function use(draft: { title?: string, script?: string, caption?: string, beats?:
     <template #body>
       <div class="space-y-4">
         <div class="grid gap-4 sm:grid-cols-2">
-          <UFormField v-if="props.kind === 'body'" label="Format" required>
-            <USelect v-model="form.format_id" :items="formatOptions" class="w-full" />
-          </UFormField>
           <UFormField v-if="props.kind === 'cta'" label="Mode">
             <USelect v-model="form.mode" :items="modes" class="w-full" />
           </UFormField>
@@ -108,7 +87,7 @@ function use(draft: { title?: string, script?: string, caption?: string, beats?:
             <UInput v-model.number="form.count" type="number" min="1" :max="MAX[props.kind]" class="w-full" />
           </UFormField>
         </div>
-        <UFormField v-if="props.kind !== 'body'" label="Tags" help="Themes to lean on. Pick existing tags or type new ones.">
+        <UFormField label="Tags" help="Themes to lean on. Pick existing tags or type new ones.">
           <TagInput v-model="form.tags" />
         </UFormField>
         <UFormField label="Brief" help="Optional notes: audience, tone, what to avoid">
@@ -145,7 +124,6 @@ function use(draft: { title?: string, script?: string, caption?: string, beats?:
         :label="drafts.length ? 'Generate again' : 'Generate drafts'"
         icon="i-lucide-sparkles"
         :loading="loading"
-        :disabled="!canGenerate"
         @click="generate"
       />
     </template>

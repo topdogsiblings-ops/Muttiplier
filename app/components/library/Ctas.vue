@@ -4,19 +4,26 @@ import type { Row } from '#shared/types/models'
 const db = useDb()
 const run = useAction()
 const { context } = usePreviewContext()
+const { productOptions, productOf } = useRefData()
 const library = useLibrary('cta_templates', { usageKind: 'cta', text: row => row.script })
 
 const mode = ref('all')
 const tag = ref('all')
+/** 'all', 'general' (every product) or a product id: CTAs kept for one product */
+const product = ref('all')
+const productFilter = computed(() => [{ label: 'All products', value: 'all' }, { label: 'General', value: 'general' }, ...productOptions.value])
 const modes = [{ label: 'Sync (on camera)', value: 'sync' }, { label: 'VO over b-roll', value: 'vo' }]
 const modeFilter = [{ label: 'All modes', value: 'all' }, ...modes]
 
+// CTAs written in a shoot stay with that shoot until someone saves them to the product
 const visible = computed(() => library.visible(row =>
-  (mode.value === 'all' || row.mode === mode.value)
+  !row.shoot_id
+  && (mode.value === 'all' || row.mode === mode.value)
   && (tag.value === 'all' || row.tags.includes(tag.value))
+  && (product.value === 'all' || (product.value === 'general' ? !row.product_id : row.product_id === product.value))
 ))
 const pageRows = computed(() => library.paginate(visible.value))
-watch([mode, tag], library.resetPage)
+watch([mode, tag, product], library.resetPage)
 
 const open = ref(false)
 const saving = ref(false)
@@ -27,7 +34,9 @@ const form = reactive({
   est_seconds: undefined as number | undefined,
   tags: [] as string[],
   notes: '',
-  source_url: ''
+  source_url: '',
+  /** kept for one product (offered only on its shoots); none = general */
+  product_id: undefined as string | undefined
 })
 const requestOpen = useGuardedClose(open, form)
 
@@ -39,7 +48,8 @@ function edit(row?: Partial<Row<'cta_templates'>>, duplicate = false) {
     est_seconds: row?.est_seconds ?? undefined,
     tags: [...(row?.tags ?? [])],
     notes: row?.notes ?? '',
-    source_url: row?.source_url ?? ''
+    source_url: row?.source_url ?? '',
+    product_id: row?.product_id ?? undefined
   })
   open.value = true
 }
@@ -53,7 +63,8 @@ async function save() {
       est_seconds: form.est_seconds || null,
       tags: form.tags,
       notes: form.notes.trim() || null,
-      source_url: normalizeUrl(form.source_url)
+      source_url: normalizeUrl(form.source_url),
+      product_id: form.product_id ?? null
     }
     if (form.id) must(await db.from('cta_templates').update(fields).eq('id', form.id))
     else must(await db.from('cta_templates').insert(fields))
@@ -74,6 +85,7 @@ async function save() {
       sortable
       @create="edit()"
     >
+      <USelect v-model="product" :items="productFilter" class="w-44" />
       <USelect v-model="mode" :items="modeFilter" class="w-44" />
       <USelect v-model="tag" :items="tagOptions(library.rows.value)" class="w-32" />
       <template #actions>
@@ -94,6 +106,7 @@ async function save() {
           </p>
           <div class="flex flex-wrap items-center gap-1.5 text-xs text-muted">
             <UBadge :label="row.mode === 'sync' ? 'Sync' : 'VO'" :color="row.mode === 'sync' ? 'info' : 'secondary'" variant="subtle" size="sm" />
+            <UBadge v-if="row.product_id" :label="`${productOf(row.product_id)?.name ?? 'One product'} only`" icon="i-lucide-package" color="primary" variant="subtle" size="sm" />
             <UBadge v-for="t in row.tags" :key="t" :label="t" color="neutral" variant="outline" size="sm" />
             <span v-if="row.est_seconds">{{ row.est_seconds }}s</span>
             <span>· {{ library.usedLabel(row.id) }}</span>
@@ -131,6 +144,9 @@ async function save() {
               <UInput v-model.number="form.est_seconds" type="number" min="0" class="w-full" />
             </UFormField>
           </div>
+          <UFormField label="Product" help="Keep this CTA for one product: it's offered only on that product's shoots. Leave empty for a general CTA offered on every shoot.">
+            <USelectMenu v-model="form.product_id" :items="productOptions" value-key="value" placeholder="General: every product" class="w-full" />
+          </UFormField>
           <UFormField label="Tags" help="Pick an existing tag or type a new one">
             <TagInput v-model="form.tags" />
           </UFormField>

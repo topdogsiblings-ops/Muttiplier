@@ -130,10 +130,10 @@ const warningsOpen = ref(false)
       </div>
       <div>
         <dt class="text-xs text-muted">
-          B-roll clips
+          B-roll shots
         </dt>
         <dd class="font-medium text-highlighted tabular-nums">
-          {{ result.totals.brollClips }}
+          {{ result.totals.brollShots }}
         </dd>
       </div>
     </dl>
@@ -228,8 +228,8 @@ const warningsOpen = ref(false)
           </li>
         </ul>
       </template>
-      <p v-if="result.totals.brollClips" class="mt-2 text-xs text-muted">
-        {{ result.totals.brollClips }} b-roll clips: every channel films its own clips of each shared shot.
+      <p v-if="result.totals.brollShots" class="mt-2 text-xs text-muted">
+        {{ result.totals.brollShots }} b-roll shots across channels: every channel films its own clips of each shared shot.
       </p>
     </section>
     <!-- Chart: time per person, on camera + VO stacked -->

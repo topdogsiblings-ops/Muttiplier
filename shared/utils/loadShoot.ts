@@ -33,8 +33,11 @@ export interface PlannedFormat {
 
 type ItemRow = Row<'shoot_items'> & {
   hook: { filming_notes: string | null, source_url: string | null, shoot_id: string | null, product_id: string | null, angle: { name: string } | null } | null
-  cta: { source_url: string | null } | null
+  cta: { source_url: string | null, shoot_id: string | null, product_id: string | null } | null
   body: {
+    cast: { person_id: string }[]
+    hook_links: { hook_template_id: string }[]
+    cta_links: { cta_template_id: string }[]
     title: string | null
     feature: { name: string, slug: string } | null
     person_id: string | null
@@ -46,8 +49,8 @@ type ItemRow = Row<'shoot_items'> & {
 
 const ITEM_SELECT = `*,
   hook:hook_templates(filming_notes, source_url, shoot_id, product_id, angle:angles(name)),
-  cta:cta_templates(source_url),
-  body:body_templates(title, feature:product_features(name, slug), person_id, source_url, angle:angles(name), format:formats(id, code, name, description, cta_modes, beats, beat_descriptions, beat_broll))`
+  cta:cta_templates(source_url, shoot_id, product_id),
+  body:body_templates(cast:vo_cast(person_id), hook_links:vo_hook_links(hook_template_id), cta_links:vo_cta_links(cta_template_id), title, feature:product_features(name, slug), person_id, source_url, angle:angles(name), format:formats(id, code, name, description, cta_modes, beats, beat_descriptions, beat_broll))`
 
 function unwrap<T>(result: { data: T | null, error: { message: string } | null }): T {
   if (result.error) throw new Error(result.error.message)
@@ -67,7 +70,9 @@ function toBundleItem(row: ItemRow): BundleItem {
     location: row.location,
     status: row.status,
     rating: row.rating === 'good' || row.rating === 'bad' ? row.rating : null,
-    hook_home: row.hook?.shoot_id ? 'shoot' : row.hook?.product_id ? 'product' : null,
+    home: (row.hook?.shoot_id ?? row.cta?.shoot_id) ? 'shoot' : (row.hook?.product_id ?? row.cta?.product_id) ? 'product' : null,
+    linked_hooks: row.body?.hook_links.map(link => link.hook_template_id) ?? [],
+    linked_ctas: row.body?.cta_links.map(link => link.cta_template_id) ?? [],
     feature_slug: row.body?.feature?.slug ?? null,
     take_notes: row.take_notes,
     sort_order: row.sort_order,
@@ -78,6 +83,7 @@ function toBundleItem(row: ItemRow): BundleItem {
     // a VO is known by the product feature it's about (older VOs by their title)
     title: row.body?.feature?.name ?? row.body?.title ?? null,
     writer_id: row.body?.person_id ?? null,
+    cast_ids: row.body?.cast.map(member => member.person_id) ?? [],
     source_url: row.hook?.source_url ?? row.body?.source_url ?? row.cta?.source_url ?? null,
     format: row.body?.format ?? null
   }
@@ -135,6 +141,10 @@ export function bundleToCalcInput(bundle: ShootBundle, settings: CalcSettings): 
     people: bundle.people,
     channels: bundle.channels,
     items: bundle.items.map(item => ({
+      templateId: item.template_id,
+      linkedHooks: item.linked_hooks,
+      linkedCtas: item.linked_ctas,
+      beats: item.kind === 'body' ? itemBeats(item).length : undefined,
       personId: item.person_id,
       kind: item.kind,
       channelId: item.channel_id,
@@ -143,8 +153,10 @@ export function bundleToCalcInput(bundle: ShootBundle, settings: CalcSettings): 
       status: item.status,
       recordingKey: recordingKey(item)
     })),
-    brollShots: bundle.broll.map(shot => ({ channelId: shot.channel_id, minClips: shot.min_clips, status: shot.status })),
+    brollShots: bundle.broll.map(shot => ({ channelId: shot.channel_id, status: shot.status })),
     submissionRate: Number(bundle.shoot.submission_rate),
+    brollVariations: bundle.shoot.broll_variations,
+    voVariations: bundle.shoot.vo_variations ?? 0,
     settings
   }
 }

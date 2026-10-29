@@ -6,7 +6,7 @@
 // "topdognix/hooks/joe/H01.mov" or "topdognix/b-roll/problem/IMG_4821.mov".
 
 import type { BundleItem, ShootBundle } from './shootsheet'
-import { MANIFEST_SCHEMA_VERSION, brollFolder, buildShootsheet, channelFolder, itemBeats, mediaOf, resolveItemScript, shootFolder, takeSpot } from './shootsheet'
+import { MANIFEST_SCHEMA_VERSION, brollFolder, buildShootsheet, channelFolder, itemBeats, linkedCodes, mediaOf, resolveItemScript, shootFolder, takeSpot } from './shootsheet'
 
 const VIDEO = new Set(['mov', 'mp4', 'm4v', 'hevc'])
 const AUDIO = new Set(['m4a', 'mp3', 'wav', 'aac', 'caf', 'aif', 'aiff'])
@@ -116,6 +116,9 @@ export interface TakeClip extends ClipBase {
   format: string | null
   /** VOs: the slug of the product feature it's about; feature b-roll only goes under VOs about its feature */
   feature: string | null
+  /** VOs: the hook / CTA codes it's linked to, the only ones it goes with; null = any */
+  hooks?: string[] | null
+  ctas?: string[] | null
   /** CTAs: sync (on camera) or vo (over b-roll) */
   mode: string | null
   angle: string | null
@@ -132,7 +135,6 @@ export interface BrollClip extends ClipBase {
   feature: string | null
   /** the b-roll shot it was filmed for, when it was added in the checklist */
   shot: { id: string, description: string, beat: string, general: boolean } | null
-  product_visible: boolean
 }
 
 export type ManifestClip = TakeClip | BrollClip
@@ -153,8 +155,7 @@ export interface Manifest {
 
 /**
  * The manifest for a shoot whose edits check out, from the edited/ and raw/ listings. `brollShots`
- * maps a b-roll clip's raw path to the shot it was added for (from the checklist's clip records);
- * clips added some other way count as product shots only when they're in general/.
+ * maps a b-roll clip's raw path to the shot it was added for (from the checklist's clip records).
  */
 export function buildManifest(
   bundle: ShootBundle,
@@ -184,6 +185,8 @@ export function buildManifest(
       beat,
       format: item.format?.code ?? null,
       feature: item.kind === 'body' ? item.feature_slug ?? null : null,
+      hooks: item.kind === 'body' ? linkedCodes(bundle, item, 'hook') : null,
+      ctas: item.kind === 'body' ? linkedCodes(bundle, item, 'cta') : null,
       mode: item.cta_mode,
       angle: item.angle,
       script: beat ? script.beats?.find(b => b.beat === beat)?.script ?? '' : script.text ?? '',
@@ -213,8 +216,7 @@ export function buildManifest(
       file,
       raw_file: rawOf(file),
       duration: durations.get(file) ?? null,
-      shot: shot ? { id: shot.id!, description: shot.description, beat: shot.beat, general: !shot.format_id } : null,
-      product_visible: shot ? shot.product_visible : section === 'general'
+      shot: shot ? { id: shot.id!, description: shot.description, beat: shot.beat, general: !shot.format_id } : null
     })
   }
 

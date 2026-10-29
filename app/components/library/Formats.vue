@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { Row } from '#shared/types/models'
 
-// Formats: the structure of a VO (its beats and target length). VOs live in their own tab;
-// each format shows how many are built on it, linking to them.
+// Formats: the structure of a VO (its beats and target length). VOs are written in each shoot;
+// each format shows how many are built on it.
 const db = useDb()
 const run = useAction()
 const { load } = useRefData()
@@ -74,15 +74,12 @@ async function setArchived(row: Row<'formats'>, archived: boolean) {
             <CreatedBy :by="format.created_by" :at="format.created_at" />
           </div>
         </div>
-        <UButton
+        <UBadge
           :label="`${voCounts[format.id] ?? 0} VO${voCounts[format.id] === 1 ? '' : 's'}`"
           icon="i-lucide-mic"
           color="neutral"
           variant="outline"
-          size="sm"
           class="shrink-0"
-          :to="{ query: { tab: 'vos', format: format.id } }"
-          @click.stop
         />
         <LibraryRowActions
           noun="format"

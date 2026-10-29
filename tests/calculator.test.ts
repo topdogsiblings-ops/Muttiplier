@@ -107,17 +107,49 @@ describe('calculate: warnings and b-roll', () => {
     ], {
       people: [people[0]!],
       brollShots: [
-        { channelId: 'nix', minClips: 3 },
-        { channelId: 'nix', minClips: 2 },
-        { channelId: null, minClips: 4 },
-        { channelId: 'both', minClips: 9, status: 'skipped' }
+        { channelId: 'nix' },
+        { channelId: 'nix' },
+        { channelId: null },
+        { channelId: 'both', status: 'skipped' }
       ]
     }))
     expect(result.warnings).toEqual(['joe: 1 item not on one of this shoot\'s channels', 'whiskey has no hooks', 'both has no hooks'])
-    // the shared shot is filmed 4 times for each of the 3 channels
-    expect(result.perChannel.map(channel => channel.brollClips)).toEqual([9, 4, 4])
-    expect(result.totals.sharedBrollClips).toBe(4)
-    expect(result.totals.brollClips).toBe(17)
+    // the shared shot is filmed for each of the 3 channels
+    expect(result.perChannel.map(channel => channel.brollShots)).toEqual([3, 1, 1])
+    expect(result.totals.sharedBrollShots).toBe(1)
+    expect(result.totals.brollShots).toBe(5)
+  })
+})
+
+describe('calculate: VOs linked to hooks and CTAs', () => {
+  it('counts a linked VO only with its hooks and CTAs, and warns when none of them are on the shoot', () => {
+    const hook = (n: number) => ({ personId: 'joe', channelId: 'nix', kind: 'hook' as const, templateId: `h${n}` })
+    const cta = (n: number) => ({ personId: 'joe', channelId: 'nix', kind: 'cta' as const, ctaMode: 'sync', templateId: `c${n}` })
+    const result = calculate(base([
+      hook(1), hook(2), hook(3), cta(1), cta(2),
+      // V1: any hook, any CTA (3 × 2); V2: H1 or H2, C2 only (2 × 1); V3: a hook not on the shoot
+      { personId: 'joe', channelId: 'nix', kind: 'body', templateId: 'v1', label: 'V01' },
+      { personId: 'joe', channelId: 'nix', kind: 'body', templateId: 'v2', label: 'V02', linkedHooks: ['h1', 'h2'], linkedCtas: ['c2'] },
+      { personId: 'joe', channelId: 'nix', kind: 'body', templateId: 'v3', label: 'V03', linkedHooks: ['h9'] }
+    ], { people: [people[0]!], channels: [channels[0]!] }))
+    expect(result.totals.recipes).toBe(6 + 2 + 0)
+    expect(result.totals.concepts).toBe(3 + 2 + 0)
+    expect(result.warnings).toContain('V03: none of its linked hooks are on this shoot for joe on nix')
+  })
+})
+
+describe('calculate: variations', () => {
+  it('multiplies by b-roll variations and adds mixes of VOs cast on several people', () => {
+    const on = (personId: string, kind: 'hook' | 'body' | 'cta', templateId: string) => ({ personId, channelId: 'nix', kind, templateId, ctaMode: kind === 'cta' ? 'sync' : undefined, beats: kind === 'body' ? 3 : undefined })
+    const items = [on('joe', 'hook', 'h1'), on('sam', 'hook', 'h2'), on('joe', 'cta', 'c1'), on('sam', 'cta', 'c1'), on('joe', 'body', 'v1'), on('sam', 'body', 'v1')]
+    const input = base(items, { people: [people[0]!, { id: 'sam', name: 'sam' }], channels: [channels[0]!] })
+    // solo: Joe 1 × 1 × 1, Sam 1 × 1 × 1
+    expect(calculate(input).totals.recipes).toBe(2)
+    // two b-roll selections each
+    expect(calculate({ ...input, brollVariations: 2 }).totals.recipes).toBe(4)
+    // plus 3 mixes of V1 (2 people, 3 beats: up to 6), each with both hooks and both CTAs
+    expect(calculate({ ...input, voVariations: 3 }).totals.recipes).toBe(2 + 3 * 2 * 2)
+    expect(calculate({ ...input, voVariations: 99 }).totals.recipes).toBe(2 + 6 * 2 * 2)
   })
 })
 
