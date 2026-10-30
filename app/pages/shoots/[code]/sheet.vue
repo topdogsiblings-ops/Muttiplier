@@ -242,22 +242,14 @@ function brollClipChanged(shot: Row<'broll_shots'>) {
 // Clips added on set are saved on the phone; once the shoot is ended, Upload sends them to
 // Dropbox (spec §12); the uploader is in test mode until Dropbox is connected.
 // Clips go to the shoot's raw/ folder, by channel: hooks, VOs (beat by beat) and CTAs as files
-// named by code (H01.mov; a VO beat in its beat folder, problem/V01.m4a), b-roll loose in its
+// named by code (H01.mov; a VO beat in its beat folder, problem/V01.mov), b-roll loose in its
 // beat folder under its own name.
 // Editors mirror it under edited/.
-const clipMedia = (item: BundleItem) => mediaOf(item)
 
 // Sanity checks on submitted clips use the presets in Settings -> Defaults.
 const { settings, load: loadRefData } = useRefData()
 await loadRefData()
 const clipRules = computed(() => clipRulesFrom(settings.value))
-/** How long a recording should be: the script's reading time at the speech pace in Settings. */
-const expectedSeconds = (item: BundleItem) => {
-  if (clipMedia(item) !== 'audio') return 0
-  const resolved = script(item)
-  const text = resolved.beats ? resolved.beats.map(beat => beat.script).join(' ') : resolved.text ?? ''
-  return estimateSeconds(text, Number(settings.value?.words_per_second) || DEFAULT_WORDS_PER_SECOND)
-}
 const brollClipLabel = (shot: Row<'broll_shots'>, channelName: string | null, index: number) =>
   `${channelName ? `${channelName} ` : ''}clip ${index + 1} of ${shot.description || 'this shot'}`
 /** Each channel's clips go loose into that channel's b-roll folder (the trailing / keeps their own names). */

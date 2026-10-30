@@ -6,7 +6,7 @@
 // "topdognix/hooks/joe/H01.mov" or "topdognix/b-roll/problem/IMG_4821.mov".
 
 import type { BundleItem, ShootBundle } from './shootsheet'
-import { MANIFEST_SCHEMA_VERSION, brollFolder, buildShootsheet, channelFolder, itemBeats, linkedCodes, mediaOf, resolveItemScript, shootFolder, takeSpot } from './shootsheet'
+import { MANIFEST_SCHEMA_VERSION, brollFolder, buildShootsheet, channelFolder, itemBeats, linkedCodes, resolveItemScript, shootFolder, takeSpot } from './shootsheet'
 
 const VIDEO = new Set(['mov', 'mp4', 'm4v', 'hevc'])
 const AUDIO = new Set(['m4a', 'mp3', 'wav', 'aac', 'caf', 'aif', 'aiff'])
@@ -63,12 +63,12 @@ export function checkEdits(
 
   for (const { item, beat, spot } of expectedSpots(bundle)) {
     const label = `${item.code}${beat ? ` ${beat}` : ''} (${person(item.person_id)}, ${channel(item.channel_id)})`
-    const expected = mediaOf(item)
+    // every take is filmed, VOs included (their sound plays over b-roll)
     for (const [stage, files] of [['raw', raw], ['edited', edited]] as const) {
       const found = filesAt(spot, files)
-      if (!found.length) problems.push(`${label}: no ${expected} file at ${stage}/${spot}`)
+      if (!found.length) problems.push(`${label}: no video file at ${stage}/${spot}`)
       else if (found.length > 1) problems.push(`${label}: ${found.length} files at ${stage}/${spot}`)
-      else if (kindOfFile(found[0]!) !== expected) problems.push(`${label}: ${stage}/${found[0]} should be ${expected === 'video' ? 'a video' : 'an audio file'}`)
+      else if (kindOfFile(found[0]!) !== 'video') problems.push(`${label}: ${stage}/${found[0]} should be a video`)
     }
   }
 
@@ -84,7 +84,7 @@ export function checkEdits(
 
   if (options.durations) {
     const unreadable = edited.filter(isClip).filter(file => !options.durations!.get(file))
-    if (unreadable.length) problems.push(`Couldn't read the length of ${list(unreadable)} (use .mov, .mp4, .m4a or .wav)`)
+    if (unreadable.length) problems.push(`Couldn't read the length of ${list(unreadable)} (use .mov or .mp4)`)
   }
 
   return { ok: !problems.length, problems, rawClips: rawKeys.size, editedClips: editedKeys.size }

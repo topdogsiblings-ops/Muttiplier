@@ -369,9 +369,12 @@ export function brollFolder(bundle: ShootBundle, shot: Pick<BundleBroll, 'format
 
 // --- recordings ----------------------------------------------------------------
 
-/** Hooks and sync CTAs are filmed (video); VOs and VO CTAs are recorded (audio). */
-export const mediaOf = (item: Pick<BundleItem, 'kind' | 'cta_mode'>): 'video' | 'audio' =>
-  item.kind === 'body' || (item.kind === 'cta' && item.cta_mode === 'vo') ? 'audio' : 'video'
+/**
+ * Voiceover: VOs and VO CTAs, which play over b-roll. Every take is filmed on camera (video),
+ * so their picture is there for treatments; a voiceover's length is checked against its script.
+ */
+export const isVoiceover = (item: Pick<BundleItem, 'kind' | 'cta_mode'>) =>
+  item.kind === 'body' || (item.kind === 'cta' && item.cta_mode === 'vo')
 
 /** The beats a VO is recorded in, one file each; hooks and CTAs are one take (null). */
 export function itemBeats(item: Pick<BundleItem, 'kind' | 'script_snapshot'>): (string | null)[] {

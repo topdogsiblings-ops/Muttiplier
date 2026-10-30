@@ -76,8 +76,3 @@ export async function measureVideo(file: File): Promise<{ width: number, height:
   video.load()
   return measured
 }
-
-export async function measureAudio(file: File): Promise<{ duration: number | null }> {
-  const audio = await loadMedia(document.createElement('audio'), file)
-  return { duration: audio ? await durationOf(audio) : null }
-}

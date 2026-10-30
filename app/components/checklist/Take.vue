@@ -21,12 +21,16 @@ const spot = (item: BundleItem) => ({
   target: clipTarget.item(item.id, props.recording.beat),
   path: itemPath(props.bundle, item, 'raw', props.recording.beat)
 })
-const media = computed(() => mediaOf(first.value))
 /** what's said in this take, for its captions */
 const script = computed(() => {
   const resolved = resolveItemScript(props.bundle, first.value)
   return props.recording.beat ? resolved.beats?.find(beat => beat.beat === props.recording.beat)?.script ?? '' : resolved.text ?? ''
 })
+// a voiceover's length is checked against its script, at the speech pace in Settings
+const { settings } = useRefData()
+const expectedSeconds = computed(() => isVoiceover(first.value)
+  ? estimateSeconds(script.value, Number(settings.value?.words_per_second) || DEFAULT_WORDS_PER_SECOND)
+  : 0)
 const label = computed(() => {
   const person = props.bundle.people.find(p => p.id === first.value.person_id)?.name ?? ''
   return `${props.recording.code}${props.recording.beat ? ` ${props.recording.beat}` : ''} for ${person}`
@@ -42,7 +46,7 @@ const label = computed(() => {
     :also="props.recording.items.slice(1).map(spot)"
     :script="script"
     :label="label"
-    :media="media"
+    :expected-seconds="expectedSeconds"
     :rules="props.rules"
     :button-label="props.buttonLabel"
     :size="props.size"

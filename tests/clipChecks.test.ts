@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkAudio, checkVideo, clipRulesFrom, describeAudio, describeVideo } from '../shared/utils/clipChecks'
+import { checkLength, checkVideo, clipRulesFrom, describeLength, describeVideo } from '../shared/utils/clipChecks'
 
 describe('checkVideo', () => {
   it('passes vertical 1080p at 30 fps', () => {
@@ -36,29 +36,29 @@ describe('checkVideo', () => {
   })
 })
 
-describe('checkAudio', () => {
+describe('checkLength', () => {
   it('passes a recording close to the script length', () => {
-    expect(checkAudio({ duration: 40, expectedSeconds: 38 })).toEqual([])
+    expect(checkLength({ duration: 40, expectedSeconds: 38 })).toEqual([])
   })
 
   it('flags a recording much shorter than the script', () => {
-    expect(checkAudio({ duration: 15, expectedSeconds: 38 })[0]).toMatch(/missing or cut off/)
+    expect(checkLength({ duration: 15, expectedSeconds: 38 })[0]).toMatch(/missing or cut off/)
   })
 
   it('flags a recording much longer than the script', () => {
-    expect(checkAudio({ duration: 90, expectedSeconds: 38 })[0]).toMatch(/retakes/)
+    expect(checkLength({ duration: 90, expectedSeconds: 38 })[0]).toMatch(/retakes/)
   })
 
   it('flags an empty recording even without an estimate', () => {
-    expect(checkAudio({ duration: 0.4, expectedSeconds: 0 })[0]).toMatch(/empty/)
+    expect(checkLength({ duration: 0.4, expectedSeconds: 0 })[0]).toMatch(/empty/)
   })
 
   it('skips the check when the length is unknown', () => {
-    expect(checkAudio({ duration: null, expectedSeconds: 38 })).toEqual([])
+    expect(checkLength({ duration: null, expectedSeconds: 38 })).toEqual([])
   })
 
   it('describes the length against the script', () => {
-    expect(describeAudio({ duration: 42, expectedSeconds: 38 })).toBe('0:42 · script ~0:38')
+    expect(describeLength({ duration: 42, expectedSeconds: 38 })).toBe('0:42 · script ~0:38')
   })
 })
 
@@ -72,7 +72,7 @@ describe('clip rules from settings', () => {
 
   it('applies the VO length range from settings', () => {
     const rules = clipRulesFrom({ vo_min_share: 0.9, vo_max_share: 1.1 })
-    expect(checkAudio({ duration: 30, expectedSeconds: 38 }, rules)).toHaveLength(1)
-    expect(checkAudio({ duration: 40, expectedSeconds: 38 }, rules)).toEqual([])
+    expect(checkLength({ duration: 30, expectedSeconds: 38 }, rules)).toHaveLength(1)
+    expect(checkLength({ duration: 40, expectedSeconds: 38 }, rules)).toEqual([])
   })
 })

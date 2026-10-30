@@ -29,7 +29,7 @@ function bundle(): ShootBundle {
 
 const raw = [
   'topdognix/hooks/joe/H01.mov', 'topdognix/hooks/joe/H01.srt',
-  'topdognix/vo/joe/problem/V01.m4a', 'topdognix/vo/joe/product/V01.m4a',
+  'topdognix/vo/joe/problem/V01.mov', 'topdognix/vo/joe/product/V01.mov',
   'topdognix/ctas/joe/C01.mov',
   'topdognix/b-roll/problem/IMG_1.MOV', 'topdognix/b-roll/general/IMG_9.MOV',
   'topdognix/b-roll/problem/calming/IMG_5.MOV'
@@ -42,14 +42,15 @@ describe('checkEdits', () => {
     expect(checkEdits(bundle(), raw, edited, { durations }).problems).toEqual([])
   })
 
-  it('wants a VO beat by beat, of the right kind, and a length for every edited clip', () => {
+  it('wants a VO beat by beat, filmed like every take, and a length for every edited clip', () => {
+    // an audio-only VO (how they used to be recorded) is flagged: VOs are filmed on camera now
     const check = checkEdits(bundle(), raw, [
       ...edited.filter(file => !file.includes('product/V01')),
-      'topdognix/vo/joe/product/V01.mp4'
+      'topdognix/vo/joe/product/V01.m4a'
     ], { durations: new Map([...durations].filter(([file]) => !file.includes('IMG_9'))), onPhones: 1 })
     expect(check.problems).toEqual(expect.arrayContaining([
       '1 clip is still on phones: upload them first',
-      'V01 product (Joe, topdognix): edited/topdognix/vo/joe/product/V01.mp4 should be an audio file',
+      'V01 product (Joe, topdognix): edited/topdognix/vo/joe/product/V01.m4a should be a video',
       expect.stringContaining('Couldn\'t read the length of topdognix/b-roll/general/IMG_9.mp4')
     ]))
   })

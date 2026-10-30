@@ -54,8 +54,8 @@ export function clipRulesFrom(settings: Partial<ClipSettings> | null | undefined
 /** How far off the aspect ratio may be (fraction), and slack for 23.976 / 59.94 fps. */
 const ASPECT_TOLERANCE = 0.02
 const FPS_SLACK = 0.5
-/** a recording under this many seconds is treated as empty */
-const MIN_AUDIO_SECONDS = 1
+/** a voiceover under this many seconds is treated as empty */
+const MIN_SECONDS = 1
 export interface VideoMeasure {
   width: number
   height: number
@@ -63,7 +63,8 @@ export interface VideoMeasure {
   fps: number | null
 }
 
-export interface AudioMeasure {
+/** A voiceover's length against its script's reading time. */
+export interface LengthMeasure {
   /** seconds; null when the browser couldn't measure it */
   duration: number | null
   /** estimated reading time of the script, in seconds; 0 if unknown */
@@ -114,17 +115,17 @@ export function checkVideo(measure: VideoMeasure, rules: ClipRules = DEFAULT_CLI
 }
 
 /** "0:42 · script ~0:38" */
-export function describeAudio(measure: AudioMeasure): string {
+export function describeLength(measure: LengthMeasure): string {
   const parts: string[] = []
   if (measure.duration !== null) parts.push(formatDuration(measure.duration))
   if (measure.expectedSeconds > 0) parts.push(`script ~${formatDuration(measure.expectedSeconds)}`)
   return parts.join(' · ')
 }
 
-export function checkAudio(measure: AudioMeasure, rules: ClipRules = DEFAULT_CLIP_RULES): string[] {
+export function checkLength(measure: LengthMeasure, rules: ClipRules = DEFAULT_CLIP_RULES): string[] {
   const { duration, expectedSeconds } = measure
   if (duration === null) return []
-  if (duration < MIN_AUDIO_SECONDS) return ['The recording is empty or under a second long.']
+  if (duration < MIN_SECONDS) return ['The recording is empty or under a second long.']
   if (expectedSeconds <= 0) return []
   if (duration < expectedSeconds * rules.voMinShare) {
     return [`It's ${formatDuration(duration)}, but the script takes about ${formatDuration(expectedSeconds)} to read. Lines may be missing or cut off.`]

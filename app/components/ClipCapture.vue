@@ -22,10 +22,9 @@ const props = withDefaults(defineProps<{
   path: string
   /** what the clip is for, for screen readers (e.g. "V03", "clip 2") */
   label: string
-  media?: 'video' | 'audio'
   part?: 'all' | 'actions' | 'clip'
   rules?: ClipRules
-  /** audio: the script's estimated reading time, for the length check */
+  /** voiceovers: the script's estimated reading time, for the length check (0 = none) */
   expectedSeconds?: number
   size?: 'xs' | 'sm' | 'md'
   /** a label always shown on the button (e.g. a person's name): + before a clip, ✓ after */
@@ -34,7 +33,7 @@ const props = withDefaults(defineProps<{
   also?: { target: string, path: string }[]
   /** what's said in the clip, for its captions */
   script?: string | null
-}>(), { media: 'video', part: 'all', rules: () => DEFAULT_CLIP_RULES, expectedSeconds: 0, size: 'sm' })
+}>(), { part: 'all', rules: () => DEFAULT_CLIP_RULES, expectedSeconds: 0, size: 'sm' })
 
 // A saved clip is what ticks a deliverable off: `saved` when this target gains one,
 // `removed` when it loses it.
@@ -48,21 +47,23 @@ const clip = computed(() => clipFor(props.target))
 const other = computed(() => elsewhere(props.target))
 const otherPhone = computed(() => other.value?.by ? `${other.value.by}'s phone` : 'another phone')
 const done = computed(() => !!clip.value || !!other.value)
-const audio = computed(() => props.media === 'audio')
 const showActions = computed(() => props.part !== 'clip')
 const showClip = computed(() => props.part !== 'actions')
 
 const pickInput = useTemplateRef<HTMLInputElement>('pickInput')
 const checking = ref(false)
 
-/** Measure the clip and run the sanity checks. */
+/** Measure the clip and run the sanity checks: its picture, and a voiceover's length against its script. */
 async function check(file: File) {
-  if (audio.value) {
-    const measure = { duration: (await measureAudio(file)).duration, expectedSeconds: props.expectedSeconds }
-    return { details: describeAudio(measure) || null, issues: checkAudio(measure, props.rules), duration: measure.duration }
-  }
   const measure = await measureVideo(file)
-  return { details: measure.width ? describeVideo(measure, props.rules) : null, issues: checkVideo(measure, props.rules), duration: measure.duration }
+  const length = { duration: measure.duration, expectedSeconds: props.expectedSeconds }
+  const voiceover = props.expectedSeconds > 0
+  const details = [measure.width ? describeVideo(measure, props.rules) : '', voiceover ? describeLength(length) : ''].filter(Boolean).join(' · ')
+  return {
+    details: details || null,
+    issues: [...checkVideo(measure, props.rules), ...(voiceover ? checkLength(length, props.rules) : [])],
+    duration: measure.duration
+  }
 }
 
 async function send(file: File) {
@@ -136,7 +137,7 @@ const badge = computed(() => {
       <input
         ref="pickInput"
         type="file"
-        :accept="audio ? 'audio/*' : 'video/*'"
+        accept="video/*"
         class="hidden"
         @change="onPick"
       >
@@ -176,7 +177,7 @@ const badge = computed(() => {
 
     <div v-if="showClip && clip" class="space-y-2 rounded-md border border-default p-2">
       <div class="flex items-center gap-2">
-        <UIcon :name="audio ? 'i-lucide-file-audio' : 'i-lucide-file-video'" class="size-5 shrink-0 text-muted" />
+        <UIcon name="i-lucide-file-video" class="size-5 shrink-0 text-muted" />
         <div class="min-w-0 flex-1">
           <p class="truncate text-sm font-medium text-highlighted">
             {{ clip.name }}
@@ -218,9 +219,7 @@ const badge = computed(() => {
       </div>
 
       <template v-if="clip.url && clip.state !== 'uploading'">
-        <audio v-if="audio" :src="clip.url" controls preload="metadata" class="w-full" />
         <video
-          v-else
           :src="clip.url"
           controls
           playsinline
