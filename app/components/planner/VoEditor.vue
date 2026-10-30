@@ -26,7 +26,7 @@ const emit = defineEmits<{ saved: [vo: Row<'body_templates'>, isNew: boolean] }>
 const db = useDb()
 const run = useAction()
 const { confirmDialog } = useConfirm()
-const { formats, angles, angleOptions, people: allPeople, featureOptions, featureOf, productOf, settings } = useRefData()
+const { formats, people: allPeople, featureOptions, featureOf, productOf, settings } = useRefData()
 const { me, isAdmin, canEditVo } = useMe()
 /** admins can write a VO for anyone on the shoot; everyone else writes their own */
 const writerOptions = computed(() => props.people.map(person => ({ label: person.name, value: person.id })))
@@ -53,7 +53,6 @@ const saving = ref(false)
 const form = reactive({
   id: '',
   format_id: undefined as string | undefined,
-  angle_id: undefined as string | undefined,
   person_id: undefined as string | undefined,
   feature: GENERAL as string,
   hooks: [] as string[],
@@ -84,7 +83,6 @@ async function edit(row?: Partial<Row<'body_templates'>>) {
   Object.assign(form, {
     id: row?.id ?? '',
     format_id: row?.format_id ?? formatOptions.value[0]?.value,
-    angle_id: row?.angle_id ?? undefined,
     // a new VO is written by whoever is signed in (an admin can pick someone else on the shoot)
     person_id: row?.id
       ? row.person_id ?? undefined
@@ -155,7 +153,6 @@ async function draftBeats() {
       body: {
         type: 'body' as const,
         formatId: form.format_id!,
-        angle: angles.value.find(a => a.id === form.angle_id)?.name,
         brief: feature.value
           ? `Write it about this feature of the product: ${feature.value.name}${feature.value.description ? ` (${feature.value.description})` : ''}`
           : 'Write it about the product as a whole, not one feature of it.',
@@ -199,7 +196,6 @@ async function save() {
   const ok = await run(async () => {
     const fields = {
       format_id: form.format_id!,
-      angle_id: form.angle_id ?? null,
       product_id: props.productId,
       feature_id: featureId.value,
       beats: form.beats.map(beat => ({ beat: beat.beat, script: beat.script.trim() })),
@@ -241,11 +237,8 @@ async function save() {
             <UFormField label="About" required class="sm:col-span-2" :help="feature?.description ?? 'A core feature of the product, or the product as a whole'">
               <USelectMenu v-model="form.feature" :items="features" value-key="value" class="w-full" :disabled="readonly" />
             </UFormField>
-            <UFormField label="Format" required>
+            <UFormField label="Format" required class="sm:col-span-2">
               <USelect v-model="form.format_id" :items="formatOptions" class="w-full" :disabled="readonly" />
-            </UFormField>
-            <UFormField label="Angle">
-              <USelectMenu v-model="form.angle_id" :items="angleOptions" value-key="value" placeholder="None" class="w-full" :disabled="readonly" />
             </UFormField>
             <UFormField label="Cast with" class="sm:col-span-2" help="They record the same script too. Where they share a channel with the writer, their beats can be mixed (VO variations in General).">
               <USelectMenu
@@ -299,7 +292,7 @@ async function save() {
               @click="draftBeats"
             />
             <p class="w-full text-xs text-muted">
-              Uses the product, what it's about, the format and the angle above. Review the beats before saving.
+              Uses the product, what it's about and the format above. Review the beats before saving.
             </p>
           </div>
 

@@ -9,7 +9,7 @@ function item(id: string, code: string, kind: BundleItem['kind'], channel: strin
     id, code, kind, person_id: 'p1', channel_id: channel,
     script_snapshot: kind === 'body' ? [{ beat: 'problem', script: 'My dog pulled' }, { beat: 'product', script: 'Then {{product}}' }] : 'Watch {{dog}} go',
     script_override: null, cta_mode: kind === 'cta' ? 'sync' : null, location: null, status: 'filmed', sort_order: 0,
-    template_id: `t-${id}`, angle: null, format: kind === 'body' ? format : null, ...extra
+    template_id: `t-${id}`, hook_type: null, format: kind === 'body' ? format : null, ...extra
   }
 }
 

@@ -518,7 +518,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
         >
           <div class="flex flex-wrap items-center gap-1.5">
             <span class="font-mono text-base font-bold text-highlighted">{{ group.code }}</span>
-            <UBadge v-if="group.items[0]!.angle" :label="group.items[0]!.angle!" color="neutral" variant="subtle" size="sm" />
+            <UBadge v-if="group.items[0]!.hook_type" :label="group.items[0]!.hook_type!" color="neutral" variant="subtle" size="sm" />
             <UBadge v-if="group.items[0]!.cta_mode" :label="group.items[0]!.cta_mode!" color="info" variant="subtle" size="sm" />
             <span v-if="group.items[0]!.location" class="flex items-center gap-0.5 text-xs text-muted">
               <UIcon name="i-lucide-map-pin" />{{ group.items[0]!.location }}

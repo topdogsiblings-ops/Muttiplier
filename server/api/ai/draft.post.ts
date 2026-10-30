@@ -12,7 +12,8 @@ const beatSchema = z.object({ beat: z.string(), script: z.string() })
 const requestSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('hooks'),
-    angle: z.string().max(80).optional(),
+    /** the hook type to write in (Confession, Curiosity…) */
+    hookType: z.string().max(80).optional(),
     tags: z.array(z.string().max(40)).max(12).optional(),
     count: z.number().int().min(1).max(12).optional(),
     brief: z.string().max(1000).optional(),
@@ -29,7 +30,6 @@ const requestSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('body'),
     formatId: z.string().uuid(),
-    angle: z.string().max(80).optional(),
     count: z.number().int().min(1).max(4).optional(),
     brief: z.string().max(1000).optional(),
     productId: z.string().uuid().optional()
@@ -106,7 +106,7 @@ export default defineEventHandler(async (event): Promise<{ drafts: AiDraft[] }> 
   if (input.type === 'hooks') {
     task = [
       `Write ${input.count ?? 6} distinct hook templates. A hook is the first 2 to 4 seconds on camera and has to stop the scroll.`,
-      input.angle ? `Angle: ${input.angle}.` : '',
+      input.hookType ? `Hook type: ${input.hookType}. Every hook should be clearly this type of opening.` : '',
       input.tags?.length ? `Themes to lean on: ${input.tags.join(', ')}.` : '',
       input.brief ? `Notes from the team: ${input.brief}` : '',
       'Make each hook different in structure, not just wording.',
@@ -131,7 +131,6 @@ export default defineEventHandler(async (event): Promise<{ drafts: AiDraft[] }> 
       `Write ${input.count ?? 2} voiceover script${(input.count ?? 2) === 1 ? '' : 's'} for the format "${format.name}"${format.description ? ` (${format.description})` : ''}.`,
       `Each script has exactly these beats, in this order: ${format.beats.join(', ')}. Return one entry per beat, using those beat names.`,
       format.target_seconds ? `Aim for about ${format.target_seconds} seconds read aloud in total.` : '',
-      input.angle ? `Angle: ${input.angle}.` : '',
       'The same voiceover is used on every channel, so stay dog-neutral: say "my dog" or "my pup" and do not use {{dog}}.',
       input.brief ? `Notes from the team: ${input.brief}` : '',
       'Give each script a short working title.'

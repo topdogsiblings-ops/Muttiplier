@@ -29,7 +29,7 @@ const open = defineModel<boolean>('open', { required: true })
 
 const db = useDb()
 const run = useAction()
-const { formats, people, angleName, angleOptions, productOf } = useRefData()
+const { formats, people, hookTypeName, hookTypeOptions, productOf } = useRefData()
 const personName = (id: string | null) => people.value.find(person => person.id === id)?.name ?? null
 
 const hooks = shallowRef<Row<'hook_templates'>[]>([])
@@ -44,7 +44,7 @@ const loading = ref(false)
 
 const kind = ref<'hook' | 'body' | 'cta'>('hook')
 const search = ref('')
-const angle = ref('all')
+const hookType = ref('all')
 const tag = ref('all')
 const selected = ref<Set<string>>(new Set())
 const requestOpen = useGuardedClose(open, () => [...selected.value])
@@ -80,7 +80,7 @@ const kindTabs = computed(() => [
   { label: `CTAs (${ctas.value.length})`, value: 'cta' }
 ].filter(tab => props.kinds.includes(tab.value as 'hook' | 'body' | 'cta')))
 const onlyVos = computed(() => props.kinds.length === 1 && props.kinds[0] === 'body')
-const angleFilter = computed(() => [{ label: 'All angles', value: 'all' }, ...angleOptions.value])
+const hookTypeFilter = computed(() => [{ label: 'All hook types', value: 'all' }, ...hookTypeOptions.value])
 const tags = computed(() => tagOptions([...hooks.value, ...bodies.value, ...ctas.value]))
 const formatOf = (id: string) => formats.value.find(format => format.id === id)
 
@@ -90,7 +90,8 @@ interface Option {
   text: string
   badges: string[]
   tags: string[]
-  angleId: string | null
+  /** hooks: their hook type */
+  hookTypeId: string | null
 }
 
 const options = computed<Option[]>(() => {
@@ -101,10 +102,10 @@ const options = computed<Option[]>(() => {
       text: row.script,
       badges: [
         ...(row.product_id ? [`${productOf(row.product_id)?.name ?? 'This product'} only`] : []),
-        ...(angleName(row.angle_id) ? [angleName(row.angle_id)!] : [])
+        ...(hookTypeName(row.angle_id) ? [hookTypeName(row.angle_id)!] : [])
       ],
       tags: row.tags,
-      angleId: row.angle_id
+      hookTypeId: row.angle_id
     }))
   }
   if (kind.value === 'body') {
@@ -114,11 +115,10 @@ const options = computed<Option[]>(() => {
       text: joinBeats(parseBeats(row.beats)),
       badges: [
         formatOf(row.format_id)?.code ?? '?',
-        ...(personName(row.person_id) ? [`by ${personName(row.person_id)}`] : []),
-        ...(angleName(row.angle_id) ? [angleName(row.angle_id)!] : [])
+        ...(personName(row.person_id) ? [`by ${personName(row.person_id)}`] : [])
       ],
       tags: row.tags,
-      angleId: row.angle_id
+      hookTypeId: null
     }))
   }
   return ctas.value.map(row => ({
@@ -127,7 +127,7 @@ const options = computed<Option[]>(() => {
     text: row.script,
     badges: [row.mode, ...(row.product_id ? [`${productOf(row.product_id)?.name ?? 'This product'} only`] : [])],
     tags: row.tags,
-    angleId: null
+    hookTypeId: null
   }))
 })
 
@@ -135,7 +135,7 @@ const visible = computed(() => {
   const term = search.value.trim().toLowerCase()
   return options.value.filter(option =>
     (!term || `${option.title ?? ''} ${option.text}`.toLowerCase().includes(term))
-    && (angle.value === 'all' || kind.value === 'cta' || option.angleId === angle.value)
+    && (hookType.value === 'all' || kind.value !== 'hook' || option.hookTypeId === hookType.value)
     && (tag.value === 'all' || option.tags.includes(tag.value))
   )
 })
@@ -180,7 +180,7 @@ function add() {
         <UTabs v-if="kindTabs.length > 1" v-model="kind" :items="kindTabs" :content="false" class="w-full" />
         <div class="flex flex-wrap gap-2">
           <UInput v-model="search" icon="i-lucide-search" placeholder="Search scripts" class="min-w-40 flex-1" />
-          <USelect v-if="kind !== 'cta'" v-model="angle" :items="angleFilter" class="w-36" />
+          <USelect v-if="kind === 'hook'" v-model="hookType" :items="hookTypeFilter" class="w-40" />
           <USelect v-model="tag" :items="tags" class="w-32" />
           <UButton label="Select all" color="neutral" variant="subtle" @click="selectAllVisible" />
         </div>

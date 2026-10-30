@@ -32,7 +32,7 @@ export interface PlannedFormat {
 }
 
 type ItemRow = Row<'shoot_items'> & {
-  hook: { filming_notes: string | null, source_url: string | null, shoot_id: string | null, product_id: string | null, angle: { name: string } | null } | null
+  hook: { filming_notes: string | null, source_url: string | null, shoot_id: string | null, product_id: string | null, hook_type: { name: string } | null } | null
   cta: { source_url: string | null, shoot_id: string | null, product_id: string | null } | null
   body: {
     cast: { person_id: string }[]
@@ -42,15 +42,14 @@ type ItemRow = Row<'shoot_items'> & {
     feature: { name: string, slug: string } | null
     person_id: string | null
     source_url: string | null
-    angle: { name: string } | null
     format: { id: string, code: string, name: string, description: string | null, cta_modes: string[], beats: string[], beat_descriptions: Record<string, string> | null, beat_broll: unknown } | null
   } | null
 }
 
 const ITEM_SELECT = `*,
-  hook:hook_templates(filming_notes, source_url, shoot_id, product_id, angle:angles(name)),
+  hook:hook_templates(filming_notes, source_url, shoot_id, product_id, hook_type:angles(name)),
   cta:cta_templates(source_url, shoot_id, product_id),
-  body:body_templates(cast:vo_cast(person_id), hook_links:vo_hook_links(hook_template_id), cta_links:vo_cta_links(cta_template_id), title, feature:product_features(name, slug), person_id, source_url, angle:angles(name), format:formats(id, code, name, description, cta_modes, beats, beat_descriptions, beat_broll))`
+  body:body_templates(cast:vo_cast(person_id), hook_links:vo_hook_links(hook_template_id), cta_links:vo_cta_links(cta_template_id), title, feature:product_features(name, slug), person_id, source_url, format:formats(id, code, name, description, cta_modes, beats, beat_descriptions, beat_broll))`
 
 function unwrap<T>(result: { data: T | null, error: { message: string } | null }): T {
   if (result.error) throw new Error(result.error.message)
@@ -77,7 +76,7 @@ function toBundleItem(row: ItemRow): BundleItem {
     take_notes: row.take_notes,
     sort_order: row.sort_order,
     template_id: (row.hook_template_id ?? row.body_template_id ?? row.cta_template_id)!,
-    angle: row.hook?.angle?.name ?? row.body?.angle?.name ?? null,
+    hook_type: row.hook?.hook_type?.name ?? null,
     filming_notes: row.hook?.filming_notes ?? null,
     caption: row.caption,
     // a VO is known by the product feature it's about (older VOs by their title)

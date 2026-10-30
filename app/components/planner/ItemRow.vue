@@ -174,7 +174,7 @@ function saveLocation() {
       </div>
 
       <div class="flex flex-wrap items-center gap-1.5">
-        <UBadge v-if="item.angle" :label="item.angle" color="neutral" variant="subtle" size="sm" />
+        <UBadge v-if="item.hook_type" :label="item.hook_type" color="neutral" variant="subtle" size="sm" />
         <UBadge v-if="item.format" :label="item.format.code" color="info" variant="subtle" size="sm" />
         <UBadge v-if="item.cta_mode" :label="item.cta_mode" color="info" variant="subtle" size="sm" />
         <UBadge v-if="overridden" label="override" color="secondary" variant="subtle" size="sm" />

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import type { Row } from '#shared/types/models'
 
+// Hook types: the kind of opening a hook uses (Confession, Curiosity, Newness…). Stored in the
+// `angles` table, which keeps its old name.
+
 const db = useDb()
 const run = useAction()
 const { load } = useRefData()
@@ -27,7 +30,7 @@ async function save() {
     if (form.id) must(await db.from('angles').update(fields).eq('id', form.id))
     else must(await db.from('angles').insert(fields))
     await Promise.all([library.reload(), load(true)])
-  }, 'Angle saved')
+  }, 'Hook type saved')
   saving.value = false
   if (ok) open.value = false
 }
@@ -44,7 +47,7 @@ async function setArchived(row: Row<'angles'>, archived: boolean) {
       v-model:search="library.search.value"
       v-model:sort="library.sort.value"
       v-model:show-archived="library.showArchived.value"
-      new-label="New angle"
+      new-label="New hook type"
       @create="edit()"
     />
 
@@ -67,21 +70,21 @@ async function setArchived(row: Row<'angles'>, archived: boolean) {
             <CreatedBy :by="row.created_by" :at="row.created_at" />
           </div>
         </div>
-        <LibraryRowActions noun="angle" :archived="row.archived" @archive="setArchived(row, $event)" />
+        <LibraryRowActions noun="hook type" :archived="row.archived" @archive="setArchived(row, $event)" />
       </div>
       <div v-if="library.loading.value" class="flex items-center justify-center gap-2 px-4 py-10 text-sm text-muted">
         <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" />
         Loading…
       </div>      <p v-else-if="!visible.length" class="px-4 py-10 text-center text-sm text-muted">
-        No angles here.
+        No hook types here.
       </p>
     </div>
     <ListPager v-model:page="library.page.value" :total="visible.length" :page-size="library.pageSize" />
 
-    <UModal :open="open" @update:open="requestOpen" :title="form.id ? 'Edit angle' : 'New angle'">
+    <UModal :open="open" @update:open="requestOpen" :title="form.id ? 'Edit hook type' : 'New hook type'">
       <template #body>
         <div class="space-y-4">
-          <UFormField label="Name" required help="Title case, e.g. Before and After">
+          <UFormField label="Name" required help="Title case, e.g. Price anchor">
             <UInput v-model="form.name" class="w-full" autofocus />
           </UFormField>
           <UFormField label="Description">
@@ -93,7 +96,7 @@ async function setArchived(row: Row<'angles'>, archived: boolean) {
         </div>
       </template>
       <template #footer>
-        <UButton label="Save angle" :loading="saving" :disabled="!form.name.trim() || !isValidUrl(form.source_url)" @click="save" />
+        <UButton label="Save hook type" :loading="saving" :disabled="!form.name.trim() || !isValidUrl(form.source_url)" @click="save" />
       </template>
     </UModal>
   </div>

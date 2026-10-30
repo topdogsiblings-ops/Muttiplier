@@ -10,7 +10,7 @@ const tabs = [
     label: 'Hooks',
     value: 'hooks',
     icon: 'i-lucide-anchor',
-    help: 'The opening line that stops the scroll, said on camera with sync audio. A line that says {{dog}} is filmed once per channel; one that doesn\'t is filmed once and used on every channel.'
+    help: 'The opening line that stops the scroll, said on camera with sync audio. A line that says {{dog}} is filmed once per channel; one that doesn\'t is filmed once and used on every channel. Types are the kind of opening each hook uses (Confession, Curiosity, Newness…).'
   },
   {
     label: 'CTAs',
@@ -23,19 +23,25 @@ const tabs = [
     value: 'formats',
     icon: 'i-lucide-layout-template',
     help: 'A format is the structure of a VO: its beats and target length. Any CTA can follow any VO. VOs themselves are written in each shoot, for its product. Each format shows how many VOs are built on it.'
-  },
-  {
-    label: 'Angles',
-    value: 'angles',
-    icon: 'i-lucide-compass',
-    help: 'The persuasive approach a hook or VO takes, such as Curiosity, Problem or Testimonial: why the viewer should care. A format is how the VO is built (its beats), so any angle can be used with any format. Angles tag and filter templates.'
   }
 ]
 
-// The open tab lives in the URL so it survives reloads and can be linked.
+// Hooks has two views: the hook scripts, and the types they're tagged with
+const hookViews = [
+  { label: 'Scripts', value: 'scripts', icon: 'i-lucide-text-quote' },
+  { label: 'Types', value: 'types', icon: 'i-lucide-compass' }
+]
+
+// The open tab (and the Hooks view) live in the URL so they survive reloads and can be linked.
+// The old Angles and Hook types tabs open Hooks → Types.
+const oldTypesTab = computed(() => route.query.tab === 'angles' || route.query.tab === 'hook-types')
 const tab = computed({
-  get: () => tabs.some(t => t.value === route.query.tab) ? String(route.query.tab) : 'hooks',
+  get: () => oldTypesTab.value ? 'hooks' : tabs.some(t => t.value === route.query.tab) ? String(route.query.tab) : 'hooks',
   set: value => router.replace({ query: { tab: value } })
+})
+const hookView = computed({
+  get: () => oldTypesTab.value || route.query.view === 'types' ? 'types' : 'scripts',
+  set: value => router.replace({ query: { tab: 'hooks', ...(value === 'types' ? { view: 'types' } : {}) } })
 })
 </script>
 
@@ -81,10 +87,20 @@ const tab = computed({
     </template>
 
     <template #body>
-      <LibraryHooks v-if="tab === 'hooks'" />
+      <template v-if="tab === 'hooks'">
+        <UTabs
+          v-model="hookView"
+          :items="hookViews"
+          :content="false"
+          size="sm"
+          color="primary"
+          class="mb-4 w-full sm:w-auto sm:self-start"
+        />
+        <LibraryHooks v-if="hookView === 'scripts'" />
+        <LibraryHookTypes v-else />
+      </template>
       <LibraryCtas v-else-if="tab === 'ctas'" />
-      <LibraryFormats v-else-if="tab === 'formats'" />
-      <LibraryAngles v-else />
+      <LibraryFormats v-else />
     </template>
   </UDashboardPanel>
 </template>

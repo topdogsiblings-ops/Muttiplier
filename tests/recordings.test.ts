@@ -5,7 +5,7 @@ import { itemBeats, mergeVariants, recordingKey, recordingsOf } from '../shared/
 function item(id: string, channel: string, script: unknown, extra: Partial<BundleItem> = {}): BundleItem {
   return {
     id, code: 'H01', kind: 'hook', person_id: 'joe', channel_id: channel, script_snapshot: script, script_override: null, cta_mode: null,
-    location: null, status: 'planned', sort_order: 0, template_id: 't', angle: null, format: null, ...extra
+    location: null, status: 'planned', sort_order: 0, template_id: 't', hook_type: null, format: null, ...extra
   }
 }
 

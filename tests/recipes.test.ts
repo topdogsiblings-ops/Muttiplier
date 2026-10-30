@@ -5,7 +5,7 @@ import { batchCsv, batchOrder, batchSize, beatMixes, buildRecipes, byChannel, ch
 
 const take = (kind: TakeClip['kind'], code: string, person: string, channel: string, extra: Partial<TakeClip> = {}): TakeClip => ({
   kind, code, person, channel, item_id: `${channel}-${person}-${code}`, beat: null, format: null, feature: null, mode: kind === 'cta' ? 'sync' : null,
-  angle: null, script: '', file: `${channel}/${kind}/${person}/${code}.mp4`, raw_file: '', caption: null, duration: 3, ...extra
+  hook_type: null, script: '', file: `${channel}/${kind}/${person}/${code}.mp4`, raw_file: '', caption: null, duration: 3, ...extra
 })
 const vo = (code: string, person: string, channel: string, beats: [string, number][], format = 'F01') =>
   beats.map(([beat, duration]) => take('vo', code, person, channel, { beat, duration, format, file: `${channel}/vo/${person}/${beat}/${code}.mp4` }))
@@ -195,7 +195,7 @@ describe('batches', () => {
   // Joe and Sam on Nix, two hooks each, one VO each in different formats, two CTAs each
   const recipes = buildRecipes(manifest([
     ...['joe', 'sam'].flatMap(person => [
-      take('hook', 'H01', person, 'nix', { angle: 'POV' }), take('hook', 'H02', person, 'nix', { angle: 'Problem' }),
+      take('hook', 'H01', person, 'nix', { hook_type: 'POV' }), take('hook', 'H02', person, 'nix', { hook_type: 'Problem' }),
       ...vo('V01', person, 'nix', [['problem', 2]], person === 'joe' ? 'F01' : 'F02'),
       take('cta', 'C01', person, 'nix'), take('cta', 'C02', person, 'nix')
     ]),

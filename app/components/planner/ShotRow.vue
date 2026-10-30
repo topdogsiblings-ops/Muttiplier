@@ -235,7 +235,7 @@ const editItems = computed<DropdownMenuItem[]>(() => [
           <UBadge v-else-if="primary.home === 'product'" :label="`${bundle.product.name} ${primary.kind === 'hook' ? 'hook' : 'CTA'}`" icon="i-lucide-package" color="primary" variant="subtle" size="sm" />
           <UBadge v-if="linkedHooks" :label="linkedHooks.length ? `Only with ${linkedHooks.join(', ')}` : 'Linked hooks not on this shoot'" icon="i-lucide-link" :color="linkedHooks.length ? 'secondary' : 'error'" variant="subtle" size="sm" />
           <UBadge v-if="linkedCtas" :label="linkedCtas.length ? `Only with ${linkedCtas.join(', ')}` : 'Linked CTAs not on this shoot'" icon="i-lucide-link" :color="linkedCtas.length ? 'secondary' : 'error'" variant="subtle" size="sm" />
-          <UBadge v-if="primary.angle" :label="primary.angle" color="neutral" variant="subtle" size="sm" />
+          <UBadge v-if="primary.hook_type" :label="primary.hook_type" color="neutral" variant="subtle" size="sm" />
           <UBadge v-if="primary.format" :label="primary.format.code" color="info" variant="subtle" size="sm" />
           <UBadge v-if="writer" :label="performers.join(' + ')" :icon="performers.length > 1 ? 'i-lucide-users' : 'i-lucide-user'" color="primary" variant="subtle" size="sm" />
           <UBadge v-if="primary.cta_mode" :label="primary.cta_mode" color="info" variant="subtle" size="sm" />

@@ -3,26 +3,26 @@ import type { Row } from '#shared/types/models'
 
 const db = useDb()
 const run = useAction()
-const { angleName, angleOptions, productOptions, productOf } = useRefData()
+const { hookTypeName, hookTypeOptions, productOptions, productOf } = useRefData()
 const { context } = usePreviewContext()
 const library = useLibrary('hook_templates', { usageKind: 'hook', text: row => row.script })
 
-const angle = ref('all')
+const hookType = ref('all')
 const tag = ref('all')
 /** 'all', 'general' (every product) or a product id: hooks kept for one product */
 const product = ref('all')
-const angleFilter = computed(() => [{ label: 'All angles', value: 'all' }, ...angleOptions.value])
+const hookTypeFilter = computed(() => [{ label: 'All hook types', value: 'all' }, ...hookTypeOptions.value])
 const productFilter = computed(() => [{ label: 'All products', value: 'all' }, { label: 'General', value: 'general' }, ...productOptions.value])
 
 // hooks written in a shoot stay with that shoot until someone saves them to the product
 const visible = computed(() => library.visible(row =>
   !row.shoot_id
-  && (angle.value === 'all' || row.angle_id === angle.value)
+  && (hookType.value === 'all' || row.angle_id === hookType.value)
   && (tag.value === 'all' || row.tags.includes(tag.value))
   && (product.value === 'all' || (product.value === 'general' ? !row.product_id : row.product_id === product.value))
 ))
 const pageRows = computed(() => library.paginate(visible.value))
-watch([angle, tag, product], library.resetPage)
+watch([hookType, tag, product], library.resetPage)
 
 // --- editor ----------------------------------------------------------------
 const open = ref(false)
@@ -94,7 +94,7 @@ async function save() {
       @create="edit()"
     >
       <USelect v-model="product" :items="productFilter" class="w-44" />
-      <USelect v-model="angle" :items="angleFilter" class="w-36" />
+      <USelect v-model="hookType" :items="hookTypeFilter" class="w-40" />
       <USelect v-model="tag" :items="tagOptions(library.rows.value)" class="w-32" />
       <template #actions>
         <LibraryAiDrafts kind="hook" @use="edit($event)" />
@@ -121,7 +121,7 @@ async function save() {
             <UTooltip v-if="row.filming_notes" :text="row.filming_notes">
               <UBadge label="Filming notes" icon="i-lucide-video" color="neutral" variant="subtle" size="sm" />
             </UTooltip>
-            <UBadge v-if="angleName(row.angle_id)" :label="angleName(row.angle_id)!" color="neutral" variant="subtle" size="sm" />
+            <UBadge v-if="hookTypeName(row.angle_id)" :label="hookTypeName(row.angle_id)!" color="neutral" variant="subtle" size="sm" />
             <UBadge v-for="t in row.tags" :key="t" :label="t" color="neutral" variant="outline" size="sm" />
             <span v-if="row.est_seconds">{{ row.est_seconds }}s</span>
             <span>· {{ library.usedLabel(row.id) }}</span>
@@ -169,8 +169,8 @@ async function save() {
           </UFormField>
 
           <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField label="Angle">
-              <USelectMenu v-model="form.angle_id" :items="angleOptions" value-key="value" placeholder="None" class="w-full" />
+            <UFormField label="Hook type">
+              <USelectMenu v-model="form.angle_id" :items="hookTypeOptions" value-key="value" placeholder="None" class="w-full" />
             </UFormField>
             <UFormField label="Estimated seconds">
               <UInput v-model.number="form.est_seconds" type="number" min="0" class="w-full" />

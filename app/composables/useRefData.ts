@@ -5,7 +5,8 @@ export const useRefData = () => {
   const db = useDb()
   const people = useState<Row<'people'>[]>('ref-people', () => [])
   const channels = useState<Row<'channels'>[]>('ref-channels', () => [])
-  const angles = useState<Row<'angles'>[]>('ref-angles', () => [])
+  /** hook types (the `angles` table keeps its old name) */
+  const hookTypes = useState<Row<'angles'>[]>('ref-angles', () => [])
   const formats = useState<Row<'formats'>[]>('ref-formats', () => [])
   const products = useState<ProductWithBrand[]>('ref-products', () => [])
   const features = useState<Row<'product_features'>[]>('ref-features', () => [])
@@ -25,7 +26,7 @@ export const useRefData = () => {
     ])
     people.value = must(p)
     channels.value = must(c)
-    angles.value = must(a)
+    hookTypes.value = must(a)
     formats.value = must(f)
     products.value = must(pr) as ProductWithBrand[]
     settings.value = must(s)
@@ -33,10 +34,10 @@ export const useRefData = () => {
     loaded.value = true
   }
 
-  const angleName = (id: string | null) => angles.value.find(angle => angle.id === id)?.name ?? null
+  const hookTypeName = (id: string | null) => hookTypes.value.find(type => type.id === id)?.name ?? null
 
-  const angleOptions = computed(() =>
-    angles.value.filter(angle => !angle.archived).map(angle => ({ label: angle.name, value: angle.id }))
+  const hookTypeOptions = computed(() =>
+    hookTypes.value.filter(type => !type.archived).map(type => ({ label: type.name, value: type.id }))
   )
   const productOptions = computed(() =>
     products.value.map(product => ({ label: `${product.brand.name} — ${product.name}`, value: product.id }))
@@ -51,5 +52,5 @@ export const useRefData = () => {
     channels.value.filter(channel => channel.active).map(channel => ({ label: channel.name, value: channel.id }))
   )
 
-  return { people, channels, angles, formats, products, features, settings, load, angleName, angleOptions, productOptions, featureOptions, featureOf, productOf, channelOptions }
+  return { people, channels, hookTypes, formats, products, features, settings, load, hookTypeName, hookTypeOptions, productOptions, featureOptions, featureOf, productOf, channelOptions }
 }

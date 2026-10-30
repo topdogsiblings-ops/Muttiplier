@@ -5,7 +5,7 @@ import type { Recipe } from '#shared/utils/recipes'
 
 // Batches (spec §14), once a shoot is ready for batching. Every valid recipe comes from the
 // latest manifest; a batch takes the shoot's share of them (Best in Show: no repeated hook + VO
-// pair, spread across people, formats and angles, nothing batched twice, nothing rated bad).
+// pair, spread across people, formats and hook types, nothing batched twice, nothing rated bad).
 // Generating one writes recipes.json, batches/B01.json (+ CSV) and an empty renders/B01/<channel>/
 // per channel for the stitcher; all of it grouped by channel. Ratings (good / bad per person's
 // hook, VO and CTA) shape later batches.
@@ -67,8 +67,9 @@ async function generate() {
       recipes: recipes.value
     }, null, 2))
     await dropboxUploader.writeText(`${base.value}/batches/${code}.json`, JSON.stringify({
-      // 3: mixed VOs (recipe.mixed; each beat, hook and CTA says whose it is). 2: renders split by channel
-      schema_version: 3,
+      // 4: hook.hook_type (was hook.angle; vo.angle gone). 3: mixed VOs (recipe.mixed; each beat, hook
+      // and CTA says whose it is). 2: renders split by channel
+      schema_version: 4,
       shoot: shoot.value.code,
       batch: code,
       manifest_version: manifestVersion,

@@ -15,7 +15,7 @@ const emit = defineEmits<{
 }>()
 
 const run = useAction()
-const { angles, angleOptions, productOptions } = useRefData()
+const { hookTypes, hookTypeOptions, productOptions } = useRefData()
 
 const TITLES = { hook: 'Draft hooks with AI', cta: 'Draft CTAs with AI' }
 const MAX = { hook: 12, cta: 12 }
@@ -37,10 +37,10 @@ const requestOpen = useGuardedClose(open, () => ({ form, drafts: drafts.value })
 async function generate() {
   loading.value = true
   await run(async () => {
-    const angle = angles.value.find(a => a.id === form.angle_id)?.name
+    const hookType = hookTypes.value.find(type => type.id === form.angle_id)?.name
     const shared = { count: form.count, brief: form.brief.trim() || undefined, productId: form.product_id }
     const body = props.kind === 'hook'
-      ? { type: 'hooks' as const, ...shared, angle, tags: form.tags }
+      ? { type: 'hooks' as const, ...shared, hookType, tags: form.tags }
       : { type: 'ctas' as const, ...shared, mode: form.mode as 'sync' | 'vo', tags: form.tags }
     const response = await $fetch('/api/ai/draft', { method: 'POST', body })
     drafts.value = response.drafts
@@ -71,8 +71,8 @@ function use(draft: { title?: string, script?: string, caption?: string, beats?:
           <UFormField v-if="props.kind === 'cta'" label="Mode">
             <USelect v-model="form.mode" :items="modes" class="w-full" />
           </UFormField>
-          <UFormField v-if="props.kind !== 'cta'" label="Angle">
-            <USelectMenu v-model="form.angle_id" :items="angleOptions" value-key="value" placeholder="Any" class="w-full" />
+          <UFormField v-if="props.kind === 'hook'" label="Hook type">
+            <USelectMenu v-model="form.angle_id" :items="hookTypeOptions" value-key="value" placeholder="Any" class="w-full" />
           </UFormField>
           <UFormField label="Product" help="Optional. Its forbidden claims are respected.">
             <USelectMenu

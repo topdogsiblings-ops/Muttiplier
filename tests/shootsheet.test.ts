@@ -29,23 +29,23 @@ function bundle(): ShootBundle {
       {
         id: 'i1', code: 'H01', kind: 'hook', person_id: 'p1', channel_id: 'c1', script_snapshot: 'Nobody told me {{product}} could do this for {{dog}}',
         script_override: null, cta_mode: null, location: 'kitchen', status: 'planned', sort_order: 0, template_id: 'aaaaaaaa-0000-0000-0000-000000000001',
-        angle: 'curiosity', format: null, caption: '{{dog}} and {{product}}: {{benefit}}'
+        hook_type: 'curiosity', format: null, caption: '{{dog}} and {{product}}: {{benefit}}'
       },
       {
         id: 'i2', code: 'U01', kind: 'hook', person_id: 'p1', channel_id: 'c2', script_snapshot: 'POV: {{dog}} finally settles',
         script_override: null, cta_mode: null, location: null, status: 'planned', sort_order: 1, template_id: '1a2b3c4d-0000-0000-0000-000000000002',
-        angle: 'pov', format: null
+        hook_type: 'pov', format: null
       },
       {
         id: 'i3', code: 'V01', kind: 'body', person_id: 'p1', channel_id: 'c1',
         script_snapshot: [{ beat: 'problem', script: 'My dog pulled' }, { beat: 'product', script: '{{brand}} {{product}}' }, { beat: 'result', script: '{{benefit}}' }],
         script_override: null, cta_mode: null, location: null, status: 'planned', sort_order: 2, template_id: 'bbbbbbbb-0000-0000-0000-000000000003',
-        angle: 'problem', format
+        hook_type: null, format
       },
       {
         id: 'i4', code: 'C01', kind: 'cta', person_id: 'p1', channel_id: 'c1', script_snapshot: 'Template CTA',
         script_override: 'Grab {{product}}, "today"', cta_mode: 'sync', location: null, status: 'planned', sort_order: 3,
-        template_id: 'cccccccc-0000-0000-0000-000000000004', angle: null, format: null
+        template_id: 'cccccccc-0000-0000-0000-000000000004', hook_type: null, format: null
       }
     ],
     broll: [
@@ -160,7 +160,7 @@ describe('planSnapshots', () => {
 describe('buildShootsheet', () => {
   it('matches the worker contract', () => {
     const sheet = buildShootsheet(bundle())
-    expect(sheet.schema_version).toBe(4)
+    expect(sheet.schema_version).toBe(5)
     // custom slots are the shoot's own
     expect(sheet.shoot.slot_values).toEqual({ benefit: 'calmer walks' })
     expect(sheet.shoot).toMatchObject({ code: 'S014', date: '2026-10-20', broll_variations: 3, submission_rate: 0.15 })
@@ -176,12 +176,12 @@ describe('buildShootsheet', () => {
     ])
     expect(sheet.items[1]).toEqual({
       code: 'H01', kind: 'hook', person: 'joe', channel: 'topdognix', template_id: 'aaaaaaaa-0000-0000-0000-000000000001',
-      angle: 'curiosity', script: 'Nobody told me Calming Chews could do this for my Doberman',
+      hook_type: 'curiosity', script: 'Nobody told me Calming Chews could do this for my Doberman',
       caption: 'my Doberman and Calming Chews: calmer walks',
       file: 'pawco/calming-chews/shoots/S014/edited/topdognix/hooks/joe/H01',
       raw_file: 'pawco/calming-chews/shoots/S014/raw/topdognix/hooks/joe/H01'
     })
-    expect(sheet.items[3]).toMatchObject({ kind: 'body', channel: 'topdognix', format: 'F02', angle: 'problem' })
+    expect(sheet.items[3]).toMatchObject({ kind: 'body', channel: 'topdognix', format: 'F02' })
     expect(sheet.items[0]).toMatchObject({ kind: 'cta', cta_mode: 'sync', channel: 'topdognix' })
     // the shared pack shot (a general product shot) is listed once per channel
     expect(sheet.broll.map(shot => shot.folder)).toEqual([
@@ -222,7 +222,7 @@ describe('skeleton zip', () => {
     expect(folders).toEqual(expect.arrayContaining([`${shoot}/raw`, `${shoot}/edited`, `${shoot}/renders`]))
     // everything lives in the shoot folder
     expect(folders.every(folder => folder.startsWith(shoot))).toBe(true)
-    expect(JSON.parse(files[`${shoot}/manifest.json`]!)).toEqual({ schema_version: 5, version: 0, generated_at: null, plan: sheet, clips: [] })
+    expect(JSON.parse(files[`${shoot}/manifest.json`]!)).toEqual({ schema_version: 6, version: 0, generated_at: null, plan: sheet, clips: [] })
   })
 
   it('files b-roll for a product feature a level down in its beat folder', () => {
@@ -239,7 +239,7 @@ describe('skeleton zip', () => {
 describe('buildCsv', () => {
   it('writes one row per item and b-roll shot, with bodies joined by beat', () => {
     const lines = buildCsv(bundle()).trimEnd().split('\r\n')
-    expect(lines[0]).toBe('shoot,person,kind,code,channel,angle,cta_mode,location,script,status,raw_path')
+    expect(lines[0]).toBe('shoot,person,kind,code,channel,hook_type,cta_mode,location,script,status,raw_path')
     // the shared pack shot gets a row per channel
     expect(lines).toHaveLength(1 + 4 + 3)
     expect(lines[1]).toBe('S014,joe,cta,C01,topdognix,,sync,,"Grab Calming Chews, ""today""",planned,pawco/calming-chews/shoots/S014/raw/topdognix/ctas/joe/C01')

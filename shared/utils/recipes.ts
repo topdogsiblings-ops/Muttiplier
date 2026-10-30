@@ -39,9 +39,9 @@ export interface Recipe {
   person: string
   /** a mixed VO: its beats come from more than one person */
   mixed: boolean
-  hook: { code: string, person: string, item_id: string, file: string, caption: string | null, duration: number, angle: string | null }
+  hook: { code: string, person: string, item_id: string, file: string, caption: string | null, duration: number, hook_type: string | null }
   /** item_id: the VO's item (a mixed VO's items joined with +); item_ids: each one */
-  vo: { code: string, item_id: string, item_ids: string[], format: string | null, angle: string | null, beats: RecipeBeat[] }
+  vo: { code: string, item_id: string, item_ids: string[], format: string | null, beats: RecipeBeat[] }
   cta: { code: string, person: string, item_id: string, mode: string | null, file: string, caption: string | null, duration: number, broll: string[] }
   /** the VO beats' captions, in order (each beat's SRT, offset by the running length when stitched) */
   vo_captions: (string | null)[]
@@ -178,8 +178,8 @@ export function buildRecipes(manifest: Manifest): Recipe[] {
               channel,
               person: people,
               mixed,
-              hook: { code: hook.code, person: hook.person, item_id: hook.item_id, file: hook.file, caption: hook.caption, duration: hook.duration!, angle: hook.angle },
-              vo: { code: first.code, item_id: itemIds.join('+'), item_ids: itemIds, format: first.format, angle: first.angle, beats: filled },
+              hook: { code: hook.code, person: hook.person, item_id: hook.item_id, file: hook.file, caption: hook.caption, duration: hook.duration!, hook_type: hook.hook_type },
+              vo: { code: first.code, item_id: itemIds.join('+'), item_ids: itemIds, format: first.format, beats: filled },
               cta: { code: cta.code, person: cta.person, item_id: cta.item_id, mode: cta.mode, file: cta.file, caption: cta.caption, duration: cta.duration!, broll: ctaBroll },
               vo_captions: beats.map(beat => beat.caption)
             })
@@ -232,7 +232,7 @@ export function availableRecipes(recipes: Recipe[], options: Omit<BatchOptions, 
 /**
  * Choose a batch, one recipe at a time. No two recipes share a hook + VO pair, so b-roll
  * variations of one go in later batches. Each pick is the recipe whose person (mixed VOs count as
- * one more "person"), then format, then angle has been used least so far (so every person, mixed
+ * one more "person"), then format, then hook type has been used least so far (so every person, mixed
  * VOs and every format appear before any repeats), favouring parts rated good; CTAs and b-roll only break
  * ties. Ties after that break on a stable hash.
  */
@@ -248,7 +248,7 @@ export function chooseBatch(recipes: Recipe[], options: BatchOptions): Recipe[] 
   const score = (recipe: Recipe): number[] => [
     count(`person:${recipe.mixed ? '(mixed)' : recipe.person}`),
     count(`format:${recipe.vo.format}`),
-    count(`angle:${recipe.hook.angle ?? recipe.vo.angle}`),
+    count(`hook_type:${recipe.hook.hook_type}`),
     -(good(recipe.hook.item_id) + Math.max(0, ...(recipe.vo.item_ids ?? [recipe.vo.item_id]).map(good)) + good(recipe.cta.item_id)),
     count(`hook:${recipe.hook.item_id}`) + count(`vo:${recipe.vo.item_id}`),
     count(`cta:${recipe.cta.item_id}`),
@@ -276,7 +276,7 @@ export function chooseBatch(recipes: Recipe[], options: BatchOptions): Recipe[] 
     pairs.add(`${best.hook.item_id}|${best.vo.item_id}`)
     bump(`person:${best.mixed ? '(mixed)' : best.person}`)
     bump(`format:${best.vo.format}`)
-    bump(`angle:${best.hook.angle ?? best.vo.angle}`)
+    bump(`hook_type:${best.hook.hook_type}`)
     bump(`hook:${best.hook.item_id}`)
     bump(`vo:${best.vo.item_id}`)
     bump(`cta:${best.cta.item_id}`)
@@ -310,9 +310,9 @@ const csvCell = (value: unknown) => {
 
 /** One row per recipe in a batch, for people, in the order given (batchOrder). */
 export function batchCsv(recipes: Recipe[]) {
-  const rows: unknown[][] = [['recipe', 'channel', 'person', 'hook', 'vo', 'cta', 'format', 'angle']]
+  const rows: unknown[][] = [['recipe', 'channel', 'person', 'hook', 'vo', 'cta', 'format', 'hook_type']]
   for (const recipe of recipes) {
-    rows.push([recipe.id, recipe.channel, recipe.person, recipe.hook.code, recipe.vo.code, recipe.cta.code, recipe.vo.format ?? '', recipe.hook.angle ?? recipe.vo.angle ?? ''])
+    rows.push([recipe.id, recipe.channel, recipe.person, recipe.hook.code, recipe.vo.code, recipe.cta.code, recipe.vo.format ?? '', recipe.hook.hook_type ?? ''])
   }
   return rows.map(row => row.map(csvCell).join(',')).join('\r\n') + '\r\n'
 }

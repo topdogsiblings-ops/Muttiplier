@@ -121,7 +121,8 @@ export interface TakeClip extends ClipBase {
   ctas?: string[] | null
   /** CTAs: sync (on camera) or vo (over b-roll) */
   mode: string | null
-  angle: string | null
+  /** hooks: the hook type */
+  hook_type: string | null
   script: string
   /** the captions next to it in edited/, if they're there */
   caption: string | null
@@ -188,7 +189,7 @@ export function buildManifest(
       hooks: item.kind === 'body' ? linkedCodes(bundle, item, 'hook') : null,
       ctas: item.kind === 'body' ? linkedCodes(bundle, item, 'cta') : null,
       mode: item.cta_mode,
-      angle: item.angle,
+      hook_type: item.kind === 'hook' ? item.hook_type : null,
       script: beat ? script.beats?.find(b => b.beat === beat)?.script ?? '' : script.text ?? '',
       file,
       raw_file: rawOf(file),

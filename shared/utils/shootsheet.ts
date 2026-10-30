@@ -5,11 +5,12 @@ import { buildSlotContext, joinBeats, parseBeats, renderBeats, renderScript, slu
 import type { ItemKind } from './calculator'
 
 /**
- * 4: VO items carry `hooks` / `ctas`, the codes they're linked to (null = any), and the shoot
- * carries `vo_variations` (with `broll_variations`, now used). 3: b-roll shots no
+ * 5: hooks carry `hook_type` (was `angle`); VOs no longer carry one. 4: VO items carry `hooks` /
+ * `ctas`, the codes they're linked to (null = any), and the shoot carries `vo_variations` (with
+ * `broll_variations`, now used). 3: b-roll shots no
  * longer carry product_visible or min_clips. 2: custom slot values moved to plan.shoot.
  */
-export const SHOOTSHEET_SCHEMA_VERSION = 4
+export const SHOOTSHEET_SCHEMA_VERSION = 5
 export const DEFAULT_BEATS = ['problem', 'product', 'result']
 
 export interface BundleChannel {
@@ -35,7 +36,8 @@ export interface BundleItem {
   take_notes?: string | null
   sort_order: number
   template_id: string
-  angle: string | null
+  /** hooks: the hook type (Confession, Curiosity…) */
+  hook_type: string | null
   /** hooks: how to film it, from the template */
   filming_notes?: string | null
   /** hooks: suggested post caption, copied from the template like the script and frozen when planned */
@@ -482,7 +484,7 @@ export function buildShootsheet(bundle: ShootBundle) {
       const folders = { file: itemPath(bundle, item, 'edited'), raw_file: itemPath(bundle, item, 'raw') }
       if (item.kind === 'hook') {
         const caption = item.caption ? renderScript(item.caption, itemSlotContext(bundle, item.channel_id)).text : null
-        return { ...base, angle: item.angle, script: script.text ?? '', caption, ...folders }
+        return { ...base, hook_type: item.hook_type, script: script.text ?? '', caption, ...folders }
       }
       if (item.kind === 'body') {
         const beats = (script.beats ?? []).map(beat => ({
@@ -492,7 +494,7 @@ export function buildShootsheet(bundle: ShootBundle) {
         }))
         // linked hooks / CTAs: the only ones it goes with (null = any)
         return {
-          ...base, format: item.format?.code ?? null, feature: item.feature_slug ?? null, angle: item.angle,
+          ...base, format: item.format?.code ?? null, feature: item.feature_slug ?? null,
           hooks: linkedCodes(bundle, item, 'hook'), ctas: linkedCodes(bundle, item, 'cta'), beats
         }
       }
@@ -515,7 +517,7 @@ export function buildShootsheet(bundle: ShootBundle) {
 
 export type Shootsheet = ReturnType<typeof buildShootsheet>
 
-export const CSV_COLUMNS = ['shoot', 'person', 'kind', 'code', 'channel', 'angle', 'cta_mode', 'location', 'script', 'status', 'raw_path'] as const
+export const CSV_COLUMNS = ['shoot', 'person', 'kind', 'code', 'channel', 'hook_type', 'cta_mode', 'location', 'script', 'status', 'raw_path'] as const
 
 function csvCell(value: unknown): string {
   const text = value === null || value === undefined ? '' : String(value)
@@ -532,7 +534,7 @@ export function buildCsv(bundle: ShootBundle): string {
       item.kind,
       item.code,
       channelSlug(bundle, item.channel_id) ?? '',
-      item.angle ?? '',
+      item.hook_type ?? '',
       item.cta_mode ?? '',
       item.location ?? '',
       scriptAsText(resolveItemScript(bundle, item)),
@@ -582,12 +584,13 @@ export function skeletonFolders(bundle: ShootBundle): string[] {
 }
 
 /**
- * 5: VO clips carry `hooks` / `ctas`, the codes they only go with (null = any); the plan carries
- * the shoot's `vo_variations`. 4: b-roll clips no
+ * 6: hook clips carry `hook_type` (was `angle`); VO clips no longer carry one. 5: VO clips carry
+ * `hooks` / `ctas`, the codes they only go with (null = any); the plan carries the shoot's
+ * `vo_variations`. 4: b-roll clips no
  * longer carry product_visible. 3: clips carry `feature` (VOs the feature they're about, b-roll its
  * feature folder or null).
  */
-export const MANIFEST_SCHEMA_VERSION = 5
+export const MANIFEST_SCHEMA_VERSION = 6
 
 /**
  * The manifest before the edits are in (spec §14): just the plan, version 0, no clips. Written

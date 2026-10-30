@@ -1,6 +1,6 @@
 # Muttiplier — Project Spec
 
-Internal web app for the topdogugc UGC agency. It holds the script **Library** (hooks, CTAs, formats & VOs, angles), the **Brands** pipeline from Trybe, and the **Planner** that turns library items into a shoot day: one shared shot list, a recipe/submission calculator, an on-set checklist, and exports that feed the later processing pipeline.
+Internal web app for the topdogugc UGC agency. It holds the script **Library** (hooks, CTAs, formats, hook types), the **Brands** pipeline from Trybe, and the **Planner** that turns library items into a shoot day: one shared shot list, a recipe/submission calculator, an on-set checklist, and exports that feed the later processing pipeline.
 
 This spec covers the Library, Brands and Planner. Ingest, rendering and submissions are later projects. The schema is designed so they plug in without migrations of existing tables.
 
@@ -71,7 +71,7 @@ ANTHROPIC_MODEL=claude-opus-5-5
 
 | Tab | Purpose |
 |---|---|
-| **Library** | Hooks, CTAs, **VOs**, **Formats**, Angles |
+| **Library** | Hooks (scripts and types), CTAs, **Formats** (VOs are written in shoots) |
 | **Planner** | Shoots list → shoot planner (with calculator) → checklist → exports |
 | **Brands** | Brands (Trybe deal data, CSV import, filters), products with slot values, brand → channel assignment |
 | **Settings** (admin) | People, channels, allowlist, defaults (time per item, speech pace, general product shots) |
@@ -133,8 +133,8 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 **channels**
 - `name text` (e.g. `topdognix`), `slug text unique`, `dogs text[]`, `dog_phrase text` (fills `{{dog}}`), `folder_slug text` (e.g. `nix`, `whiskey`, `both`), `active boolean`
 
-**angles** — hook/VO angle taxonomy (editable, title case)
-- `name text unique`, `description text`. Seed: Curiosity, Problem, Testimonial, POV, Skeptic, Contrarian, Demo, each with a description. Angles are the *persuasion approach*; formats are the *structure* of the video.
+**angles** — **hook types** (the table keeps its old name; editable, title case): the kind of opening a hook uses
+- `name text unique`, `description text`. Seed: Curiosity, Problem, Testimonial, POV, Skeptic, Contrarian, Demo, plus Confession, Newness, Price anchor and Offer (the strongest types in the 2025–26 creative benchmarks), each with a description. Set on hooks only (`hook_templates.angle_id`); formats are the *structure* of the video.
 
 ### Brands
 
@@ -168,7 +168,7 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 - `cta_modes text[]` — legacy, no longer used: any CTA can follow any VO
 
 **body_templates** — VO scripts, each belonging to a format. Not in the Library: VOs are only written in a shoot (§9), for its product.
-- `format_id`, `angle_id`
+- `format_id` (`angle_id` is legacy: VOs no longer get a hook type)
 - `product_id` — the product it sells (required)
 - `feature_id` — optional: one of that product's features (a trigger checks it), or null for a VO about the product as a whole. VOs have no title; they're shown by feature (or "<product> as a whole") and script. `title` is legacy.
 - `shoot_id` — the shoot it was written in (set null if that shoot is deleted). Later shoots of the same product can use it too.
@@ -180,7 +180,7 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 **body_template_products** — legacy, no longer used (VOs now belong to a product through their feature).
 
 **hook_templates**
-- `script text`, `angle_id`, `est_seconds int`, `tags text[]`, `notes text` (`is_universal` is legacy, always false)
+- `script text`, `angle_id` (its hook type), `est_seconds int`, `tags text[]`, `notes text` (`is_universal` is legacy, always false)
 - `product_id` — kept for one product: in the Library under it (filterable), offered only on that product's shoots. Null = a general hook, offered on every shoot.
 - `shoot_id` — written in that shoot for that shoot only: hidden from the Library and the picker until saved to the product (which clears it and sets `product_id`). At most one of the two is set.
 - `filming_notes text` — how to film it (shown on the checklist)
@@ -252,9 +252,9 @@ Snapshots matter: editing a template later must never change a shoot that's alre
 
 ## 7. Library tab
 
-Tabs: **Hooks, CTAs, Formats, Angles**. Hooks and CTAs written in a shoot only show once saved to a product; both can be filtered by product. VOs aren't in the Library: they're written in each shoot, for its product (§9).
+Tabs: **Hooks** (two views: **Scripts**, the hooks themselves, and **Types**, the hook types they're tagged with), **CTAs**, **Formats**. Hooks and CTAs written in a shoot only show once saved to a product; both can be filtered by product. VOs aren't in the Library: they're written in each shoot, for its product (§9).
 
-- List view with search, filters (angle, tags, CTA mode, archived) and sort; paginated.
+- List view with search, filters (hook type, product, tags, CTA mode, archived) and sort; paginated.
 - Tags input autocompletes from tags already used in the Library.
 - Create / edit drawer:
   - Script editor with slot palette and slot highlighting.
@@ -354,7 +354,7 @@ Route: `/shoots/[code]/sheet?person=[slug]&show=[hook|cta|body|broll]`. Both fil
 - Mobile-first, large tap targets. Updates save immediately.
 - Header: shoot, product, brand, date, elapsed time, progress for what's showing, Start / End / Resume.
 - Sections: **Hooks** (used for every channel), **CTAs**, **VOs** (recorded off set), then **B-roll** by beat.
-- Each item: code, rendered script (VOs by beat), angle, location, and filming notes ("How to film").
+- Each item: code, rendered script (VOs by beat), hook type (hooks), location, and filming notes ("How to film").
 - **Every deliverable gets its clip from the checklist** with **Add clip**, which picks a video from the phone. Every take is filmed, VOs and VO CTAs included: they're recorded on camera (selfie), so their picture is there for treatments such as greenscreen and picture-in-picture, and their sound plays over b-roll as before. A voiceover's length is checked against its script's reading time (Settings → Defaults). Clips are filmed and recorded in the phone's own apps (iOS compresses video its camera hands straight to a web page). **Takes:** each person films every item once per channel they're on; a line that doesn't say `{{dog}}` is one take for all of their channels (saved once, filling each channel's spot, uploaded once and copied in Dropbox to the other channels' folders), one that does is a take per channel. A VO is recorded **beat by beat**, one file per beat. An item is ticked off once every spot it has (every beat of a VO) has a clip; nothing can be ticked by hand. Removing a clip unticks it. Skip / unskip stays manual.
   - **Everyone view:** each hook / CTA / VO once, with a row per person: their takes as Add clip buttons labelled by channel ("Nix + Whiskey", or a beat for a VO), Skip / Unskip for their whole entry, and their clips below. Per-person rewordings are listed under the item.
   - **Person view:** the same cards, just that person's row.
@@ -372,7 +372,7 @@ Route: `/shoots/[code]/sheet?person=[slug]&show=[hook|cta|body|broll]`. Both fil
 
 ### b) CSV
 
-One row per shoot item and b-roll shot (a shared shot gets a row per channel): `shoot, person, kind, code, channel, angle, cta_mode, location, script, status, raw_path`, where `raw_path` is where the clip is uploaded: the file (without extension) for hooks, VOs and CTAs, the folder for b-roll. For VOs, beats joined as `[problem] … [product] … [result] …`.
+One row per shoot item and b-roll shot (a shared shot gets a row per channel): `shoot, person, kind, code, channel, hook_type, cta_mode, location, script, status, raw_path`, where `raw_path` is where the clip is uploaded: the file (without extension) for hooks, VOs and CTAs, the folder for b-roll. For VOs, beats joined as `[problem] … [product] … [result] …`.
 
 ### c) The plan (in `manifest.json`)
 
@@ -396,7 +396,7 @@ The contract with the future worker. Download from the shoot page. Skipped items
   "items": [
     {
       "code": "H01", "kind": "hook", "person": "joe", "channel": null,
-      "template_id": "uuid", "angle": "curiosity",
+      "template_id": "uuid", "hook_type": "curiosity",
       "script": "Nobody told me Calming Chews could do this…",
       "caption": "…",
       "file": "pawco/calming-chews/shoots/S014/edited/hooks/joe/H01",
@@ -404,7 +404,7 @@ The contract with the future worker. Download from the shoot page. Skipped items
     },
     {
       "code": "V01", "kind": "body", "person": "joe", "channel": null,
-      "template_id": "uuid", "format": "F02", "angle": "problem",
+      "template_id": "uuid", "format": "F02",
       "beats": [
         { "beat": "problem", "script": "…" },
         { "beat": "product", "script": "…" },
@@ -475,8 +475,8 @@ All slugs lowercase kebab-case; generate once and never change after a shoot is 
 
 Server routes calling the Anthropic API (`ANTHROPIC_MODEL`, default `claude-opus-5-5`). Every generation produces **drafts** a person approves before saving; nothing writes to the Library automatically. Refusals and invalid output are reported, not saved.
 
-- **Hook drafts:** given an angle and optional tags, generate N hooks in slot syntax, each with a suggested caption.
-- **VO drafts:** given a format (and its beat descriptions) and an angle, generate a beat-structured VO script.
+- **Hook drafts:** given a hook type and optional tags, generate N hooks in slot syntax, each with a suggested caption.
+- **VO drafts:** given a format (and its beat descriptions) and what it's about, generate a beat-structured VO script.
 - **CTA drafts:** given a mode (sync/vo), generate CTAs.
 - **Per-person rewording:** in the planner, reword a hook, VO or CTA for each person (saved as `script_override`), so cast members don't say identical lines.
 - **B-roll generation:** in the planner, suggest shots for every planned format's beats and the general product section, using the brand, product, format and beat descriptions, with the format's own suggestions as examples.
@@ -525,7 +525,7 @@ Once a shoot is ready for batching, the shoot page shows **Batches**, working fr
 
 - **Size** = the shoot's batch size (default 5%) × all valid recipes, at least one.
 - **No two recipes in a batch share a hook + VO pair** (a shared hook is fine), so b-roll variations of one recipe go in later batches. A mixed VO is its own VO here, and mixed recipes count as one more "person" when spreading picks.
-- **Spread**: each pick is the recipe whose person, then format, then angle has been used least so far, so every person and format appears before any repeats; parts rated good are favoured; CTAs and b-roll only break ties.
+- **Spread**: each pick is the recipe whose person, then format, then hook type has been used least so far, so every person and format appears before any repeats; parts rated good are favoured; CTAs and b-roll only break ties.
 - **Never batch a recipe ID twice** (`shoot_shortlists.entry_ids`), and leave out recipes with a part rated bad.
 - **Ratings**: once ready for batching, each person's hooks, VOs and CTAs can be marked good or bad ("What worked"; stored on their items for every channel).
 - **Files**: `recipes.json` (every valid recipe, with its b-roll per beat and the manifest version, sorted by channel then ID), `batches/B01.json` (the recipe IDs grouped by channel, in pick order within each, with the manifest version; plus `B01.csv` for people, in the same order) and an empty `renders/B01/<channel>/` for each channel in the batch. The stitcher renders each recipe to `renders/B01/<channel>/<recipe id>.mp4` from `edited/` (`<channel>` is the recipe's `channel`) and writes `renders/B01/report.json`.
@@ -541,7 +541,7 @@ Once a shoot is ready for batching, the shoot page shows **Batches**, working fr
 - ✅ Can create a brand, a product with custom slots, and assign channels.
 
 **Phase 2 — Library** ✔
-- CRUD for formats & VOs, hooks, CTAs, angles; slot highlighting; live preview; archive; usage counts; duplicate; seeded starter library.
+- CRUD for formats & VOs, hooks, CTAs, hook types; slot highlighting; live preview; archive; usage counts; duplicate; seeded starter library.
 - ✅ Preview flags unfilled slots.
 
 **Phase 3 — Shoot planner** ✔
@@ -577,5 +577,5 @@ Once a shoot is ready for batching, the shoot page shows **Batches**, working fr
 
 - Local worker (Windows now, VPS later): ingest, auto-tagging, conformance checks, caption alignment, recipe generation, selection, rendering.
 - Submission queue and form-filling Chrome extension (linked to Dropbox).
-- Performance tracking per template / angle once brand data is known.
+- Performance tracking per template / hook type once brand data is known.
 - Interactive checklist ideas beyond ticking (parked).
