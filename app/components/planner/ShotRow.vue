@@ -35,6 +35,17 @@ const beats = computed(() => {
   return versions[0]!.map((beat, index) => ({ beat: beat.beat, script: mergeVariants(versions.map(version => version[index]?.script ?? '')) }))
 })
 const text = computed(() => mergeVariants(props.group.items.map(item => typeof item.script_snapshot === 'string' ? item.script_snapshot : '')))
+/** a VO's lines to show: every wording of each beat (alternates are their own takes), with hook types */
+const wordingLines = computed(() => {
+  if (primary.value.kind !== 'body') return []
+  const versions = props.group.items.map(item => parseBeats(item.script_snapshot))
+  return versions[0]!.flatMap((beat, index) => beatWordings(beat).map(wording => ({
+    key: takeKey(beat.beat, wording.option),
+    label: takeLabel(takeKey(beat.beat, wording.option)),
+    hook_type: wording.hook_type,
+    script: mergeVariants(versions.map(version => beatWordings(version[index] ?? { beat: beat.beat, script: '' })[wording.option - 1]?.script ?? ''))
+  })))
+})
 
 /** VOs: the codes of the hooks / CTAs it only goes with (null = any) */
 const linkedHooks = computed(() => primary.value.kind === 'body' ? linkedCodes(props.bundle, primary.value, 'hook') : null)
@@ -214,9 +225,10 @@ const editItems = computed<DropdownMenuItem[]>(() => [
           </div>
         </div>
         <template v-else-if="group.kind === 'body'">
-          <p v-for="beat in beats" :key="beat.beat" class="text-sm text-highlighted">
-            <span class="mr-1 text-xs font-medium text-muted uppercase">{{ beat.beat }}</span>
-            <ScriptPreview :text="beat.script" :context="context" />
+          <p v-for="line in wordingLines" :key="line.key" class="text-sm text-highlighted">
+            <span class="mr-1 text-xs font-medium text-muted uppercase">{{ line.label }}</span>
+            <ScriptPreview :text="line.script" :context="context" />
+            <UBadge v-if="line.hook_type" :label="line.hook_type" color="neutral" variant="subtle" size="sm" class="ml-1 align-middle" />
           </p>
         </template>
         <p v-else class="text-sm text-highlighted">
@@ -236,8 +248,8 @@ const editItems = computed<DropdownMenuItem[]>(() => [
           <UBadge v-if="linkedHooks" :label="linkedHooks.length ? `Only with ${linkedHooks.join(', ')}` : 'Linked hooks not on this shoot'" icon="i-lucide-link" :color="linkedHooks.length ? 'secondary' : 'error'" variant="subtle" size="sm" />
           <UBadge v-if="linkedCtas" :label="linkedCtas.length ? `Only with ${linkedCtas.join(', ')}` : 'Linked CTAs not on this shoot'" icon="i-lucide-link" :color="linkedCtas.length ? 'secondary' : 'error'" variant="subtle" size="sm" />
           <UBadge v-if="primary.hook_type" :label="primary.hook_type" color="neutral" variant="subtle" size="sm" />
-          <UBadge v-if="primary.format" :label="primary.format.code" color="info" variant="subtle" size="sm" />
-          <UBadge v-if="writer" :label="performers.join(' + ')" :icon="performers.length > 1 ? 'i-lucide-users' : 'i-lucide-user'" color="primary" variant="subtle" size="sm" />
+          <UBadge v-if="primary.format" :label="primary.format.kind === 'standalone' ? `${primary.format.code} · standalone` : primary.format.code" color="info" variant="subtle" size="sm" />
+          <UBadge v-if="writer" :label="performers.length > 1 && primary.cast_channel_id ? `${performers.join(' + ')} · ${channelName(primary.cast_channel_id)}` : performers.join(' + ')" :icon="performers.length > 1 ? 'i-lucide-users' : 'i-lucide-user'" color="primary" variant="subtle" size="sm" />
           <UBadge v-if="primary.cta_mode" :label="primary.cta_mode" color="info" variant="subtle" size="sm" />
           <SourceLink :url="primary.source_url ?? null" />
           <UBadge
@@ -318,7 +330,7 @@ const editItems = computed<DropdownMenuItem[]>(() => [
       <p class="px-3 py-1.5 text-xs text-muted">
         <template v-if="writer">
           <template v-if="performers.length > 1">
-            Performed by {{ performers.join(', ') }}: {{ writer }} wrote it. Where they share a channel, their beats can be mixed.
+            Performed by {{ performers.join(', ') }}: {{ writer }} wrote it, and it's cast on {{ channelName(primary.cast_channel_id ?? null) }}, where the others perform it and their beats can be mixed.
           </template>
           <template v-else>
             Only {{ writer }} performs this: they wrote it.

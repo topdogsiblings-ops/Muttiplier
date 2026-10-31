@@ -17,6 +17,9 @@ export interface BrollFormat {
   beat_descriptions: Record<string, string> | null
   /** beat -> suggested b-roll shots, written on the format */
   beat_broll: unknown
+  /** modular or standalone, and beat -> face or broll: beats shown face to camera need no b-roll */
+  kind?: string
+  beat_display?: Record<string, string> | null
   /** VO codes on the shot list that use this format (it can't be removed while there are any) */
   usedBy: string[]
   /** added to the plan by hand */
@@ -61,7 +64,8 @@ const sections = computed<BrollSection[]>(() => {
       label: `${format.code} · ${format.name}`,
       description: format.description ?? '',
       formatId: format.id as string | null,
-      beats: format.beats,
+      // beats shown face to camera need no b-roll
+      beats: format.beats.filter(beat => beatShow(format, beat) === 'broll'),
       beatDescriptions: format.beat_descriptions ?? {},
       suggestions: parseBeatSuggestions(format.beat_broll)
     })),

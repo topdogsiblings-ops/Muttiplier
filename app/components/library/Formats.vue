@@ -61,6 +61,14 @@ async function setArchived(row: Row<'formats'>, archived: boolean) {
           <p class="text-highlighted">
             <span class="mr-2 font-mono font-semibold">{{ format.code }}</span>
             <span class="font-medium">{{ format.name }}</span>
+            <UBadge
+              :label="format.kind === 'standalone' ? 'Standalone' : 'Modular'"
+              :icon="format.kind === 'standalone' ? 'i-lucide-square-play' : 'i-lucide-blocks'"
+              :color="format.kind === 'standalone' ? 'primary' : 'neutral'"
+              variant="subtle"
+              size="sm"
+              class="ml-2"
+            />
             <UBadge v-if="format.archived" label="Archived" color="neutral" variant="subtle" size="sm" class="ml-2" />
           </p>
           <p v-if="format.description" class="text-sm text-muted">

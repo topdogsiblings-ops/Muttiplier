@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BrollClip, Manifest, TakeClip } from '../shared/utils/manifest'
 import type { Recipe } from '../shared/utils/recipes'
-import { batchCsv, batchOrder, batchSize, beatMixes, buildRecipes, byChannel, chooseBatch, nextBatchCode, renderFolder } from '../shared/utils/recipes'
+import { batchCsv, batchOrder, batchSize, beatMixes, buildRecipes, byChannel, chooseBatch, nextBatchCode, pickCombos, renderFolder } from '../shared/utils/recipes'
 
 const take = (kind: TakeClip['kind'], code: string, person: string, channel: string, extra: Partial<TakeClip> = {}): TakeClip => ({
   kind, code, person, channel, item_id: `${channel}-${person}-${code}`, beat: null, format: null, feature: null, mode: kind === 'cta' ? 'sync' : null,
@@ -188,6 +188,113 @@ describe('variations', () => {
     expect(mixes.every(mix => new Set(mix).size > 1)).toBe(true)
     expect(beatMixes(['joe', 'sam'], 3, 2, 'seed')).toEqual(mixes.slice(0, 2))
     expect(beatMixes(['joe'], 3, 2, 'seed')).toEqual([])
+  })
+})
+
+describe('wordings and standalone VOs', () => {
+  const withShoot = (clips: Manifest['clips'], shoot: Record<string, number>) => {
+    const m = manifest(clips)
+    m.plan = { ...m.plan, shoot: { ...m.plan.shoot, ...shoot } }
+    return m
+  }
+  /** one wording of a VO beat */
+  const wording = (code: string, person: string, beat: string, option: number, extra: Partial<TakeClip> = {}) =>
+    take('vo', code, person, 'nix', { beat, option, duration: 2, file: `nix/vo/${person}/${beat}/${code}${option > 1 ? `-${option}` : ''}.mp4`, ...extra })
+
+  it('makes extra versions from alternate wordings, up to wording_variations, keeping the first wordings\u2019 id', () => {
+    const clips = [
+      take('hook', 'H01', 'joe', 'nix'), take('cta', 'C01', 'joe', 'nix'),
+      wording('V01', 'joe', 'problem', 1), wording('V01', 'joe', 'problem', 2), wording('V01', 'joe', 'problem', 3),
+      ...nixBroll
+    ]
+    const [base] = buildRecipes(manifest(clips.filter(clip => clip.kind === 'broll' || (clip as TakeClip).option !== 2 && (clip as TakeClip).option !== 3)))
+    // no wording mixes asked for: just the first wordings
+    expect(buildRecipes(withShoot(clips, { wording_variations: 0 })).map(recipe => recipe.id)).toEqual([base!.id])
+    const recipes = buildRecipes(withShoot(clips, { wording_variations: 5 }))
+    expect(recipes).toHaveLength(3)
+    expect(recipes.map(recipe => recipe.id)).toContain(base!.id)
+    expect(recipes.map(recipe => recipe.vo.beats[0]!.option).sort()).toEqual([1, 2, 3])
+    expect(recipes.find(recipe => recipe.vo.beats[0]!.option === 2)!.id).toMatch(/^S001_nix_joe_H01_V01\.2_C01_/)
+    expect(pickCombos([3, 1], 1, 'seed')).toHaveLength(1)
+    expect(pickCombos([1, 1], 4, 'seed')).toEqual([])
+  })
+
+  it('makes a standalone VO its own whole video: its hook and CTA beats, never a Library hook or CTA', () => {
+    const standalone = { standalone: true, format: 'F13' }
+    const recipes = buildRecipes(withShoot([
+      take('hook', 'H01', 'joe', 'nix'), take('cta', 'C01', 'joe', 'nix'),
+      wording('V02', 'joe', 'hook', 1, { ...standalone, show: 'face', hook_type: 'Confession' }),
+      wording('V02', 'joe', 'hook', 2, { ...standalone, show: 'face', hook_type: 'Curiosity' }),
+      wording('V02', 'joe', 'problem', 1, { ...standalone, show: 'broll' }),
+      wording('V02', 'joe', 'cta', 1, { ...standalone, show: 'face' }),
+      ...nixBroll
+    ], { wording_variations: 1 }))
+    expect(recipes).toHaveLength(2)
+    for (const recipe of recipes) {
+      expect(recipe.standalone).toBe(true)
+      expect(recipe.hook.file).toMatch(/nix\/vo\/joe\/hook\/V02/)
+      expect(recipe.cta).toMatchObject({ mode: 'sync', take: 'cta', broll: [] })
+      expect(recipe.vo.beats.map(beat => beat.beat)).toEqual(['problem'])
+      expect(recipe.id).not.toContain('H01')
+    }
+    expect(recipes.map(recipe => recipe.hook.hook_type).sort()).toEqual(['Confession', 'Curiosity'])
+    // each hook wording is its own hook: both can go in one batch
+    expect(chooseBatch(recipes, { size: 2 })).toHaveLength(2)
+  })
+
+  it('gives a beat shown face to camera no b-roll', () => {
+    const [recipe] = buildRecipes(manifest([
+      take('hook', 'H01', 'joe', 'nix'), take('cta', 'C01', 'joe', 'nix'),
+      wording('V01', 'joe', 'problem', 1, { show: 'face', duration: 30 }),
+      ...nixBroll
+    ]))
+    // 30 seconds could never be covered by b-roll; on camera it doesn't need to be
+    expect(recipe!.vo.beats[0]).toMatchObject({ show: 'face', broll: [] })
+  })
+})
+
+describe('treatments', () => {
+  const treatment = (name: string, kind: string, needs: string[], settings: Record<string, unknown> = {}) =>
+    ({ slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name, kind, placement: 'video', needs, component: 'x', settings })
+  const withTreatments = (clips: Manifest['clips'], treatments: ReturnType<typeof treatment>[], slotValues: Record<string, string> = {}) => {
+    const m = manifest(clips)
+    m.plan = { ...m.plan, shoot: { ...m.plan.shoot, slot_values: slotValues }, treatments } as Manifest['plan']
+    return m
+  }
+  const clips = [take('hook', 'H01', 'joe', 'nix'), ...vo('V01', 'joe', 'nix', [['problem', 3]]), take('cta', 'C01', 'joe', 'nix'), ...nixBroll]
+
+  it('adds one version per treatment that applies, alongside the untreated one, whose id doesn\u2019t change', () => {
+    const [plain] = buildRecipes(manifest(clips))
+    const recipes = buildRecipes(withTreatments(clips, [
+      treatment('Search bar', 'overlay', ['text']),
+      treatment('Greenscreen', 'footage', ['speaker_video']),
+      // needs the shoot's offer, which isn't filled in: not applied
+      treatment('Offer badge', 'overlay', ['offer']),
+      // the footage library isn't built yet: never applied
+      treatment('Then & now labels', 'overlay', ['old_footage'])
+    ]))
+    expect(recipes.map(recipe => recipe.id).sort()).toEqual([plain!.id, `${plain!.id}_greenscreen`, `${plain!.id}_search-bar`].sort())
+    expect(recipes.find(recipe => recipe.id === plain!.id)!.treatment).toBeNull()
+    expect(recipes.find(recipe => recipe.id.endsWith('_search-bar'))!.treatment!.name).toBe('Search bar')
+    // with an offer on the shoot, the offer badge applies too
+    expect(buildRecipes(withTreatments(clips, [treatment('Offer badge', 'overlay', ['offer'])], { offer: '20% off' }))).toHaveLength(2)
+  })
+
+  it('re-lays the beats for a layout treatment, and skips one that would change nothing', () => {
+    const recipes = buildRecipes(withTreatments(clips, [
+      treatment('Face to camera', 'layout', ['speaker_video'], { show: 'face' }),
+      // the VO is already over b-roll throughout
+      treatment('Over b-roll', 'layout', [], { show: 'broll' })
+    ]))
+    expect(recipes).toHaveLength(2)
+    const face = recipes.find(recipe => recipe.treatment?.name === 'Face to camera')!
+    expect(face.id).toMatch(/_face-to-camera$/)
+    expect(face.vo.beats[0]).toMatchObject({ show: 'face', broll: [] })
+  })
+
+  it('doesn\u2019t use the speaker\u2019s picture when a take is audio only', () => {
+    const audio = clips.map(clip => clip.kind === 'vo' ? { ...clip, file: clip.file.replace('.mp4', '.m4a') } : clip)
+    expect(buildRecipes(withTreatments(audio, [treatment('Greenscreen', 'footage', ['speaker_video'])]))).toHaveLength(1)
   })
 })
 

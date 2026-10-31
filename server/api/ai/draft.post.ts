@@ -130,6 +130,15 @@ export default defineEventHandler(async (event): Promise<{ drafts: AiDraft[] }> 
     task = [
       `Write ${input.count ?? 2} voiceover script${(input.count ?? 2) === 1 ? '' : 's'} for the format "${format.name}"${format.description ? ` (${format.description})` : ''}.`,
       `Each script has exactly these beats, in this order: ${format.beats.join(', ')}. Return one entry per beat, using those beat names.`,
+      // what to write in each beat, and an example line, from the format
+      ...format.beats.map((beat) => {
+        const guidance = (format.beat_descriptions as Record<string, string> | null)?.[beat]
+        const example = (format.beat_examples as Record<string, string> | null)?.[beat]
+        return guidance || example ? `- ${beat}: ${guidance ?? ''}${example ? ` Example: "${example}"` : ''}` : ''
+      }),
+      format.kind === 'standalone'
+        ? 'This format is standalone: the video has no separate hook or CTA. The "hook" beat is the video\'s opening line and must stop the scroll on its own; the "cta" beat closes the video and tells the viewer what to do.'
+        : '',
       format.target_seconds ? `Aim for about ${format.target_seconds} seconds read aloud in total.` : '',
       'The same voiceover is used on every channel, so stay dog-neutral: say "my dog" or "my pup" and do not use {{dog}}.',
       input.brief ? `Notes from the team: ${input.brief}` : '',

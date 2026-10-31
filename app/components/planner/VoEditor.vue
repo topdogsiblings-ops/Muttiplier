@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Row } from '#shared/types/models'
 import type { Beat } from '#shared/utils/slots'
+import type { Json } from '#shared/types/database.types'
 
 // Slide-over editor for a VO, inside a shoot: VOs are only written here. Every VO is for the
 // shoot's product, about one of its core features or the product as a whole, and is written by
@@ -26,7 +27,7 @@ const emit = defineEmits<{ saved: [vo: Row<'body_templates'>, isNew: boolean] }>
 const db = useDb()
 const run = useAction()
 const { confirmDialog } = useConfirm()
-const { formats, people: allPeople, featureOptions, featureOf, productOf, settings } = useRefData()
+const { formats, hookTypes, people: allPeople, featureOptions, featureOf, productOf, settings } = useRefData()
 const { me, isAdmin, canEditVo } = useMe()
 /** admins can write a VO for anyone on the shoot; everyone else writes their own */
 const writerOptions = computed(() => props.people.map(person => ({ label: person.name, value: person.id })))
@@ -37,6 +38,74 @@ const formatOptions = computed(() =>
   formats.value.filter(f => !f.archived).map(f => ({ label: `${f.code} — ${f.name}`, value: f.id }))
 )
 const formatOf = (id: string | undefined) => formats.value.find(f => f.id === id)
+
+// --- the format's guidance, beat by beat ------------------------------------------
+const format = computed(() => formatOf(form.format_id))
+const standalone = computed(() => format.value?.kind === 'standalone')
+const guidanceOf = (beat: string) => (format.value?.beat_descriptions as Record<string, string> | null)?.[beat] ?? null
+const exampleOf = (beat: string) => (format.value?.beat_examples as Record<string, string> | null)?.[beat] ?? null
+const showOf = (beat: string): 'face' | 'broll' => {
+  const set = (format.value?.beat_display as Record<string, string> | null)?.[beat]
+  if (set === 'face' || set === 'broll') return set
+  return standalone.value && (beat === 'hook' || beat === 'cta') ? 'face' : 'broll'
+}
+const beatTitle = (beat: string) => standalone.value && beat === 'hook' ? 'Hook (opens the video)' : standalone.value && beat === 'cta' ? 'CTA (closes the video)' : `Beat: ${beat}`
+/** a standalone format's hook beat: each wording gets a hook type, like a Library hook */
+const isHookBeat = (beat: string) => standalone.value && beat === 'hook'
+const hookTypeItems = computed(() => hookTypes.value.filter(type => !type.archived).map(type => ({ label: type.name, value: type.name })))
+
+// --- alternate wordings: each is its own take, combined into extra versions (wording mixes) ---
+function addAlternate(beat: Beat) {
+  beat.alternates = [...(beat.alternates ?? []), { script: '' }]
+}
+function removeAlternate(beat: Beat, index: number) {
+  beat.alternates = (beat.alternates ?? []).filter((_, i) => i !== index)
+}
+// --- copy from an earlier VO in the same format ---------------------------------------
+// Formats are reusable, and scripts use slots ({{product}}…), so an earlier VO in the same
+// format (anyone's, any product or feature) is a good start. Copying takes its beats and
+// wordings; who writes it, the product and what it's about stay as they are here.
+type CopyRow = Row<'body_templates'> & { feature: { name: string } | null, product: { name: string } | null }
+const copyOpen = ref(false)
+const copyLoading = ref(false)
+const copyRows = shallowRef<CopyRow[]>([])
+const copySearch = ref('')
+async function openCopy() {
+  if (!form.format_id) return
+  copyOpen.value = true
+  copySearch.value = ''
+  copyLoading.value = true
+  await run(async () => {
+    copyRows.value = must(await db.from('body_templates')
+      .select('*, feature:product_features(name), product:products(name)')
+      .eq('format_id', form.format_id!).eq('archived', false).neq('id', form.id || '00000000-0000-0000-0000-000000000000')
+      .order('created_at', { ascending: false }).limit(200)) as unknown as CopyRow[]
+  })
+  copyLoading.value = false
+}
+/** the writer's own VOs first, then everyone else's; filtered by the search */
+const copyList = computed(() => {
+  const term = copySearch.value.trim().toLowerCase()
+  const text = (row: CopyRow) => `${personName(row.person_id ?? undefined)} ${row.product?.name ?? ''} ${row.feature?.name ?? ''} ${parseBeats(row.beats).map(beat => beat.script).join(' ')}`.toLowerCase()
+  const rows = copyRows.value.filter(row => !term || text(row).includes(term))
+  const mine = (row: CopyRow) => !!form.person_id && row.person_id === form.person_id
+  return [...rows.filter(mine), ...rows.filter(row => !mine(row))]
+})
+async function copyFrom(row: CopyRow) {
+  if (form.beats.some(beat => beat.script.trim() || beat.alternates?.some(alternate => alternate.script.trim())) && !(await confirmDialog({
+    title: 'Replace your beats with this VO\u2019s?',
+    description: 'The scripts you have written in each beat are replaced. Nothing is saved until you press Save.',
+    confirmLabel: 'Replace'
+  }))) return
+  form.beats = alignBeats(format.value?.beats ?? parseBeats(row.beats).map(beat => beat.beat), parseBeats(row.beats))
+  copyOpen.value = false
+}
+
+/** wordings land best on the first and last beats; flag when only the middle ones have them */
+const onlyMiddleAlternates = computed(() => {
+  const withAlternates = form.beats.map((beat, index) => beat.alternates?.length ? index : -1).filter(index => index >= 0)
+  return withAlternates.length > 0 && withAlternates.every(index => index > 0 && index < form.beats.length - 1)
+})
 const personName = (id: string | undefined) => allPeople.value.find(person => person.id === id)?.name ?? 'Unknown'
 
 /** 'general' = about the product as a whole */
@@ -57,6 +126,8 @@ const form = reactive({
   feature: GENERAL as string,
   hooks: [] as string[],
   ctas: [] as string[],
+  /** the channel it's cast on: its cast are all on it, and perform it there only */
+  cast_channel: undefined as string | undefined,
   cast: [] as string[],
   beats: [] as Beat[],
   tags: [] as string[],
@@ -91,6 +162,7 @@ async function edit(row?: Partial<Row<'body_templates'>>) {
     // only links to hooks / CTAs on this shoot can be changed here; others are kept
     hooks: hooks.filter(id => props.hooks.some(hook => hook.template_id === id)),
     ctas: ctas.filter(id => props.ctas.some(cta => cta.template_id === id)),
+    cast_channel: row?.cast_channel_id ?? undefined,
     // only people on this shoot can be cast or uncast here; others are kept
     cast: cast.filter(id => props.people.some(person => person.id === id)),
     beats: parseBeats(row?.beats),
@@ -119,20 +191,22 @@ watch(() => [form.format_id, open.value] as const, () => {
 })
 
 /**
- * Who can be cast on it: people on the shoot who share a channel with the writer. They record
- * the same script, beat for beat, so on a channel they share their beats can be mixed.
+ * A VO is cast on one channel: the writer's, picked first. Then anyone on the shoot who's on that
+ * channel too can be cast; they record the same script, beat for beat, and perform it on that
+ * channel only, where their beats can be mixed (cast mixes).
  */
+const castChannelOptions = computed(() => props.channels
+  .filter(channel => !!form.person_id && props.channelPeople[channel.id]?.includes(form.person_id))
+  .map(channel => ({ label: channel.name, value: channel.id })))
 const castOptions = computed(() => props.people
-  .filter(person => person.id !== form.person_id)
-  .map(person => {
-    const shared = props.channels.filter(channel =>
-      props.channelPeople[channel.id]?.includes(person.id) && !!form.person_id && props.channelPeople[channel.id]?.includes(form.person_id))
-    return { label: shared.length ? `${person.name} · ${shared.map(channel => channel.name).join(', ')}` : person.name, value: person.id, disabled: !shared.length }
-  })
-  .sort((a, b) => Number(a.disabled) - Number(b.disabled)))
-// the writer can't also be cast; nor can someone who no longer shares a channel with them
+  .filter(person => person.id !== form.person_id && !!form.cast_channel && props.channelPeople[form.cast_channel]?.includes(person.id))
+  .map(person => ({ label: person.name, value: person.id })))
+// a new writer may not be on the cast channel; a new channel keeps only the cast who are on it
 watch(() => form.person_id, () => {
-  form.cast = form.cast.filter(id => castOptions.value.some(option => option.value === id && !option.disabled))
+  if (form.cast_channel && !castChannelOptions.value.some(option => option.value === form.cast_channel)) form.cast_channel = undefined
+})
+watch(() => [form.cast_channel, form.person_id], () => {
+  form.cast = form.cast.filter(id => castOptions.value.some(option => option.value === id))
 })
 
 const featureId = computed(() => form.feature === GENERAL ? null : form.feature)
@@ -179,6 +253,19 @@ const canSave = computed(() =>
   !readonly.value && !!form.person_id && !!form.format_id && form.beats.length > 0 && form.beats.every(beat => beat.script.trim() !== '')
   && isValidUrl(form.source_url)
 )
+/** a beat as saved: trimmed, empty alternates dropped, hook types only on a standalone hook beat */
+const cleanBeat = (beat: Beat): Beat => {
+  const hookBeat = isHookBeat(beat.beat)
+  const alternates = (beat.alternates ?? [])
+    .map(alternate => ({ script: alternate.script.trim(), ...(hookBeat && alternate.hook_type ? { hook_type: alternate.hook_type } : {}) }))
+    .filter(alternate => alternate.script)
+  return {
+    beat: beat.beat,
+    script: beat.script.trim(),
+    ...(hookBeat && beat.hook_type ? { hook_type: beat.hook_type } : {}),
+    ...(alternates.length ? { alternates } : {})
+  }
+}
 
 /** Make a link table match the picks, for the links this editor can see (ones on this shoot). */
 async function syncLinks(table: 'vo_hook_links' | 'vo_cta_links' | 'vo_cast', voId: string, before: string[], after: string[], onShoot: string[]) {
@@ -198,7 +285,9 @@ async function save() {
       format_id: form.format_id!,
       product_id: props.productId,
       feature_id: featureId.value,
-      beats: form.beats.map(beat => ({ beat: beat.beat, script: beat.script.trim() })),
+      // no cast, no cast channel
+      cast_channel_id: form.cast.length ? form.cast_channel ?? null : null,
+      beats: form.beats.map(cleanBeat) as unknown as Json,
       est_seconds: estSeconds.value || null,
       tags: form.tags,
       notes: form.notes.trim() || null,
@@ -221,6 +310,18 @@ async function save() {
 
 <template>
   <USlideover :open="open" @update:open="requestOpen" :title="form.id ? 'Edit VO' : 'Write a VO'" :ui="{ content: 'max-w-xl' }">
+    <template #actions>
+      <UButton
+        v-if="!readonly"
+        label="Copy from"
+        icon="i-lucide-copy"
+        size="sm"
+        color="neutral"
+        variant="subtle"
+        :disabled="!form.format_id"
+        @click="openCopy"
+      />
+    </template>
     <template #body>
       <div class="space-y-5">
         <UAlert v-if="blocked" color="warning" variant="subtle" icon="i-lucide-lock" :description="blocked" />
@@ -240,15 +341,26 @@ async function save() {
             <UFormField label="Format" required class="sm:col-span-2">
               <USelect v-model="form.format_id" :items="formatOptions" class="w-full" :disabled="readonly" />
             </UFormField>
-            <UFormField label="Cast with" class="sm:col-span-2" help="They record the same script too. Where they share a channel with the writer, their beats can be mixed (VO variations in General).">
+            <UFormField label="Cast on" help="The writer's channel the cast perform it on">
+              <USelectMenu
+                v-model="form.cast_channel"
+                :items="castChannelOptions"
+                value-key="value"
+                placeholder="No cast"
+                class="w-full"
+                :clear="!!form.cast_channel"
+                :disabled="readonly || !castChannelOptions.length"
+              />
+            </UFormField>
+            <UFormField label="Cast with" help="On that channel: they record the same script, and their beats can be mixed (Cast mixes in General)">
               <USelectMenu
                 v-model="form.cast"
                 :items="castOptions"
                 value-key="value"
                 multiple
-                placeholder="Just the writer"
+                :placeholder="form.cast_channel ? (castOptions.length ? 'Just the writer' : 'Nobody else is on it') : 'Pick a channel first'"
                 class="w-full"
-                :disabled="readonly || !form.person_id"
+                :disabled="readonly || !form.cast_channel || !castOptions.length"
               />
             </UFormField>
             <UFormField label="Only with hooks" help="Empty = any hook">
@@ -296,12 +408,81 @@ async function save() {
             </p>
           </div>
 
-          <UFormField v-for="beat in form.beats" :key="beat.beat" :label="`Beat: ${beat.beat}`" required>
-            <template v-if="formatOf(form.format_id)?.beat_descriptions" #help>
-              {{ (formatOf(form.format_id)!.beat_descriptions as Record<string, string>)[beat.beat] }}
-            </template>
+          <p v-if="format?.source_url" class="flex items-center gap-1.5 text-xs text-muted">
+            Reference for {{ format.code }}: <SourceLink :url="format.source_url" />
+          </p>
+          <div v-for="beat in form.beats" :key="beat.beat" class="space-y-2 rounded-lg border border-default p-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-sm font-medium text-highlighted">{{ beatTitle(beat.beat) }}</span>
+              <UBadge
+                :label="showOf(beat.beat) === 'face' ? 'Face to camera' : 'Over b-roll'"
+                color="neutral"
+                variant="outline"
+                size="sm"
+              />
+            </div>
+            <p v-if="guidanceOf(beat.beat)" class="text-xs text-muted">
+              {{ guidanceOf(beat.beat) }}
+            </p>
+            <p v-if="exampleOf(beat.beat)" class="text-xs text-dimmed italic">
+              e.g. “{{ exampleOf(beat.beat) }}”
+            </p>
             <ScriptEditor v-model="beat.script" />
-          </UFormField>
+            <USelectMenu
+              v-if="isHookBeat(beat.beat)"
+              :model-value="beat.hook_type ?? undefined"
+              @update:model-value="beat.hook_type = $event ?? null"
+              :items="hookTypeItems"
+              value-key="value"
+              placeholder="Hook type"
+              size="sm"
+              class="w-48"
+              :disabled="readonly"
+            />
+            <!-- other wordings: each filmed as its own take -->
+            <div v-for="(alternate, index) in beat.alternates ?? []" :key="index" class="space-y-1.5 border-l-2 border-primary/40 pl-3">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-medium text-muted">Wording {{ index + 2 }}</span>
+                <UButton
+                  v-if="!readonly"
+                  icon="i-lucide-x"
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  :aria-label="`Remove wording ${index + 2}`"
+                  @click="removeAlternate(beat, index)"
+                />
+              </div>
+              <ScriptEditor v-model="alternate.script" />
+              <USelectMenu
+                v-if="isHookBeat(beat.beat)"
+                :model-value="alternate.hook_type ?? undefined"
+              @update:model-value="alternate.hook_type = $event ?? null"
+                :items="hookTypeItems"
+                value-key="value"
+                placeholder="Hook type"
+                size="sm"
+                class="w-48"
+                :disabled="readonly"
+              />
+            </div>
+            <UButton
+              v-if="!readonly"
+              label="Another wording"
+              icon="i-lucide-plus"
+              size="xs"
+              color="neutral"
+              variant="ghost"
+              @click="addAlternate(beat)"
+            />
+          </div>
+          <UAlert
+            v-if="onlyMiddleAlternates"
+            color="neutral"
+            variant="subtle"
+            icon="i-lucide-lightbulb"
+            description="Other wordings make the biggest difference on the first and last beats: the opening and the close. Middle beats change less of the video."
+          />
 
           <UAlert
             v-if="usesDog"
@@ -353,4 +534,39 @@ async function save() {
       <UButton :label="form.id ? 'Save VO' : 'Save and add to the shoot'" :loading="saving" :disabled="!canSave" @click="save" />
     </template>
   </USlideover>
+
+  <UModal
+    v-model:open="copyOpen"
+    :title="`Copy from another ${format?.code ?? ''} VO`"
+    description="Its beats and wordings are copied in. Who writes it, the product and what it's about stay as they are."
+    :ui="{ content: 'sm:max-w-2xl' }"
+  >
+    <template #body>
+      <div class="space-y-3">
+        <UInput v-model="copySearch" icon="i-lucide-search" placeholder="Search by writer, product, feature or script" class="w-full" />
+        <div class="max-h-[55vh] divide-y divide-default overflow-y-auto rounded-lg border border-default">
+          <button
+            v-for="row in copyList"
+            :key="row.id"
+            type="button"
+            class="block w-full space-y-1 px-3 py-2.5 text-left hover:bg-elevated/50"
+            @click="copyFrom(row)"
+          >
+            <span class="flex flex-wrap items-center gap-1.5">
+              <UBadge :label="personName(row.person_id ?? undefined)" :color="row.person_id === form.person_id ? 'primary' : 'neutral'" variant="subtle" size="sm" />
+              <span class="text-xs text-muted">{{ row.product?.name ?? 'No product' }} · {{ row.feature?.name ?? 'the product as a whole' }}</span>
+            </span>
+            <span v-for="beat in parseBeats(row.beats)" :key="beat.beat" class="block text-sm text-highlighted">
+              <span class="mr-1 text-xs font-medium text-muted uppercase">{{ beat.beat }}</span>
+              <ScriptPreview :text="beat.script" />
+              <span v-if="beat.alternates?.length" class="ml-1 text-xs text-muted">+{{ beat.alternates.length }} more</span>
+            </span>
+          </button>
+          <p v-if="!copyList.length" class="px-3 py-8 text-center text-sm text-muted">
+            {{ copyLoading ? 'Loading…' : copySearch ? 'Nothing matches.' : 'No other VOs in this format yet.' }}
+          </p>
+        </div>
+      </div>
+    </template>
+  </UModal>
 </template>

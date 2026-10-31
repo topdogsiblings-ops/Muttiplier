@@ -6,7 +6,8 @@
 // "topdognix/hooks/joe/H01.mov" or "topdognix/b-roll/problem/IMG_4821.mov".
 
 import type { BundleItem, ShootBundle } from './shootsheet'
-import { MANIFEST_SCHEMA_VERSION, brollFolder, buildShootsheet, channelFolder, itemBeats, linkedCodes, resolveItemScript, shootFolder, takeSpot } from './shootsheet'
+import { MANIFEST_SCHEMA_VERSION, beatShow, brollFolder, buildShootsheet, channelFolder, isStandalone, itemBeats, linkedCodes, resolveItemScript, shootFolder, takeLabel, takeSpot } from './shootsheet'
+import { beatWordings, parseTakeKey } from './slots'
 
 const VIDEO = new Set(['mov', 'mp4', 'm4v', 'hevc'])
 const AUDIO = new Set(['m4a', 'mp3', 'wav', 'aac', 'caf', 'aif', 'aiff'])
@@ -62,7 +63,7 @@ export function checkEdits(
   if (options.onPhones) problems.push(`${options.onPhones} clip${options.onPhones === 1 ? ' is' : 's are'} still on phones: upload them first`)
 
   for (const { item, beat, spot } of expectedSpots(bundle)) {
-    const label = `${item.code}${beat ? ` ${beat}` : ''} (${person(item.person_id)}, ${channel(item.channel_id)})`
+    const label = `${item.code}${beat ? ` ${takeLabel(beat)}` : ''} (${person(item.person_id)}, ${channel(item.channel_id)})`
     // every take is filmed, VOs included (their sound plays over b-roll)
     for (const [stage, files] of [['raw', raw], ['edited', edited]] as const) {
       const found = filesAt(spot, files)
@@ -112,6 +113,12 @@ export interface TakeClip extends ClipBase {
   code: string
   /** VOs: the beat this file is */
   beat: string | null
+  /** VOs: which wording of the beat (1 = the first; alternates 2, 3…) */
+  option?: number | null
+  /** VOs: how the beat is shown, the speaker on camera (face) or their voice over b-roll (broll) */
+  show?: 'face' | 'broll' | null
+  /** VOs: a standalone format's VO, which opens and closes itself (its hook and cta beats) */
+  standalone?: boolean
   /** VOs: the format */
   format: string | null
   /** VOs: the slug of the product feature it's about; feature b-roll only goes under VOs about its feature */
@@ -121,7 +128,7 @@ export interface TakeClip extends ClipBase {
   ctas?: string[] | null
   /** CTAs: sync (on camera) or vo (over b-roll) */
   mode: string | null
-  /** hooks: the hook type */
+  /** hooks, and a standalone VO's hook-beat wordings: the hook type */
   hook_type: string | null
   script: string
   /** the captions next to it in edited/, if they're there */
@@ -177,20 +184,26 @@ export function buildManifest(
     if (!file) continue
     const script = resolveItemScript(bundle, item)
     const caption = edited.find(other => other.toLowerCase() === `${withoutExtension(file)}.srt`.toLowerCase()) ?? null
+    // a VO take: one wording of one beat
+    const take = beat ? parseTakeKey(beat) : null
+    const wording = take ? beatWordings(script.beats?.find(b => b.beat === take.beat) ?? { beat: take.beat, script: '' }).find(w => w.option === take.option) : null
     clips.push({
       kind: item.kind === 'body' ? 'vo' : item.kind,
       channel: channelFolder(bundle, item.channel_id),
       item_id: item.id,
       person: personSlug(item.person_id),
       code: item.code,
-      beat,
+      beat: take?.beat ?? null,
+      option: take?.option ?? null,
+      show: take ? beatShow(item.format, take.beat) : null,
+      ...(item.kind === 'body' ? { standalone: isStandalone(item) } : {}),
       format: item.format?.code ?? null,
       feature: item.kind === 'body' ? item.feature_slug ?? null : null,
       hooks: item.kind === 'body' ? linkedCodes(bundle, item, 'hook') : null,
       ctas: item.kind === 'body' ? linkedCodes(bundle, item, 'cta') : null,
       mode: item.cta_mode,
-      hook_type: item.kind === 'hook' ? item.hook_type : null,
-      script: beat ? script.beats?.find(b => b.beat === beat)?.script ?? '' : script.text ?? '',
+      hook_type: item.kind === 'hook' ? item.hook_type : wording?.hook_type ?? null,
+      script: take ? wording?.script ?? '' : script.text ?? '',
       file,
       raw_file: rawOf(file),
       caption,

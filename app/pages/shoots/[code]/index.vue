@@ -57,6 +57,7 @@ const form = reactive({
   runway_target: 60,
   broll_variations: 1,
   vo_variations: 1,
+  wording_variations: 1,
   kit: 'custom',
   location_notes: '',
   notes: ''
@@ -69,6 +70,7 @@ watch(shoot, (value) => {
     runway_target: value.runway_target,
     broll_variations: value.broll_variations,
     vo_variations: value.vo_variations,
+    wording_variations: value.wording_variations,
     kit: value.kit,
     location_notes: value.location_notes ?? '',
     notes: value.notes ?? ''
@@ -92,6 +94,7 @@ const saveSetup = () => patchShoot({
   runway_target: Math.max(1, Math.round(Number(form.runway_target) || 1)),
   broll_variations: Math.min(10, Math.max(1, Math.round(Number(form.broll_variations) || 1))),
   vo_variations: Math.min(50, Math.max(0, Math.round(Number(form.vo_variations) || 0))),
+  wording_variations: Math.min(50, Math.max(0, Math.round(Number(form.wording_variations) || 0))),
   kit: form.kit,
   location_notes: form.location_notes.trim() || null,
   notes: form.notes.trim() || null
@@ -158,7 +161,7 @@ async function fillMissingItems(): Promise<number> {
     .in('person_id', personIds.value).in('channel_id', channelIds.value))
   const have = new Set(bundle.value.items.map(item => `${item.template_id}|${item.person_id}|${item.channel_id}`))
   const rows = groups.value.flatMap(group => links
-    .filter(link => performs(group.items[0]!, link.person_id))
+    .filter(link => performs(group.items[0]!, link.person_id, link.channel_id))
     .filter(link => !have.has(`${group.template_id}|${link.person_id}|${link.channel_id}`))
     .map(link => copyFor(group, link.person_id, link.channel_id)))
   if (rows.length) must(await db.from('shoot_items').insert(rows))
@@ -229,7 +232,8 @@ async function addItems(picked: PickedItems) {
   }
 
   // one entry per template, then one item per person (only the writer, for their own VOs)
-  const entries: (Omit<Insert<'shoot_items'>, 'shoot_id' | 'person_id'> & { performers?: string[] })[] = []
+  // a VO: who performs it on which channel (its writer everywhere, its cast on the cast channel)
+  const entries: (Omit<Insert<'shoot_items'>, 'shoot_id' | 'person_id'> & { performs?: (personId: string, channelId: string) => boolean })[] = []
   for (const hook of picked.hooks.filter(hook => !existingTemplates.value.includes(hook.id))) entries.push({
     kind: 'hook',
     hook_template_id: hook.id,
@@ -239,18 +243,21 @@ async function addItems(picked: PickedItems) {
     sort_order: ++order
   })
   for (const body of picked.bodies.filter(body => !existingTemplates.value.includes(body.id))) {
-    const performers = body.person_id ? [body.person_id, ...(cast.get(body.id) ?? [])] : undefined
-    entries.push({ kind: 'body', body_template_id: body.id, code: take('V'), script_snapshot: body.beats, sort_order: ++order, performers })
+    const vo = { kind: 'body' as const, writer_id: body.person_id, cast_ids: cast.get(body.id) ?? [], cast_channel_id: body.cast_channel_id }
+    entries.push({
+      kind: 'body', body_template_id: body.id, code: take('V'), script_snapshot: body.beats, sort_order: ++order,
+      performs: (personId, channelId) => performs(vo, personId, channelId)
+    })
   }
   for (const cta of picked.ctas.filter(cta => !existingTemplates.value.includes(cta.id))) {
     entries.push({ kind: 'cta', cta_template_id: cta.id, code: take('C'), cta_mode: cta.mode, script_snapshot: cta.script, sort_order: ++order })
   }
   if (!entries.length) return
 
-  // one item per person per channel they're linked to (a VO: only its writer and cast)
+  // one item per person per channel they're linked to (a VO: its writer, and its cast on the cast channel)
   const rows = bundle.value.people.flatMap(person => entries
-    .filter(entry => !entry.performers || entry.performers.includes(person.id))
-    .flatMap(({ performers: _performers, ...entry }) => channelsFor(bundle.value, person.id)
+    .flatMap(({ performs: performsIt, ...entry }) => channelsFor(bundle.value, person.id)
+      .filter(channel => !performsIt || performsIt(person.id, channel.id))
       .map(channel => ({ ...entry, shoot_id: shoot.value.id, person_id: person.id, channel_id: channel.id }) as Insert<'shoot_items'>)))
   await run(async () => {
     must(await db.from('shoot_items').insert(rows))
@@ -382,15 +389,16 @@ async function onVoSaved(vo: Row<'body_templates'>) {
   }
   await run(async () => {
     must(await db.from('shoot_items').update({ script_snapshot: vo.beats }).in('id', group.items.map(item => item.id)))
-    // its writer and cast perform it, each on their channels: lines for anyone taken off go,
-    // anyone added gets theirs
-    const performers = [vo.person_id, ...must(await db.from('vo_cast').select('person_id').eq('body_template_id', vo.id)).map(member => member.person_id)]
-    const gone = group.items.filter(item => !performers.includes(item.person_id))
+    // its writer performs it on each of their channels, its cast on the cast channel only: lines
+    // for anyone (or anywhere) taken off go, and anyone added gets theirs
+    const cast = must(await db.from('vo_cast').select('person_id').eq('body_template_id', vo.id)).map(member => member.person_id)
+    const plays = { kind: 'body' as const, writer_id: vo.person_id, cast_ids: cast, cast_channel_id: vo.cast_channel_id }
+    const gone = group.items.filter(item => !performs(plays, item.person_id, item.channel_id))
     if (gone.length) must(await db.from('shoot_items').delete().in('id', gone.map(item => item.id)))
     const have = new Set(group.items.map(item => `${item.person_id}|${item.channel_id}`))
-    const rows = performers.filter((id): id is string => !!id && bundle.value.people.some(person => person.id === id))
+    const rows = [vo.person_id, ...cast].filter((id): id is string => !!id && bundle.value.people.some(person => person.id === id))
       .flatMap(personId => channelsFor(bundle.value, personId)
-        .filter(channel => !have.has(`${personId}|${channel.id}`))
+        .filter(channel => performs(plays, personId, channel.id) && !have.has(`${personId}|${channel.id}`))
         .map(channel => ({ ...copyFor(group, personId, channel.id), script_snapshot: vo.beats })))
     if (rows.length) must(await db.from('shoot_items').insert(rows))
     await refresh()
@@ -541,6 +549,8 @@ const shootFormats = computed<BrollFormat[]>(() => {
       beats: format.beats,
       beat_descriptions: format.beat_descriptions ?? null,
       beat_broll: format.beat_broll ?? null,
+      kind: format.kind,
+      beat_display: format.beat_display ?? null,
       usedBy: [],
       planned: false
     }
@@ -924,6 +934,28 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
             </template>
           </UAlert>
 
+          <!-- treatments that are on (Library → Treatments): what each adds to this shoot's recipes -->
+          <UCard v-if="result.treatments.length">
+            <template #header>
+              <div class="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 class="font-semibold text-highlighted">
+                  Treatments
+                </h2>
+                <NuxtLink to="/library?tab=treatments" class="text-xs text-muted hover:text-default">Library → Treatments</NuxtLink>
+              </div>
+            </template>
+            <p class="mb-3 text-sm text-muted">
+              Every recipe also gets a version for each treatment that applies to it. The editor makes the treatment's content and Showdog draws it.
+            </p>
+            <ul class="divide-y divide-default">
+              <li v-for="treatment in result.treatments" :key="treatment.name" class="flex items-baseline justify-between gap-3 py-1.5 text-sm">
+                <span class="text-highlighted">{{ treatment.name }}</span>
+                <span v-if="treatment.recipes" class="text-primary tabular-nums">+{{ formatNumber(treatment.recipes) }} recipes</span>
+                <span v-else class="text-right text-xs text-muted">Not applied: {{ treatment.why }}</span>
+              </li>
+            </ul>
+          </UCard>
+
           <UCard>
             <template #header>
               <div class="flex flex-wrap items-baseline justify-between gap-2">
@@ -989,8 +1021,11 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
               <UFormField label="B-roll variations" help="Different b-roll selections per hook + VO + CTA, each its own recipe (used in later batches). Also the clips each channel films of every b-roll shot.">
                 <UInput v-model.number="form.broll_variations" type="number" min="1" max="10" class="w-full" :disabled="!isDraft" @change="saveSetup" />
               </UFormField>
-              <UFormField label="VO variations" help="On a channel where a VO is cast on several people, how many mixes of their beats to make, alongside each person's own. 0 = no mixing.">
+              <UFormField label="Cast mixes" help="On a channel where a VO is cast on several people, how many mixes of their beats to make, alongside each person's own. 0 = no mixing.">
                 <UInput v-model.number="form.vo_variations" type="number" min="0" max="50" class="w-full" :disabled="!isDraft" @change="saveSetup" />
+              </UFormField>
+              <UFormField label="Wording mixes" help="Where a VO's beats have other wordings, how many extra combinations of them to make per person, alongside the first wordings. 0 = first wordings only.">
+                <UInput v-model.number="form.wording_variations" type="number" min="0" max="50" class="w-full" :disabled="!isDraft" @change="saveSetup" />
               </UFormField>
               <UFormField label="Kit" help="Just a tag for this shoot (e.g. Audition = trial shoot for a new brand, Scale = full production). It doesn't change anything else.">
                 <USelect v-model="form.kit" :items="kits" class="w-full" @update:model-value="saveSetup" />

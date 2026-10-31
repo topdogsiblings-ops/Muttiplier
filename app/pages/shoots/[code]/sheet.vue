@@ -58,28 +58,62 @@ const channelName = (id: string | null) => bundle.value.channels.find(c => c.id 
 
 // Everyone films the same shot list: one entry per item, with each person's tick underneath.
 const personItems = computed(() => bundle.value.items.filter(item => !person.value || item.person_id === person.value.id))
+
+// A standalone VO opens and closes itself: its hook beat is filmed with the hooks and its CTA
+// beat with the CTAs, so each part of it shows in that section; its other beats stay with the VOs.
+type GroupPart = 'all' | 'hook' | 'middle' | 'cta'
+const standaloneGroup = (group: ShotGroup) => group.kind === 'body' && isStandalone(group.items[0]!)
+const partOfBeat = (beat: string | null): GroupPart => {
+  const name = beat ? parseTakeKey(beat).beat : null
+  return name === STANDALONE_HOOK_BEAT ? 'hook' : name === STANDALONE_CTA_BEAT ? 'cta' : 'middle'
+}
+/** which section an item counts in: a standalone VO's in the Hooks and CTAs too */
+const inSection = (item: BundleItem, kind: string) => item.kind === kind || (kind !== 'body' && item.kind === 'body' && isStandalone(item))
+
 /** how many hooks / CTAs / VOs this person (or everyone) has, for the filter buttons */
-const shotListFor = (kind: string) => groupShotList(personItems.value).filter(group => group.kind === kind).length
+const shotListFor = (kind: string) => groupShotList(personItems.value.filter(item => inSection(item, kind))).length
 const visibleItems = computed(() => {
   if (show.value === 'broll') return []
-  return personItems.value.filter(item => show.value === 'all' || item.kind === show.value)
+  return personItems.value.filter(item => show.value === 'all' || inSection(item, show.value))
 })
 const showBroll = computed(() => show.value === 'all' || show.value === 'broll')
 const shotList = computed(() => groupShotList(visibleItems.value))
 const groupChannel = (group: ShotGroup) => group.items[0]?.channel_id ?? null
 
-/** Hooks, then CTAs, then VOs (recorded off set). Everything is used for every channel. */
+/**
+ * Hooks, then CTAs, then VOs (recorded off set). Everything is used for every channel. Each entry
+ * is a group and the part of it the section shows: all of it, or a standalone VO's hook, middle
+ * or CTA beats.
+ */
 const sections = computed(() => {
-  const hooks = shotList.value.filter(group => group.kind === 'hook')
+  const standalones = shotList.value.filter(standaloneGroup)
+  const shown = (part: GroupPart) => (group: ShotGroup) => ({ key: `${group.key}|${part}`, group, part })
   const list = [
-    { title: 'Hooks', hint: 'Used for every channel', groups: hooks },
-    { title: 'CTAs', hint: '', groups: shotList.value.filter(group => group.kind === 'cta') },
-    { title: 'VOs', hint: 'Recorded off set', groups: shotList.value.filter(group => group.kind === 'body') }
+    {
+      title: 'Hooks',
+      hint: 'Used for every channel',
+      views: [...shotList.value.filter(group => group.kind === 'hook').map(shown('all')), ...(show.value === 'cta' ? [] : standalones.map(shown('hook')))]
+    },
+    {
+      title: 'CTAs',
+      hint: '',
+      views: [...shotList.value.filter(group => group.kind === 'cta').map(shown('all')), ...(show.value === 'hook' ? [] : standalones.map(shown('cta')))]
+    },
+    {
+      title: 'VOs',
+      hint: 'Recorded off set',
+      views: show.value === 'hook' || show.value === 'cta'
+        ? []
+        : shotList.value.filter(group => group.kind === 'body')
+          // a standalone VO with nothing between its hook and CTA has no VO part
+          .filter(group => !standaloneGroup(group) || parseBeats(group.items[0]!.script_snapshot).some(beat => partOfBeat(beat.beat) === 'middle'))
+          .map(group => shown(standaloneGroup(group) ? 'middle' : 'all')(group))
+    }
   ]
   return list
-    .filter(section => section.groups.length)
+    .filter(section => section.views.length)
     .map(section => {
-      const items = section.groups.flatMap(group => group.items)
+      const items = section.views.flatMap(view => view.group.items)
       return { ...section, done: items.filter(item => item.status !== 'planned').length, total: items.length }
     })
 })
@@ -119,11 +153,21 @@ const progress = computed(() => {
 const ownVersions = (group: ShotGroup) => group.items.filter(item => item.script_override !== null && item.script_override !== undefined)
 const script = (item: BundleItem) => resolveItemScript(bundle.value, item)
 /** A shot-list entry's line across every channel it's filmed for: the dog reads "my Vizsla / our two dogs". */
-const groupScript = (group: ShotGroup) => {
+const groupScript = (group: ShotGroup, part: GroupPart = 'all') => {
   const versions = group.items.map(item => script({ ...item, script_override: null }))
   if (group.kind !== 'body') return { text: mergeVariants(versions.map(version => version.text ?? '')), beats: null }
   const first = versions[0]?.beats ?? []
-  return { text: null, beats: first.map((beat, index) => ({ beat: beat.beat, script: mergeVariants(versions.map(version => version.beats?.[index]?.script ?? '')) })) }
+  // every wording of each beat, as its own line (an alternate is its own take)
+  return {
+    text: null,
+    beats: first.flatMap((beat, index) => beatWordings(beat).map(wording => ({
+      key: takeKey(beat.beat, wording.option),
+      beat: takeLabel(takeKey(beat.beat, wording.option)),
+      hook_type: wording.hook_type,
+      script: mergeVariants(versions.map(version => beatWordings(version.beats?.[index] ?? { beat: beat.beat, script: '' })[wording.option - 1]?.script ?? ''))
+    })))
+      .filter(line => part === 'all' || partOfBeat(line.key) === part)
+  }
 }
 
 /** Everything on the shoot (all people) still to film or skip. */
@@ -163,13 +207,13 @@ async function saveStatus(item: BundleItem, next: string) {
 // one take for all of them, and a VO is recorded beat by beat. Only saved clips tick an item
 // off (once every spot it has, every beat of a VO, has one); by hand you can only skip.
 
-/** Each person on a shot-list entry, with their takes and how far along they are. */
-const peopleRows = (group: ShotGroup) => {
+/** Each person on a shot-list entry, with their takes (of the part shown) and how far along they are. */
+const peopleRows = (group: ShotGroup, part: GroupPart = 'all') => {
   const ids = [...new Set(group.items.map(item => item.person_id))]
   return ids.map((personId) => {
     const items = group.items.filter(item => item.person_id === personId)
     const beatOrder = (beat: string | null) => (items[0] && beat ? itemBeats(items[0]).indexOf(beat) : 0)
-    const takes = recordingsOf(items).sort((a, b) =>
+    const takes = recordingsOf(items).filter(take => part === 'all' || partOfBeat(take.beat) === part).sort((a, b) =>
       (a.items[0]?.channel_id ?? '').localeCompare(b.items[0]?.channel_id ?? '') || beatOrder(a.beat) - beatOrder(b.beat))
     return {
       person: personId,
@@ -181,9 +225,9 @@ const peopleRows = (group: ShotGroup) => {
   })
 }
 /** "Nix + Whiskey", or the beat for a VO take: what a take's button says. */
-const takeLabel = (take: Recording) => {
+const takeButtonLabel = (take: Recording) => {
   const channels = take.items.map(item => channelName(item.channel_id)).filter(Boolean).join(' + ')
-  return take.beat ? `${take.beat} · ${channels}` : channels || 'Add clip'
+  return take.beat ? `${takeLabel(take.beat)} · ${channels}` : channels || 'Add clip'
 }
 
 /** After a clip is saved or removed: tick off (or un-tick) each item the take fills. */
@@ -508,8 +552,8 @@ function skipBroll(shot: Row<'broll_shots'>) {
 
       <div class="space-y-2">
         <article
-          v-for="group in section.groups"
-          :key="group.key"
+          v-for="{ key, group, part } in section.views"
+          :key="key"
           class="space-y-2 rounded-lg border border-default p-3"
           :class="{
             'border-success/40 bg-success/5': group.items.every(item => item.status === 'filmed'),
@@ -518,6 +562,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
         >
           <div class="flex flex-wrap items-center gap-1.5">
             <span class="font-mono text-base font-bold text-highlighted">{{ group.code }}</span>
+            <UBadge v-if="part === 'hook' || part === 'cta'" :label="part === 'hook' ? 'Opens a standalone VO' : 'Closes a standalone VO'" color="primary" variant="subtle" size="sm" />
             <UBadge v-if="group.items[0]!.hook_type" :label="group.items[0]!.hook_type!" color="neutral" variant="subtle" size="sm" />
             <UBadge v-if="group.items[0]!.cta_mode" :label="group.items[0]!.cta_mode!" color="info" variant="subtle" size="sm" />
             <span v-if="group.items[0]!.location" class="flex items-center gap-0.5 text-xs text-muted">
@@ -532,8 +577,9 @@ function skipBroll(shot: Row<'broll_shots'>) {
             <p v-if="group.items[0]!.title" class="text-sm font-medium text-muted">
               {{ group.items[0]!.title }}
             </p>
-            <p v-for="beat in groupScript(group).beats" :key="beat.beat" class="text-base leading-snug text-highlighted">
+            <p v-for="beat in groupScript(group, part).beats" :key="beat.key" class="text-base leading-snug text-highlighted">
               <span class="mr-1 text-xs font-semibold text-muted uppercase">{{ beat.beat }}</span>{{ beat.script }}
+              <UBadge v-if="beat.hook_type" :label="beat.hook_type" color="neutral" variant="subtle" size="sm" class="ml-1 align-middle" />
             </p>
           </template>
           <p v-else class="text-lg leading-snug text-highlighted">
@@ -550,7 +596,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
 
           <!-- each person: their takes (one per channel, or one for all of them when the line
                doesn't name the dog; a VO beat by beat), each ticked by its clip -->
-          <div v-for="row in peopleRows(group)" :key="row.person" class="space-y-2 border-t border-default pt-2">
+          <div v-for="row in peopleRows(group, part)" :key="row.person" class="space-y-2 border-t border-default pt-2">
             <div class="flex flex-wrap items-center gap-2">
               <UIcon
                 :name="row.filmed ? 'i-lucide-circle-check' : row.skipped ? 'i-lucide-skip-forward' : 'i-lucide-circle'"
@@ -577,7 +623,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
                   :recording="take"
                   :bundle="bundle"
                   :rules="clipRules"
-                  :button-label="takeLabel(take)"
+                  :button-label="takeButtonLabel(take)"
                   @saved="syncTake(take)"
                   @removed="syncTake(take)"
                 />

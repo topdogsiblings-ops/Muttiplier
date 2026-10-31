@@ -1,20 +1,21 @@
 <script setup lang="ts">
 import type { Row } from '#shared/types/models'
-import type { CalcItem } from '#shared/utils/calculator'
+import type { BundleItem, BundleTreatment } from '#shared/utils/shootsheet'
+import type { ItemRow } from '#shared/utils/loadShoot'
 
 type ShootRow = Row<'shoots'> & {
   product: { id: string, name: string, brand: { id: string, name: string } }
   shoot_people: { person: { id: string, name: string } }[]
   shoot_channels: { channel: { id: string, name: string } }[]
 }
-type ItemRow = Pick<Row<'shoot_items'>, 'shoot_id' | 'person_id' | 'kind' | 'channel_id' | 'cta_mode' | 'status' | 'code' | 'script_snapshot' | 'script_override'>
 
 const db = useDb()
 const run = useAction()
 const { products, productOptions, settings, load } = useRefData()
 
 const shoots = ref<ShootRow[]>([])
-const itemsByShoot = ref<Record<string, CalcItem[]>>({})
+const itemsByShoot = ref<Record<string, BundleItem[]>>({})
+const treatments = ref<BundleTreatment[]>([])
 
 async function loadShoots() {
   shoots.value = must(await db
@@ -22,40 +23,37 @@ async function loadShoots() {
     .select('*, product:products(id, name, brand:brands(id, name)), shoot_people(person:people(id, name)), shoot_channels(channel:channels(id, name))')
     .order('code', { ascending: false })) as unknown as ShootRow[]
 
-  // Items for the estimates, fetched in pages (the Data API returns at most 1,000 rows per request).
-  const grouped: Record<string, CalcItem[]> = {}
+  // Items for the estimates, as the shoot page loads them (so the numbers match), fetched in
+  // pages (the Data API returns at most 1,000 rows per request).
+  const grouped: Record<string, BundleItem[]> = {}
   for (let from = 0; ; from += 1000) {
     const page = must(await db
       .from('shoot_items')
-      .select('shoot_id, person_id, kind, channel_id, cta_mode, status, code, script_snapshot, script_override')
+      .select(ITEM_SELECT)
       .order('id')
       .range(from, from + 999)) as unknown as ItemRow[]
-    for (const item of page) {
-      (grouped[item.shoot_id] ??= []).push({
-        personId: item.person_id,
-        kind: item.kind as CalcItem['kind'],
-        channelId: item.channel_id,
-        ctaMode: item.cta_mode,
-        status: item.status,
-        recordingKey: recordingKey(item)
-      })
-    }
+    for (const row of page) (grouped[row.shoot_id] ??= []).push(toBundleItem(row))
     if (page.length < 1000) break
   }
   itemsByShoot.value = grouped
+  // the Library's treatments that are on: every recipe gets a version for each that applies
+  treatments.value = must(await db.from('treatments').select('name, kind, placement, needs, component, settings')
+    .eq('active', true).eq('archived', false).order('sort_order'))
 }
 await Promise.all([load(), loadShoots()])
 
 const calcSettings = computed(() => toCalcSettings(settings.value, DEFAULT_CALC_SETTINGS))
 
+/** The same estimate as the shoot page's calculator (one shared input builder). */
 function estimate(shoot: ShootRow) {
-  return calculate({
+  return calculate(bundleToCalcInput({
+    shoot,
     people: shoot.shoot_people.map(row => row.person),
     channels: shoot.shoot_channels.map(row => row.channel),
     items: itemsByShoot.value[shoot.id] ?? [],
-    submissionRate: Number(shoot.submission_rate),
-    settings: calcSettings.value
-  }).totals
+    broll: [],
+    treatments: treatments.value
+  }, calcSettings.value)).totals
 }
 
 // --- filters ---------------------------------------------------------------

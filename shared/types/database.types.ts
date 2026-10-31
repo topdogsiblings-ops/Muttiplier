@@ -112,6 +112,7 @@ export type Database = {
           angle_id: string | null
           archived: boolean
           beats: Json
+          cast_channel_id: string | null
           created_at: string
           created_by: string | null
           est_seconds: number | null
@@ -131,6 +132,7 @@ export type Database = {
           angle_id?: string | null
           archived?: boolean
           beats?: Json
+          cast_channel_id?: string | null
           created_at?: string
           created_by?: string | null
           est_seconds?: number | null
@@ -150,6 +152,7 @@ export type Database = {
           angle_id?: string | null
           archived?: boolean
           beats?: Json
+          cast_channel_id?: string | null
           created_at?: string
           created_by?: string | null
           est_seconds?: number | null
@@ -501,7 +504,9 @@ export type Database = {
         Row: {
           archived: boolean
           beat_broll: Json
+          beat_display: Json
           beat_descriptions: Json
+          beat_examples: Json
           beats: string[]
           code: string
           created_at: string
@@ -509,6 +514,7 @@ export type Database = {
           cta_modes: string[]
           description: string | null
           id: string
+          kind: string
           name: string
           source_url: string | null
           target_seconds: number | null
@@ -517,7 +523,9 @@ export type Database = {
         Insert: {
           archived?: boolean
           beat_broll?: Json
+          beat_display?: Json
           beat_descriptions?: Json
+          beat_examples?: Json
           beats?: string[]
           code: string
           created_at?: string
@@ -525,6 +533,7 @@ export type Database = {
           cta_modes?: string[]
           description?: string | null
           id?: string
+          kind?: string
           name: string
           source_url?: string | null
           target_seconds?: number | null
@@ -533,7 +542,9 @@ export type Database = {
         Update: {
           archived?: boolean
           beat_broll?: Json
+          beat_display?: Json
           beat_descriptions?: Json
+          beat_examples?: Json
           beats?: string[]
           code?: string
           created_at?: string
@@ -541,6 +552,7 @@ export type Database = {
           cta_modes?: string[]
           description?: string | null
           id?: string
+          kind?: string
           name?: string
           source_url?: string | null
           target_seconds?: number | null
@@ -1272,6 +1284,7 @@ export type Database = {
           upload_requested_at: string | null
           upload_requested_by: string | null
           vo_variations: number
+          wording_variations: number
         }
         Insert: {
           broll_variations?: number
@@ -1298,6 +1311,7 @@ export type Database = {
           upload_requested_at?: string | null
           upload_requested_by?: string | null
           vo_variations?: number
+          wording_variations?: number
         }
         Update: {
           broll_variations?: number
@@ -1324,6 +1338,7 @@ export type Database = {
           upload_requested_at?: string | null
           upload_requested_by?: string | null
           vo_variations?: number
+          wording_variations?: number
         }
         Relationships: [
           {
@@ -1341,6 +1356,63 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      treatments: {
+        Row: {
+          active: boolean
+          archived: boolean
+          component: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          kind: string
+          name: string
+          needs: string[]
+          placement: string
+          settings: Json
+          sort_order: number
+          source_url: string | null
+          system: boolean
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          archived?: boolean
+          component: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          kind: string
+          name: string
+          needs?: string[]
+          placement: string
+          settings?: Json
+          sort_order?: number
+          source_url?: string | null
+          system?: boolean
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          archived?: boolean
+          component?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          kind?: string
+          name?: string
+          needs?: string[]
+          placement?: string
+          settings?: Json
+          sort_order?: number
+          source_url?: string | null
+          system?: boolean
+          updated_at?: string
+        }
+        Relationships: []
       }
       vo_cast: {
         Row: {

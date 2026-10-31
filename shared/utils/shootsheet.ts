@@ -1,16 +1,20 @@
 // Shoot codes, folder paths and the export builders (spec §10). Pure: shared by the
 // builder, the shot sheet and the Nitro export routes.
 import type { Beat, SlotContext } from './slots'
-import { buildSlotContext, joinBeats, parseBeats, renderBeats, renderScript, slugify } from './slots'
+import { beatWordings, buildSlotContext, joinBeats, parseBeats, parseTakeKey, renderBeats, renderScript, slugify, takeKey } from './slots'
 import type { ItemKind } from './calculator'
 
 /**
+ * 7: the plan lists the treatments that are on (`treatments`).
+ * 6: VO beats are takes, one per wording (`option`, with alternates), each saying how it's shown
+ * (`show`: face or broll); VO items say if they're `standalone`; formats carry `kind` and
+ * `beat_display`; the shoot carries `wording_variations`.
  * 5: hooks carry `hook_type` (was `angle`); VOs no longer carry one. 4: VO items carry `hooks` /
  * `ctas`, the codes they're linked to (null = any), and the shoot carries `vo_variations` (with
  * `broll_variations`, now used). 3: b-roll shots no
  * longer carry product_visible or min_clips. 2: custom slot values moved to plan.shoot.
  */
-export const SHOOTSHEET_SCHEMA_VERSION = 5
+export const SHOOTSHEET_SCHEMA_VERSION = 7
 export const DEFAULT_BEATS = ['problem', 'product', 'result']
 
 export interface BundleChannel {
@@ -47,6 +51,8 @@ export interface BundleItem {
   writer_id?: string | null
   /** VOs: people cast on it with the writer, who perform it too (same script, beat for beat) */
   cast_ids?: string[]
+  /** VOs: the channel it's cast on: the cast perform it there only */
+  cast_channel_id?: string | null
   /** the Library template's source link, if it has one */
   source_url?: string | null
   /** how the filmed clip did, for later shortlists: good ones favoured, bad ones left out */
@@ -65,11 +71,36 @@ export interface BundleItem {
     id?: string
     name?: string
     description?: string | null
-    /** beat -> what the beat is for */
+    /** beat -> what to write in it (guidance) */
     beat_descriptions?: Record<string, string> | null
+    /** beat -> an example line */
+    beat_examples?: Record<string, string> | null
     /** beat -> suggested b-roll shots */
     beat_broll?: unknown
+    /** modular (Library hook + VO + CTA) or standalone (its first beat is the hook, its last the CTA) */
+    kind?: string
+    /** beat -> face (the speaker on camera) or broll (their voice over b-roll) */
+    beat_display?: Record<string, string> | null
+    source_url?: string | null
   } | null
+}
+
+/** A standalone format's first and last beats: the video's hook and CTA, filmed like any beat. */
+export const STANDALONE_HOOK_BEAT = 'hook'
+export const STANDALONE_CTA_BEAT = 'cta'
+
+/** A VO in a standalone format: it opens and closes itself, so it's never paired with hooks or CTAs. */
+export const isStandalone = (item: Pick<BundleItem, 'kind' | 'format'>) => item.kind === 'body' && item.format?.kind === 'standalone'
+
+/**
+ * How a VO beat is shown: the speaker on camera (face) or their voice over b-roll. Set per beat on
+ * the format; a standalone format's hook and CTA beats default to face, everything else to b-roll.
+ * Treatments can change it later.
+ */
+export function beatShow(format: Pick<NonNullable<BundleItem['format']>, 'kind' | 'beat_display'> | null | undefined, beat: string): 'face' | 'broll' {
+  const set = format?.beat_display?.[beat]
+  if (set === 'face' || set === 'broll') return set
+  return format?.kind === 'standalone' && (beat === STANDALONE_HOOK_BEAT || beat === STANDALONE_CTA_BEAT) ? 'face' : 'broll'
 }
 
 export interface BundleBroll {
@@ -85,6 +116,19 @@ export interface BundleBroll {
   feature?: { slug: string, name: string } | null
 }
 
+/** A Library treatment that's on: applied to every recipe that has what it needs (§12b). */
+export interface BundleTreatment {
+  name: string
+  /** layout (which footage plays), overlay (drawn on top) or footage (the editor prepares clips) */
+  kind: string
+  /** hook, video or cta */
+  placement: string
+  /** text, speaker_video, old_footage, offer */
+  needs: string[]
+  component: string
+  settings: unknown
+}
+
 export interface ShootBundle {
   shoot: {
     id?: string
@@ -95,6 +139,8 @@ export interface ShootBundle {
     broll_variations: number
     /** mixed versions per VO per channel (beats swapped between the people cast on it) */
     vo_variations?: number
+    /** extra versions per VO from combining alternate beat wordings, per person */
+    wording_variations?: number
     submission_rate: number
     /** custom slots filled in for this shoot ({{benefit}}…); built-ins fill themselves */
     slot_values?: unknown
@@ -105,6 +151,8 @@ export interface ShootBundle {
   channels: BundleChannel[]
   items: BundleItem[]
   broll: BundleBroll[]
+  /** the Library's treatments that are on, applied to the shoot's recipes */
+  treatments?: BundleTreatment[]
   /** shoot people linked to each channel; on those channels recipes mix people */
   channelPeople?: Record<string, string[]>
 }
@@ -112,10 +160,14 @@ export interface ShootBundle {
 // --- codes -----------------------------------------------------------------
 
 /** H = hook, V = body (VO), C = CTA */
-/** Who performs an item: everyone, or for a VO its writer and the people cast on it. */
-export function performs(item: Pick<BundleItem, 'kind' | 'writer_id' | 'cast_ids'>, personId: string): boolean {
+/**
+ * Who performs an item (on a channel, when given): everyone, or for a VO its writer (on each of
+ * their channels) and the people cast on it (on its cast channel only).
+ */
+export function performs(item: Pick<BundleItem, 'kind' | 'writer_id' | 'cast_ids' | 'cast_channel_id'>, personId: string, channelId?: string | null): boolean {
   if (item.kind !== 'body' || !item.writer_id) return true
-  return item.writer_id === personId || !!item.cast_ids?.includes(personId)
+  if (item.writer_id === personId) return true
+  return !!item.cast_ids?.includes(personId) && (channelId === undefined || channelId === item.cast_channel_id)
 }
 
 export function itemPrefix(kind: ItemKind): 'H' | 'V' | 'C' {
@@ -343,12 +395,15 @@ export function channelFolder(bundle: Pick<ShootBundle, 'channels'>, channelId: 
 /**
  * A hook, VO or CTA within raw/ or edited/, as a file without extension:
  * `<channel>/<kind>/<person>/<code>`. A VO is recorded beat by beat, each beat in its own
- * folder as with b-roll: `<channel>/vo/<person>/problem/V01`.
+ * folder as with b-roll: `<channel>/vo/<person>/problem/V01`; an alternate wording of a beat is
+ * its own take beside it, numbered: `problem/V01-2`. `beat` is a take key (see takeKey).
  */
 export function takeSpot(bundle: ShootBundle, item: BundleItem, beat: string | null = null): string {
   const person = bundle.people.find(p => p.id === item.person_id)?.slug ?? 'unknown'
   const folder = `${channelFolder(bundle, item.channel_id)}/${KIND_FOLDER[item.kind]}/${person}`
-  return beat ? `${folder}/${slugify(beat) || 'beat'}/${item.code}` : `${folder}/${item.code}`
+  if (!beat) return `${folder}/${item.code}`
+  const take = parseTakeKey(beat)
+  return `${folder}/${slugify(take.beat) || 'beat'}/${item.code}${take.option > 1 ? `-${take.option}` : ''}`
 }
 
 /** A hook, VO or CTA for its channel, relative to the Dropbox `UGC/` root (see takeSpot). */
@@ -378,11 +433,20 @@ export function brollFolder(bundle: ShootBundle, shot: Pick<BundleBroll, 'format
 export const isVoiceover = (item: Pick<BundleItem, 'kind' | 'cta_mode'>) =>
   item.kind === 'body' || (item.kind === 'cta' && item.cta_mode === 'vo')
 
-/** The beats a VO is recorded in, one file each; hooks and CTAs are one take (null). */
+/**
+ * The takes a VO is recorded in, one file each: every wording of every beat, as take keys (the
+ * beat's name for its first wording, `<beat>~2`… for alternates). Hooks and CTAs are one take (null).
+ */
 export function itemBeats(item: Pick<BundleItem, 'kind' | 'script_snapshot'>): (string | null)[] {
   if (item.kind !== 'body') return [null]
-  const beats = parseBeats(item.script_snapshot).map(beat => beat.beat)
-  return beats.length ? beats : [null]
+  const takes = parseBeats(item.script_snapshot).flatMap(beat => beatWordings(beat).map(wording => takeKey(beat.beat, wording.option)))
+  return takes.length ? takes : [null]
+}
+
+/** "problem", or "problem (2)" for its second wording: how a take is labelled. */
+export function takeLabel(key: string): string {
+  const take = parseTakeKey(key)
+  return take.option > 1 ? `${take.beat} (${take.option})` : take.beat
 }
 
 /**
@@ -457,6 +521,7 @@ export function buildShootsheet(bundle: ShootBundle) {
       product: { name: bundle.product.name, slug: bundle.product.slug },
       broll_variations: bundle.shoot.broll_variations,
       vo_variations: bundle.shoot.vo_variations ?? 0,
+      wording_variations: bundle.shoot.wording_variations ?? 0,
       submission_rate: Number(bundle.shoot.submission_rate),
       slot_values: bundle.shoot.slot_values ?? {}
     },
@@ -469,7 +534,14 @@ export function buildShootsheet(bundle: ShootBundle) {
     channels: bundle.channels.map(channel => ({ slug: channel.slug, folder_slug: channel.folder_slug, dogs: channel.dogs })),
     formats: [...formats.values()]
       .sort((a, b) => a.code.localeCompare(b.code))
-      .map(format => ({ code: format.code, cta_modes: format.cta_modes, beats: format.beats })),
+      .map(format => ({
+        code: format.code,
+        cta_modes: format.cta_modes,
+        kind: format.kind ?? 'modular',
+        beats: format.beats,
+        // beat -> face or broll, for every beat
+        beat_display: Object.fromEntries(format.beats.map(beat => [beat, beatShow(format, beat)]))
+      })),
     items: sortedItems(bundle).filter(item => item.status !== 'skipped').map((item) => {
       const script = resolveItemScript(bundle, item)
       const base = {
@@ -487,19 +559,34 @@ export function buildShootsheet(bundle: ShootBundle) {
         return { ...base, hook_type: item.hook_type, script: script.text ?? '', caption, ...folders }
       }
       if (item.kind === 'body') {
-        const beats = (script.beats ?? []).map(beat => ({
-          ...beat,
-          file: itemPath(bundle, item, 'edited', beat.beat),
-          raw_file: itemPath(bundle, item, 'raw', beat.beat)
-        }))
-        // linked hooks / CTAs: the only ones it goes with (null = any)
+        // a take per wording of each beat
+        const beats = (script.beats ?? []).flatMap(beat => beatWordings(beat).map(wording => ({
+          beat: beat.beat,
+          option: wording.option,
+          script: wording.script,
+          hook_type: wording.hook_type,
+          show: beatShow(item.format, beat.beat),
+          file: itemPath(bundle, item, 'edited', takeKey(beat.beat, wording.option)),
+          raw_file: itemPath(bundle, item, 'raw', takeKey(beat.beat, wording.option))
+        })))
+        // linked hooks / CTAs: the only ones it goes with (null = any); a standalone VO goes with none
         return {
-          ...base, format: item.format?.code ?? null, feature: item.feature_slug ?? null,
+          ...base, format: item.format?.code ?? null, standalone: isStandalone(item), feature: item.feature_slug ?? null,
           hooks: linkedCodes(bundle, item, 'hook'), ctas: linkedCodes(bundle, item, 'cta'), beats
         }
       }
       return { ...base, cta_mode: item.cta_mode, script: script.text ?? '', ...folders }
     }),
+    // the treatments that are on: recipes get a version for each one that applies (§12b)
+    treatments: (bundle.treatments ?? []).map(treatment => ({
+      slug: slugify(treatment.name),
+      name: treatment.name,
+      kind: treatment.kind,
+      placement: treatment.placement,
+      needs: treatment.needs,
+      component: treatment.component,
+      settings: treatment.settings ?? {}
+    })),
     // one entry per shot per channel; its clips go loose into the folder, under their own names
     broll: bundle.broll.filter(shot => shot.status !== 'skipped').flatMap(shot =>
       brollChannelIds(bundle, shot).map(channelId => ({
@@ -584,13 +671,16 @@ export function skeletonFolders(bundle: ShootBundle): string[] {
 }
 
 /**
+ * 8: the plan carries the treatments that are on (shoot sheet 7).
+ * 7: VO clips are takes: `option` (which wording of the beat), `show` (face or broll) and, for a
+ * standalone hook beat, `hook_type`; the plan follows shoot sheet 6.
  * 6: hook clips carry `hook_type` (was `angle`); VO clips no longer carry one. 5: VO clips carry
  * `hooks` / `ctas`, the codes they only go with (null = any); the plan carries the shoot's
  * `vo_variations`. 4: b-roll clips no
  * longer carry product_visible. 3: clips carry `feature` (VOs the feature they're about, b-roll its
  * feature folder or null).
  */
-export const MANIFEST_SCHEMA_VERSION = 6
+export const MANIFEST_SCHEMA_VERSION = 8
 
 /**
  * The manifest before the edits are in (spec §14): just the plan, version 0, no clips. Written

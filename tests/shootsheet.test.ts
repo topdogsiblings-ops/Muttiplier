@@ -4,12 +4,16 @@ import {
   brollFolder,
   buildCsv,
   buildShootsheet,
+  beatShow,
   groupShotList,
+  itemBeats,
+  performs,
   linkedCodes,
   nextItemCodes,
   planSnapshots,
   resolveItemScript,
   skeletonFiles,
+  takeSpot,
   unfilledItems
 } from '../shared/utils/shootsheet'
 
@@ -160,12 +164,13 @@ describe('planSnapshots', () => {
 describe('buildShootsheet', () => {
   it('matches the worker contract', () => {
     const sheet = buildShootsheet(bundle())
-    expect(sheet.schema_version).toBe(5)
+    expect(sheet.schema_version).toBe(7)
     // custom slots are the shoot's own
     expect(sheet.shoot.slot_values).toEqual({ benefit: 'calmer walks' })
     expect(sheet.shoot).toMatchObject({ code: 'S014', date: '2026-10-20', broll_variations: 3, submission_rate: 0.15 })
     expect(sheet.channels[0]).toEqual({ slug: 'topdognix', folder_slug: 'nix', dogs: ['nix'] })
-    expect(sheet.formats).toEqual([format])
+    // a modular format: every beat over b-roll
+    expect(sheet.formats).toEqual([{ ...format, kind: 'modular', beat_display: { problem: 'broll', product: 'broll', result: 'broll' } }])
     // channel first; a VO is recorded beat by beat, a file each in its beat's folder
     expect(sheet.items.map(item => [item.code, 'beats' in item ? item.beats.map(beat => beat.file) : item.file])).toEqual([
       ['C01', 'pawco/calming-chews/shoots/S014/edited/topdognix/ctas/joe/C01'],
@@ -222,7 +227,7 @@ describe('skeleton zip', () => {
     expect(folders).toEqual(expect.arrayContaining([`${shoot}/raw`, `${shoot}/edited`, `${shoot}/renders`]))
     // everything lives in the shoot folder
     expect(folders.every(folder => folder.startsWith(shoot))).toBe(true)
-    expect(JSON.parse(files[`${shoot}/manifest.json`]!)).toEqual({ schema_version: 6, version: 0, generated_at: null, plan: sheet, clips: [] })
+    expect(JSON.parse(files[`${shoot}/manifest.json`]!)).toEqual({ schema_version: 8, version: 0, generated_at: null, plan: sheet, clips: [] })
   })
 
   it('files b-roll for a product feature a level down in its beat folder', () => {
@@ -261,5 +266,41 @@ describe('linkedCodes', () => {
     expect(linkedCodes(b, vo, 'cta')).toEqual([])
     const sheetVo = buildShootsheet(b).items.find(item => item.kind === 'body')
     expect(sheetVo).toMatchObject({ hooks: ['U01'], ctas: [] })
+  })
+})
+
+describe('VO takes', () => {
+  it('records every wording of a beat as its own take, filed beside the first', () => {
+    const b = bundle()
+    const vo = b.items.find(item => item.kind === 'body')!
+    vo.script_snapshot = [{ beat: 'problem', script: 'A', alternates: [{ script: 'A2' }] }, { beat: 'product', script: 'B' }, { beat: 'result', script: 'C' }]
+    expect(itemBeats(vo)).toEqual(['problem', 'problem~2', 'product', 'result'])
+    expect(takeSpot(b, vo, 'problem')).toBe('topdognix/vo/joe/problem/V01')
+    expect(takeSpot(b, vo, 'problem~2')).toBe('topdognix/vo/joe/problem/V01-2')
+    const sheetVo = buildShootsheet(b).items.find(item => item.kind === 'body') as { standalone: boolean, beats: { beat: string, option: number, show: string, file: string }[] }
+    expect(sheetVo.standalone).toBe(false)
+    expect(sheetVo.beats.map(beat => `${beat.beat}/${beat.option}/${beat.show}`)).toEqual(['problem/1/broll', 'problem/2/broll', 'product/1/broll', 'result/1/broll'])
+    expect(sheetVo.beats[1]!.file).toMatch(/\/problem\/V01-2$/)
+  })
+
+  it('shows a standalone format\u2019s hook and CTA beats face to camera unless the format says otherwise', () => {
+    const standalone = { kind: 'standalone', beat_display: { cta: 'broll' } }
+    expect(beatShow(standalone, 'hook')).toBe('face')
+    expect(beatShow(standalone, 'cta')).toBe('broll')
+    expect(beatShow(standalone, 'story')).toBe('broll')
+    expect(beatShow({ kind: 'modular', beat_display: { problem: 'face' } }, 'problem')).toBe('face')
+    expect(beatShow(null, 'hook')).toBe('broll')
+  })
+})
+
+describe('performs', () => {
+  it('has a VO’s writer perform it on every channel, and its cast on the cast channel only', () => {
+    const vo = { kind: 'body' as const, writer_id: 'makayla', cast_ids: ['joe'], cast_channel_id: 'whiskey' }
+    expect(performs(vo, 'makayla', 'siblings')).toBe(true)
+    expect(performs(vo, 'joe', 'whiskey')).toBe(true)
+    expect(performs(vo, 'joe', 'siblings')).toBe(false)
+    expect(performs(vo, 'brennen', 'siblings')).toBe(false)
+    // hooks and CTAs: everyone
+    expect(performs({ kind: 'hook', writer_id: null }, 'brennen', 'nix')).toBe(true)
   })
 })

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   alignBeats,
+  beatWordings,
   beatsMatchFormat,
   bodyUsesDog,
   buildSlotContext,
@@ -8,9 +9,13 @@ import {
   estimateSeconds,
   extractSlots,
   joinBeats,
+  parseBeats,
+  parseTakeKey,
+  renderBeats,
   renderScript,
   renderSegments,
-  slugify
+  slugify,
+  takeKey
 } from '../shared/utils/slots'
 
 const context = buildSlotContext({
@@ -111,5 +116,34 @@ describe('estimateSeconds', () => {
 describe('slugify', () => {
   it('produces lowercase kebab-case', () => {
     expect(slugify('  Calming Chews (XL) é ')).toBe('calming-chews-xl-e')
+  })
+})
+
+describe('beat wordings', () => {
+  const beats = parseBeats([
+    { beat: 'hook', script: 'I almost didn\u2019t try {{product}}', hook_type: 'Confession', alternates: [{ script: 'Nobody told me about {{product}}', hook_type: 'Curiosity' }, { script: '' }] },
+    { beat: 'cta', script: 'Link below' }
+  ])
+
+  it('reads alternate wordings and hook types, and leaves plain beats as they were', () => {
+    expect(beatWordings(beats[0]!).map(wording => [wording.option, wording.hook_type])).toEqual([[1, 'Confession'], [2, 'Curiosity'], [3, null]])
+    expect(beats[1]).toEqual({ beat: 'cta', script: 'Link below' })
+  })
+
+  it('fills slots in every wording, and keeps them when aligning to the format', () => {
+    const rendered = renderBeats(beats, { product: 'Calming Chews' }).beats
+    expect(rendered[0]!.alternates![0]!.script).toBe('Nobody told me about Calming Chews')
+    expect(alignBeats(['hook', 'cta'], beats)[0]!.alternates).toHaveLength(2)
+  })
+
+  it('names a take by its beat, and an alternate wording by its number', () => {
+    expect(takeKey('problem')).toBe('problem')
+    expect(takeKey('problem', 2)).toBe('problem~2')
+    expect(parseTakeKey('product reveal~3')).toEqual({ beat: 'product reveal', option: 3 })
+    expect(parseTakeKey('problem')).toEqual({ beat: 'problem', option: 1 })
+  })
+
+  it('checks every wording for {{dog}}', () => {
+    expect(bodyUsesDog([{ beat: 'hook', script: 'my dog', alternates: [{ script: '{{dog}} again' }] }])).toBe(true)
   })
 })

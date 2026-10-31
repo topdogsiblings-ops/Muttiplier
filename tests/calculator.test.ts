@@ -153,6 +153,45 @@ describe('calculate: variations', () => {
   })
 })
 
+describe('calculate: standalone VOs and wordings', () => {
+  it('counts a standalone VO as whole videos, and adds wording versions', () => {
+    const on = (kind: 'hook' | 'body' | 'cta', templateId: string, extra: Partial<CalcItem> = {}) =>
+      ({ personId: 'joe', channelId: 'nix', kind, templateId, ctaMode: kind === 'cta' ? 'sync' : undefined, ...extra })
+    const input = base([
+      on('hook', 'h1'), on('hook', 'h2'), on('cta', 'c1'),
+      // modular: 2 hooks × 1 CTA; its wordings combine 4 ways
+      on('body', 'v1', { beats: 3, wordingCombos: 4 }),
+      // standalone: its own hook and CTA; its wordings combine 2 ways
+      on('body', 'v2', { beats: 3, wordingCombos: 2, standalone: true })
+    ], { people: [people[0]!], channels: [channels[0]!] })
+    expect(calculate(input).totals.recipes).toBe(2 + 1)
+    // wording mixes: up to 3 more for v1 (it has 3 others), 1 more for v2
+    expect(calculate({ ...input, wordingVariations: 9 }).totals.recipes).toBe(4 * 2 + 2 * 1)
+    expect(calculate({ ...input, wordingVariations: 1 }).totals.recipes).toBe(2 * 2 + 2 * 1)
+  })
+})
+
+describe('calculate: treatments', () => {
+  it('adds a version of every recipe a treatment applies to, and says why one doesn\u2019t apply', () => {
+    const on = (kind: 'hook' | 'body' | 'cta', templateId: string, extra: Partial<CalcItem> = {}) =>
+      ({ personId: 'joe', channelId: 'nix', kind, templateId, ctaMode: kind === 'cta' ? 'sync' : undefined, ...extra })
+    const result = calculate(base([on('hook', 'h1'), on('hook', 'h2'), on('cta', 'c1'), on('body', 'v1', { beats: 3, faceBeats: 0 })], {
+      people: [people[0]!],
+      channels: [channels[0]!],
+      treatments: [
+        { name: 'Face to camera', kind: 'layout', needs: ['speaker_video'], layout: 'face' },
+        { name: 'Over b-roll', kind: 'layout', needs: [], layout: 'broll' },
+        { name: 'Search bar', kind: 'overlay', needs: ['text'] },
+        { name: 'Offer badge', kind: 'overlay', needs: ['offer'] }
+      ]
+    }))
+    // 2 recipes, plus a face-to-camera and a search-bar version of each
+    expect(result.totals.recipes).toBe(2 + 2 + 2)
+    expect(result.treatments.map(entry => [entry.name, entry.recipes])).toEqual([['Face to camera', 2], ['Over b-roll', 0], ['Search bar', 2], ['Offer badge', 0]])
+    expect(result.treatments[3]!.why).toMatch(/offer/)
+  })
+})
+
 describe('monthsOfSupply', () => {
   it('divides submissions by the monthly target', () => {
     expect(monthsOfSupply(675, 150)).toBe(4.5)

@@ -14,6 +14,12 @@ export interface CalcItem {
   linkedCtas?: string[]
   /** VOs: how many beats it has (for working out how many ways it can be mixed) */
   beats?: number
+  /** VOs: how many combinations its beats' wordings make (1 when no beat has alternates) */
+  wordingCombos?: number
+  /** VOs: a standalone format's, with its own hook and CTA: never paired with Library ones */
+  standalone?: boolean
+  /** VOs: how many of its beats (a standalone VO's hook and CTA included) are shown face to camera by default */
+  faceBeats?: number
   /** CTAs only: sync (on camera) or vo; decides filming vs recording time */
   ctaMode?: string | null
   label?: string
@@ -44,7 +50,21 @@ export interface CalcInput {
   brollVariations?: number
   /** mixed versions per VO per channel, beats swapped between the people cast on it (default 0) */
   voVariations?: number
+  /** extra versions per VO from combining alternate beat wordings, per person (default 0) */
+  wordingVariations?: number
+  /** the Library's treatments that are on: each adds a version of every recipe it applies to */
+  treatments?: CalcTreatment[]
+  /** the shoot has {{offer}} filled in (for treatments that need it) */
+  offer?: boolean
   settings: CalcSettings
+}
+
+export interface CalcTreatment {
+  name: string
+  kind: string
+  needs: string[]
+  /** layout treatments: the layout they give every beat */
+  layout?: 'face' | 'broll' | null
 }
 
 export interface PersonResult {
@@ -91,6 +111,8 @@ export interface CalcResult {
     /** shared shots, which every channel films (once if the shoot has no channels) */
     sharedBrollShots: number
   }
+  /** each treatment that's on: how many recipes its versions add (0 = it applies to none) */
+  treatments: { name: string, recipes: number, why: string | null }[]
   warnings: string[]
 }
 
@@ -174,6 +196,32 @@ export function calculate(input: CalcInput): CalcResult {
 
   const brollVariations = Math.max(1, input.brollVariations ?? 1)
   const voVariations = Math.max(0, input.voVariations ?? 0)
+  const wordingVariations = Math.max(0, input.wordingVariations ?? 0)
+  /** a VO's versions by one person: its first wordings, plus wording mixes */
+  const versionsOf = (body: CalcItem) => 1 + Math.min(wordingVariations, Math.max(1, body.wordingCombos ?? 1) - 1)
+
+  // treatments: each that applies to a VO adds a version of every recipe made with it. A layout
+  // applies where it changes something; the others need what they need (every take is filmed,
+  // the editor writes any text, old footage isn't tracked yet).
+  const treatments = input.treatments ?? []
+  const added = new Map(treatments.map(treatment => [treatment.name, 0]))
+  const appliesTo = (treatment: CalcTreatment, body: CalcItem) => {
+    if (treatment.kind === 'layout') {
+      const face = body.faceBeats ?? 0
+      return treatment.layout === 'face' ? face < (body.beats ?? 0) : treatment.layout === 'broll' ? face > 0 : false
+    }
+    return treatment.needs.every(need => need === 'text' || need === 'speaker_video' || (need === 'offer' && !!input.offer))
+  }
+  /** a VO's recipes, with every treatment version that applies to it */
+  const withTreatments = (body: CalcItem, recipes: number) => {
+    let total = recipes
+    for (const treatment of treatments) {
+      if (!appliesTo(treatment, body)) continue
+      added.set(treatment.name, (added.get(treatment.name) ?? 0) + recipes)
+      total += recipes
+    }
+    return total
+  }
   // a VO linked to hooks / CTAs only goes with those
   const allowed = (pool: CalcItem[], links: string[] | undefined) =>
     links?.length ? pool.filter(item => item.templateId && links.includes(item.templateId)).length : pool.length
@@ -185,16 +233,22 @@ export function calculate(input: CalcInput): CalcResult {
       const [hookItems, bodyItems, ctaItems] = [of('hook'), of('body'), of('cta')]
       const [hooks, bodies, ctas] = [hookItems.length, bodyItems.length, ctaItems.length]
       if (!hooks && !bodies && !ctas) continue
-      if (bodies && !ctas) warn(`${person.name} on ${channel.name}: no CTAs, so their VOs can't make recipes`)
+      if (bodyItems.some(body => !body.standalone) && !ctas) warn(`${person.name} on ${channel.name}: no CTAs, so their VOs can't make recipes`)
       let recipes = 0
       let concepts = 0
       for (const body of bodyItems) {
+        // a standalone VO is the whole video: its own hook and CTA
+        if (body.standalone) {
+          recipes += withTreatments(body, versionsOf(body) * brollVariations)
+          concepts += versionsOf(body)
+          continue
+        }
         const [withHooks, withCtas] = [allowed(hookItems, body.linkedHooks), allowed(ctaItems, body.linkedCtas)]
         if ((body.linkedHooks?.length && !withHooks) || (body.linkedCtas?.length && !withCtas)) {
           warn(`${body.label ?? 'A VO'}: none of its linked ${!withHooks && body.linkedHooks?.length ? 'hooks' : 'CTAs'} are on this shoot for ${person.name} on ${channel.name}`)
         }
-        recipes += withHooks * withCtas * brollVariations
-        concepts += withHooks
+        recipes += withTreatments(body, versionsOf(body) * withHooks * withCtas * brollVariations)
+        concepts += versionsOf(body) * withHooks
       }
       result.hooks += hooks
       result.recipes += recipes
@@ -213,9 +267,10 @@ export function calculate(input: CalcInput): CalcResult {
       const beats = performances[0]!.beats ?? 0
       if (performers < 2 || beats < 2) continue
       const mixes = Math.min(voVariations, performers ** beats - performers)
-      const withHooks = allowed(onChannel.filter(item => item.kind === 'hook'), performances[0]!.linkedHooks)
-      const withCtas = allowed(onChannel.filter(item => item.kind === 'cta'), performances[0]!.linkedCtas)
-      result.recipes += mixes * withHooks * withCtas * brollVariations
+      // a standalone VO's mixes are whole videos; a modular one's go with anyone's hooks and CTAs here
+      const withHooks = performances[0]!.standalone ? 1 : allowed(onChannel.filter(item => item.kind === 'hook'), performances[0]!.linkedHooks)
+      const withCtas = performances[0]!.standalone ? 1 : allowed(onChannel.filter(item => item.kind === 'cta'), performances[0]!.linkedCtas)
+      result.recipes += withTreatments(performances[0]!, mixes * withHooks * withCtas * brollVariations)
       result.concepts += mixes * withHooks
     }
   })
@@ -250,6 +305,19 @@ export function calculate(input: CalcInput): CalcResult {
       brollShots: channels.length ? sum(perChannel, c => c.brollShots) : sharedBroll,
       sharedBrollShots: sharedBroll
     },
+    treatments: treatments.map(treatment => ({
+      name: treatment.name,
+      recipes: added.get(treatment.name) ?? 0,
+      why: added.get(treatment.name)
+        ? null
+        : treatment.needs.includes('old_footage')
+          ? 'needs old footage (the footage library isn\u2019t built yet)'
+          : treatment.needs.includes('offer') && !input.offer
+            ? 'needs the shoot\u2019s {{offer}} filled in'
+            : treatment.kind === 'layout'
+              ? 'changes nothing: every VO is already laid out that way'
+              : 'no VOs yet'
+    })),
     warnings
   }
 }

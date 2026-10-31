@@ -1,6 +1,6 @@
 import type { Row } from '#shared/types/models'
 
-type LibraryTable = 'hook_templates' | 'cta_templates' | 'body_templates' | 'formats' | 'angles'
+type LibraryTable = 'hook_templates' | 'cta_templates' | 'body_templates' | 'formats' | 'angles' | 'treatments'
 
 export const LIBRARY_SORTS = [
   { label: 'Newest', value: 'newest' },

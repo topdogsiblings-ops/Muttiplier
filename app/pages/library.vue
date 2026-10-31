@@ -23,6 +23,12 @@ const tabs = [
     value: 'formats',
     icon: 'i-lucide-layout-template',
     help: 'A format is the structure of a VO: its beats and target length. Any CTA can follow any VO. VOs themselves are written in each shoot, for its product. Each format shows how many VOs are built on it.'
+  },
+  {
+    label: 'Treatments',
+    value: 'treatments',
+    icon: 'i-lucide-wand-sparkles',
+    help: 'Ways a finished video is presented: face to camera or over b-roll, a search bar, a text thread, greenscreen… Every one switched on is applied to every recipe that has what it needs, as an extra version.'
   }
 ]
 
@@ -100,7 +106,8 @@ const hookView = computed({
         <LibraryHookTypes v-else />
       </template>
       <LibraryCtas v-else-if="tab === 'ctas'" />
-      <LibraryFormats v-else />
+      <LibraryFormats v-else-if="tab === 'formats'" />
+      <LibraryTreatments v-else />
     </template>
   </UDashboardPanel>
 </template>

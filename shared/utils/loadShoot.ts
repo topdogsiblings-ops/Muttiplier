@@ -5,6 +5,8 @@ import type { Database } from '../types/database.types'
 import type { Row } from '../types/models'
 import type { BundleItem, ShootBundle } from './shootsheet'
 import type { CalcInput, CalcSettings, ItemKind } from './calculator'
+import { beatShow, isStandalone, recordingKey } from './shootsheet'
+import { beatWordings, parseBeats } from './slots'
 
 export interface LoadedShoot extends ShootBundle {
   shoot: Row<'shoots'>
@@ -27,36 +29,48 @@ export interface PlannedFormat {
   description: string | null
   beats: string[]
   beat_descriptions: Record<string, string> | null
+  beat_examples: Record<string, string> | null
   /** beat -> suggested b-roll shots */
   beat_broll: unknown
+  /** modular or standalone */
+  kind: string
+  /** beat -> face or broll */
+  beat_display: Record<string, string> | null
+  source_url: string | null
 }
 
-type ItemRow = Row<'shoot_items'> & {
+export type ItemRow = Row<'shoot_items'> & {
   hook: { filming_notes: string | null, source_url: string | null, shoot_id: string | null, product_id: string | null, hook_type: { name: string } | null } | null
   cta: { source_url: string | null, shoot_id: string | null, product_id: string | null } | null
   body: {
     cast: { person_id: string }[]
+    cast_channel_id: string | null
     hook_links: { hook_template_id: string }[]
     cta_links: { cta_template_id: string }[]
     title: string | null
     feature: { name: string, slug: string } | null
     person_id: string | null
     source_url: string | null
-    format: { id: string, code: string, name: string, description: string | null, cta_modes: string[], beats: string[], beat_descriptions: Record<string, string> | null, beat_broll: unknown } | null
+    format: {
+      id: string, code: string, name: string, description: string | null, cta_modes: string[], beats: string[]
+      beat_descriptions: Record<string, string> | null, beat_examples: Record<string, string> | null, beat_broll: unknown
+      kind: string, beat_display: Record<string, string> | null, source_url: string | null
+    } | null
   } | null
 }
 
-const ITEM_SELECT = `*,
+/** A shoot item with what it needs from its template (the shoots list uses it too, for estimates). */
+export const ITEM_SELECT = `*,
   hook:hook_templates(filming_notes, source_url, shoot_id, product_id, hook_type:angles(name)),
   cta:cta_templates(source_url, shoot_id, product_id),
-  body:body_templates(cast:vo_cast(person_id), hook_links:vo_hook_links(hook_template_id), cta_links:vo_cta_links(cta_template_id), title, feature:product_features(name, slug), person_id, source_url, format:formats(id, code, name, description, cta_modes, beats, beat_descriptions, beat_broll))`
+  body:body_templates(cast:vo_cast(person_id), cast_channel_id, hook_links:vo_hook_links(hook_template_id), cta_links:vo_cta_links(cta_template_id), title, feature:product_features(name, slug), person_id, source_url, format:formats(id, code, name, description, cta_modes, beats, beat_descriptions, beat_examples, beat_broll, kind, beat_display, source_url))`
 
 function unwrap<T>(result: { data: T | null, error: { message: string } | null }): T {
   if (result.error) throw new Error(result.error.message)
   return result.data as T
 }
 
-function toBundleItem(row: ItemRow): BundleItem {
+export function toBundleItem(row: ItemRow): BundleItem {
   return {
     id: row.id,
     code: row.code,
@@ -83,6 +97,7 @@ function toBundleItem(row: ItemRow): BundleItem {
     title: row.body?.feature?.name ?? row.body?.title ?? null,
     writer_id: row.body?.person_id ?? null,
     cast_ids: row.body?.cast.map(member => member.person_id) ?? [],
+    cast_channel_id: row.body?.cast_channel_id ?? null,
     source_url: row.hook?.source_url ?? row.body?.source_url ?? row.cta?.source_url ?? null,
     format: row.body?.format ?? null
   }
@@ -96,13 +111,15 @@ export async function loadShootBundle(db: SupabaseClient<Database>, code: string
   const { product: productWithBrand, ...shoot } = found
   const { brand, ...product } = productWithBrand
 
-  const [people, channels, items, broll, links, planned] = await Promise.all([
+  const [people, channels, items, broll, links, planned, treatments] = await Promise.all([
     db.from('shoot_people').select('person:people(*)').eq('shoot_id', shoot.id),
     db.from('shoot_channels').select('channel:channels(*)').eq('shoot_id', shoot.id),
     db.from('shoot_items').select(ITEM_SELECT).eq('shoot_id', shoot.id).order('sort_order').order('created_at'),
     db.from('broll_shots').select('*, feature:product_features(slug, name)').eq('shoot_id', shoot.id).order('sort_order').order('created_at'),
     db.from('person_channels').select('person_id, channel_id'),
-    db.from('shoot_formats').select('format:formats(id, code, name, description, beats, beat_descriptions, beat_broll)').eq('shoot_id', shoot.id)
+    db.from('shoot_formats').select('format:formats(id, code, name, description, beats, beat_descriptions, beat_examples, beat_broll, kind, beat_display, source_url)').eq('shoot_id', shoot.id),
+    // the Library's treatments that are on: every recipe gets a version for each that applies
+    db.from('treatments').select('name, kind, placement, needs, component, settings').eq('active', true).eq('archived', false).order('sort_order')
   ])
 
   const peopleRows = unwrap(people).map(row => row.person as Row<'people'>).sort((a, b) => a.name.localeCompare(b.name))
@@ -117,7 +134,8 @@ export async function loadShootBundle(db: SupabaseClient<Database>, code: string
     items: (unwrap(items) as unknown as ItemRow[]).map(toBundleItem),
     broll: unwrap(broll) as BrollShot[],
     channelPeople: channelPeopleFor(peopleRows, channelRows, unwrap(links)),
-    plannedFormats: unwrap(planned).map(row => row.format as unknown as PlannedFormat).filter(Boolean)
+    plannedFormats: unwrap(planned).map(row => row.format as unknown as PlannedFormat).filter(Boolean),
+    treatments: unwrap(treatments)
   }
 }
 
@@ -135,7 +153,14 @@ export function channelPeopleFor(
 }
 
 /** Calculator input for a loaded shoot. */
-export function bundleToCalcInput(bundle: ShootBundle, settings: CalcSettings): CalcInput {
+/**
+ * Calculator input for a shoot: the shoot page and the shoots list both use this, so their
+ * estimates always match (variations, cast and wording mixes, standalone VOs, links, treatments).
+ */
+export function bundleToCalcInput(
+  bundle: Pick<ShootBundle, 'shoot' | 'items' | 'broll' | 'treatments'> & { people: { id: string, name: string }[], channels: { id: string, name: string }[] },
+  settings: CalcSettings
+): CalcInput {
   return {
     people: bundle.people,
     channels: bundle.channels,
@@ -143,7 +168,11 @@ export function bundleToCalcInput(bundle: ShootBundle, settings: CalcSettings): 
       templateId: item.template_id,
       linkedHooks: item.linked_hooks,
       linkedCtas: item.linked_ctas,
-      beats: item.kind === 'body' ? itemBeats(item).length : undefined,
+      // beats (not takes: alternates are extra takes of a beat), and how many ways the wordings combine
+      beats: item.kind === 'body' ? parseBeats(item.script_snapshot).length : undefined,
+      wordingCombos: item.kind === 'body' ? parseBeats(item.script_snapshot).reduce((product, beat) => product * beatWordings(beat).length, 1) : undefined,
+      standalone: isStandalone(item),
+      faceBeats: item.kind === 'body' ? parseBeats(item.script_snapshot).filter(beat => beatShow(item.format, beat.beat) === 'face').length : undefined,
       personId: item.person_id,
       kind: item.kind,
       channelId: item.channel_id,
@@ -156,6 +185,15 @@ export function bundleToCalcInput(bundle: ShootBundle, settings: CalcSettings): 
     submissionRate: Number(bundle.shoot.submission_rate),
     brollVariations: bundle.shoot.broll_variations,
     voVariations: bundle.shoot.vo_variations ?? 0,
+    wordingVariations: bundle.shoot.wording_variations ?? 0,
+    treatments: (bundle.treatments ?? []).map(treatment => ({
+      name: treatment.name,
+      kind: treatment.kind,
+      needs: treatment.needs,
+      layout: ((treatment.settings as { show?: string } | null)?.show ?? null) as 'face' | 'broll' | null
+    })),
+    offer: typeof (bundle.shoot.slot_values as Record<string, unknown> | null)?.offer === 'string'
+      && ((bundle.shoot.slot_values as Record<string, string>).offer ?? '').trim() !== '',
     settings
   }
 }

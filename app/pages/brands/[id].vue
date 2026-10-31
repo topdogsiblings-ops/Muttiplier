@@ -103,6 +103,31 @@ const productShoots = computed(() => shoots.value.filter(shoot => shoot.product_
 async function saveProduct() {
   saving.value = true
   const ok = await run(async () => {
+    // a feature VOs or b-roll shots are about can't be removed: they'd quietly lose it (the
+    // database blocks it too). Say where it's used, before anything is saved.
+    const keptIds = product.features.filter(feature => feature.name.trim()).map(feature => feature.id)
+    const removing = featuresOf(product.id || undefined).filter(feature => !keptIds.includes(feature.id))
+    if (removing.length) {
+      const ids = removing.map(feature => feature.id)
+      const vos = must(await db.from('body_templates').select('feature_id, shoot:shoots(code)').in('feature_id', ids))
+      const shots = must(await db.from('broll_shots').select('feature_id, shoot:shoots(code)').in('feature_id', ids))
+      const inUse = removing.map((feature) => {
+        // the shoot comes back as one row or a list of one, depending on the relationship
+        const codeOf = (shoot: unknown) => ((Array.isArray(shoot) ? shoot[0] : shoot) as { code?: string } | null)?.code ?? 'no shoot'
+        const where = (rows: { feature_id: string | null, shoot: unknown }[]) => {
+          const mine = rows.filter(row => row.feature_id === feature.id)
+          return { count: mine.length, shoots: [...new Set(mine.map(row => codeOf(row.shoot)))].sort() }
+        }
+        return { feature, vos: where(vos), shots: where(shots) }
+      }).filter(entry => entry.vos.count || entry.shots.count)
+      if (inUse.length) {
+        throw new Error(inUse.map(({ feature, vos: v, shots: s }) => [
+          `"${feature.name}" is still used by`,
+          [v.count ? `${v.count} VO${v.count === 1 ? '' : 's'} (${v.shoots.join(', ')})` : '', s.count ? `${s.count} b-roll shot${s.count === 1 ? '' : 's'} (${s.shoots.join(', ')})` : ''].filter(Boolean).join(' and ')
+        ].join(' ')).join('. ') + '. Move them to another feature or remove them first; renaming the feature is fine.')
+      }
+    }
+
     const fields = {
       name: product.name.trim(),
       claims_allowed: product.claims_allowed.trim() || null,
