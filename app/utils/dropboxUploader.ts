@@ -124,7 +124,7 @@ export const dropboxUploader: ClipUploader = {
   }
 }
 
-// --- reading the shoot's folders (Ready for batching) ----------------------------------
+// --- reading the shoot's folders (checking the edits) ----------------------------------
 
 /** Every file under a folder (relative to the root), as paths relative to it, with sizes; none if it isn't there. */
 export async function dropboxListFiles(folder: string): Promise<{ path: string, size: number }[]> {

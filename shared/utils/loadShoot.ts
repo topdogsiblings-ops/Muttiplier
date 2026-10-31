@@ -158,11 +158,11 @@ export function channelPeopleFor(
  * applies. Used by the shoot page and the shoots list.
  */
 export async function loadTreatments(db: SupabaseClient<Database>): Promise<BundleTreatment[]> {
-  const rows = unwrap(await db.from('treatments').select('id, name, kind, placement, needs, component, settings, parts, active')
+  const rows = unwrap(await db.from('treatments').select('id, name, description, kind, placement, needs, component, settings, parts, active')
     .eq('archived', false).order('sort_order'))
   const byId = new Map(rows.map(row => [row.id, row]))
   const spec = (row: typeof rows[number]): BundleTreatment => ({
-    name: row.name, kind: row.kind, placement: row.placement, needs: row.needs, component: row.component, settings: row.settings
+    name: row.name, description: row.description, kind: row.kind, placement: row.placement, needs: row.needs, component: row.component, settings: row.settings
   })
   return rows.filter(row => row.active).map(row => ({
     ...spec(row),

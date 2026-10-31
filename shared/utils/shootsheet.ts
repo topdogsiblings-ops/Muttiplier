@@ -5,6 +5,9 @@ import { beatWordings, buildSlotContext, joinBeats, parseBeats, parseTakeKey, re
 import type { ItemKind } from './calculator'
 
 /**
+ * 9: each treatment says what Pawcessor makes for it: `description` (what the AI writes its text
+ * from), `sidecar` (the sidecar's name, or null for a layout) and `applies_to` (the clips that get
+ * one: hook, vo, cta).
  * 8: beats can be shown `screen` (text on a phone screen, not filmed: file null) or `voice_note`;
  * treatments can be curated combinations (`parts`).
  * 7: the plan lists the treatments that are on (`treatments`).
@@ -16,7 +19,7 @@ import type { ItemKind } from './calculator'
  * `broll_variations`, now used). 3: b-roll shots no
  * longer carry product_visible or min_clips. 2: custom slot values moved to plan.shoot.
  */
-export const SHOOTSHEET_SCHEMA_VERSION = 8
+export const SHOOTSHEET_SCHEMA_VERSION = 9
 export const DEFAULT_BEATS = ['problem', 'product', 'result']
 
 export interface BundleChannel {
@@ -128,6 +131,8 @@ export interface BundleBroll {
 /** A Library treatment that's on: applied to every recipe that has what it needs (§12b). */
 export interface BundleTreatment {
   name: string
+  /** what it is: Pawcessor's AI writes the treatment's text from it */
+  description?: string | null
   /** layout (which footage plays), overlay (drawn on top) or footage (the editor prepares clips) */
   kind: string
   /** hook, video or cta */
@@ -138,6 +143,28 @@ export interface BundleTreatment {
   settings: unknown
   /** a curated combination: the treatments it's made of (each drawn on its own part of the video) */
   parts?: BundleTreatment[]
+}
+
+export type SidecarClip = 'hook' | 'vo' | 'cta'
+
+/**
+ * The takes Pawcessor makes a treated copy (a sidecar) of for a treatment: a hook treatment the
+ * hooks (and a standalone VO's hook beat), a CTA treatment the CTAs, a video treatment every take,
+ * and footage that needs the speaker (greenscreen, picture-in-picture) the VO takes. A layout only
+ * chooses which footage plays, so it needs none; a combination needs one wherever any other part
+ * applies, carrying every part that fits there.
+ */
+export function sidecarClips(treatment: Pick<BundleTreatment, 'kind' | 'placement' | 'needs' | 'parts'>): SidecarClip[] {
+  const parts = treatment.parts?.length ? treatment.parts : [treatment]
+  const clips = new Set<SidecarClip>()
+  for (const part of parts) {
+    if (part.kind === 'layout') continue
+    if (part.kind === 'footage' && part.needs.includes('speaker_video')) clips.add('vo')
+    else if (part.placement === 'hook') clips.add('hook')
+    else if (part.placement === 'cta') clips.add('cta')
+    else for (const clip of ['hook', 'vo', 'cta'] as const) clips.add(clip)
+  }
+  return (['hook', 'vo', 'cta'] as const).filter(clip => clips.has(clip))
 }
 
 export interface ShootBundle {
@@ -596,6 +623,10 @@ export function buildShootsheet(bundle: ShootBundle) {
     treatments: (bundle.treatments ?? []).map(treatment => ({
       slug: slugify(treatment.name),
       name: treatment.name,
+      description: treatment.description ?? null,
+      // Pawcessor makes a treated copy of every clip it applies to, beside the clip: <clip>.<sidecar>.<ext>
+      sidecar: sidecarClips(treatment).length ? slugify(treatment.name) : null,
+      applies_to: sidecarClips(treatment),
       kind: treatment.kind,
       placement: treatment.placement,
       needs: treatment.needs,
@@ -605,6 +636,7 @@ export function buildShootsheet(bundle: ShootBundle) {
       parts: (treatment.parts ?? []).map(part => ({
         slug: slugify(part.name),
         name: part.name,
+        description: part.description ?? null,
         kind: part.kind,
         placement: part.placement,
         needs: part.needs,
@@ -697,6 +729,8 @@ export function skeletonFolders(bundle: ShootBundle): string[] {
 }
 
 /**
+ * 10: take clips carry `sidecars` (treatment sidecar -> its file beside the clip in edited/); the
+ * plan follows shoot sheet 9.
  * 9: a VO beat shown on screen is a clip with no file (`file` ''), its text in `script` and its
  * reading time as `duration`; `show` can be screen or voice_note (shoot sheet 8).
  * 8: the plan carries the treatments that are on (shoot sheet 7).
@@ -708,11 +742,11 @@ export function skeletonFolders(bundle: ShootBundle): string[] {
  * longer carry product_visible. 3: clips carry `feature` (VOs the feature they're about, b-roll its
  * feature folder or null).
  */
-export const MANIFEST_SCHEMA_VERSION = 9
+export const MANIFEST_SCHEMA_VERSION = 10
 
 /**
  * The manifest before the edits are in (spec §14): just the plan, version 0, no clips. Written
- * when the shoot is planned; Ready for batching replaces it with the full one.
+ * when the shoot is planned and again when editing starts (for Pawcessor); going Live replaces it with the full one.
  */
 export function planManifest(bundle: ShootBundle) {
   return { schema_version: MANIFEST_SCHEMA_VERSION, version: 0, generated_at: null, plan: buildShootsheet(bundle), clips: [] }

@@ -81,23 +81,37 @@ export const SHOOT_STATUS_COLORS: Record<string, Color> = {
   planned: 'info',
   shooting: 'warning',
   filmed: 'success',
-  edited: 'success',
-  ingested: 'success',
-  rendering: 'warning',
-  done: 'primary'
+  editing: 'warning',
+  edited: 'primary'
 }
 
-/** What a shoot status reads as: `edited` is ready for batching (the edits checked, the manifest built). */
+/** What a shoot status reads as: `edited` is Live (the edits checked, recipes built, batches running). */
 export const SHOOT_STATUS_LABELS: Record<string, string> = {
   draft: 'Draft',
   planned: 'Planned',
   shooting: 'Shooting',
   filmed: 'Filmed',
-  edited: 'Ready for batching',
-  ingested: 'Ingested',
-  rendering: 'Rendering',
-  done: 'Done'
+  editing: 'Editing',
+  edited: 'Live'
 }
+
+/** A Live shoot's batches: picked, rendering in Showdog, submitted to the brand, then measured (every element scored). */
+export const BATCH_STATUS_LABELS: Record<string, string> = {
+  batched: 'Batched',
+  rendering: 'Rendering',
+  submitted: 'Submitted',
+  measured: 'Measured'
+}
+
+export const BATCH_STATUS_COLORS: Record<string, Color> = {
+  batched: 'neutral',
+  rendering: 'warning',
+  submitted: 'info',
+  measured: 'success'
+}
+
+/** One colour per batch, in order, for the usage bar. */
+export const BATCH_COLORS = ['bg-primary', 'bg-info', 'bg-success', 'bg-warning', 'bg-secondary', 'bg-error']
 
 export const ITEM_STATUS_COLORS: Record<string, Color> = {
   planned: 'neutral',

@@ -28,8 +28,8 @@ This spec covers the Library, Brands and Planner. Ingest, rendering and submissi
 1. **Library** — reusable, brand-agnostic templates. *(this project)*
 2. **Planner** — build a shoot for one product, run it on set, export shot lists, `shootsheet.json` and folder skeleton. *(this project)*
 3. **Dropbox uploads** — clips land in the right shoot folders. *(built; see §12)*
-4. Ingest + conformance + captions — local worker. *(later)*
-5. Recipe generation, selection, rendering — local worker. *(later)*
+4. **Pawcessor** — edits every clip in a shoot's `raw/` into `edited/` (trims dead space, captions) and makes each treatment's treated copies (sidecars). It knows nothing about recipes. *(separate tool; see §12b)*
+5. **Recipes and batches** — Muttiplier builds every recipe when the shoot goes Live and picks each batch (§12b); **Showdog** stitches each recipe exactly as specified, with no rules of its own. There are no human editors.
 6. Submission queue + form-filling Chrome extension. *(later)*
 
 ---
@@ -201,14 +201,14 @@ Hooks, CTAs and VOs written in a shoot (`shoot_id` set) can be deleted (RLS), wh
 
 **treatments** — ways a finished recipe is presented (§12b Treatments)
 - `name text unique`, `description text`, `source_url`, `sort_order`
-- `kind` — `layout` (changes which footage plays), `overlay` (a layer drawn on top) or `footage` (needs the editor to prepare clips)
+- `kind` — `layout` (changes which footage plays), `overlay` (a layer drawn on top) or `footage` (needs Pawcessor to prepare clips)
 - `placement` — `hook`, `video` (the whole video) or `cta`
 - `needs text[]` — what a recipe must have for it: `text` (AI writes it from the script), `speaker_video`, `old_footage`, `offer`
 - `component text`, `settings jsonb` — what Showdog draws it with, and how
 - `active` — on: applied to every recipe that has what it needs; off: kept, not applied
 - `system` — built in (Face to camera, Over b-roll): always on; can't be switched off, archived, deleted or changed in kind (a trigger enforces it)
 - `parts uuid[]` — a **curated combination**: the treatments it's made of, each drawn on its own part of the video (at most one sets how the VO looks: a layout, greenscreen or picture-in-picture; no two overlays on the same part). It applies where every part would. Only combinations set up in the Library exist; nothing else combines.
-- Seeded: Face to camera and Over b-roll (built in), Search bar, Retro look (VHS grain, date stamp, throwback font: Motion's "Nostalgia"; needs nothing), Unusual text placement, Greenscreen, Picture-in-picture; combinations Search then face to camera, Search then over b-roll, Placed text then face to camera, Search then picture-in-picture. The Offer badge is archived (adding one is the editor's call when the brand has a confirmed offer), and so is Text thread (it becomes a format: see Planned: Text Thread format).
+- Seeded: Face to camera and Over b-roll (built in), Search bar, Retro look (VHS grain, date stamp, throwback font: Motion's "Nostalgia"; needs nothing), Unusual text placement, Greenscreen, Picture-in-picture; combinations Search then face to camera, Search then over b-roll, Placed text then face to camera, Search then picture-in-picture. The Offer badge is archived (an offer goes in the script when the brand has a confirmed one), and so is Text thread (it becomes a format: see Planned: Text Thread format).
 
 **template_usage** (view) — `kind`, `template_id`, `shoot_count`, for "used in N shoots".
 
@@ -217,7 +217,8 @@ Hooks, CTAs and VOs written in a shoot (`shoot_id` set) can be deleted (RLS), wh
 **shoots**
 - `code text unique` — auto-assigned sequential `S001`, `S002`, …
 - `product_id`, `shoot_date date`, `location_notes text`, `notes text`
-- `status text check (status in ('draft','planned','shooting','filmed','edited','ingested','rendering','done'))` — this app sets `draft` → `planned` → `shooting` → `filmed` (and back, §9); later stages are reserved for the worker
+- `status text check (status in ('draft','planned','shooting','filmed','editing','edited'))` — `draft` → `planned` → `shooting` → `filmed` (and back, §9) → `editing` (Pawcessor has the manifest) → `edited`, shown as **Live** (recipes built, batches running; §12b). Batches carry their own statuses
+- `exploit_share numeric default 0.7` — the share of each new batch that exploits elements that have won (§12b)
 - `started_at`, `started_by`, `ended_at`, `ended_by` — stamped by trigger on status changes only
 - `broll_variations int default 1` (≥ 1) — different b-roll selections per hook + VO + CTA, each its own recipe; also how many clips each channel films of every b-roll shot (the checklist wants that many)
 - `vo_variations int default 1` (≥ 0) — **Cast mixes**: mixed versions per VO per channel, beats swapped between the people cast on it (0 = no mixing)
@@ -259,6 +260,17 @@ Snapshots matter: editing a template later must never change a shoot that's alre
 **shoot_clips** — one row per deliverable with footage on some phone: a shoot item (`item:<id>`) or one required b-roll clip for one channel (`broll:<shot>:<channel>:<n>`)
 - `shoot_id`, `target text`, unique on both; `file_name`, `size`, `state` (`saved` | `uploaded`), `path` (in Dropbox, once uploaded); `created_by` = whose phone it's on
 - Live over Supabase Realtime, so every phone sees a clip as soon as it's added anywhere. The clip itself stays on the phone that added it until it's uploaded.
+
+**shoot_manifests** — every manifest written for a shoot (`shoot_id`, `version`, `data`): the plan when editing starts, the full index when it goes Live (§12b).
+
+**shoot_shortlists** — a Live shoot's batches (§12b)
+- `shoot_id`, `code` (`B01`…), `size`, `entry_ids text[]` (recipe IDs; never repeated across batches), `manifest_version`
+- `status text check (status in ('batched','rendering','submitted','measured')) default 'batched'`, `status_at` — when it last moved
+- `exploit_share numeric` — the exploit share it was picked with
+
+**batch_scores** — one score per element a measured batch used: `shortlist_id`, `element_kind` (`hook`, `vo`, `cta`, `format`, `hook_type`, `treatment`, `person`), `element_key` (a code, hook type, treatment sidecar slug or person slug), `score` (`winner` | `mid` | `loser`), `notes`.
+
+**shoot_element_overrides** — an element dropped (`dropped` true) or kept (false) by hand, overriding the automatic drop: `shoot_id`, `element_kind`, `element_key`.
 
 ### Reserved for later (do not build yet; keep names free)
 
@@ -452,13 +464,13 @@ Items: `file` is the edited clip (what the worker reads) and `raw_file` where Mu
 
 Download a zip of empty folders (each with a `.keep` file) plus the plan's `manifest.json`, to unzip into the Dropbox `UGC/` root folder. With Dropbox connected, the same tree is created directly in Dropbox instead (§12).
 
-Everything from a shoot lives in its shoot folder, and everything a shoot produces is split by channel first: clips, recipes and renders. `raw/` and `edited/` have exactly the same tree: Muttiplier only uploads to `raw/`; editors edit each clip and put it in the same place under `edited/`.
+Everything from a shoot lives in its shoot folder, and everything a shoot produces is split by channel first: clips, recipes and renders. `raw/` and `edited/` have exactly the same tree: Muttiplier only uploads to `raw/`; Pawcessor edits each clip into the same place under `edited/`, with any treated copies beside it (§12b).
 
 ```
 UGC/
   [brand]/[product]/
     shoots/[S###]/                         named by the shoot code
-      manifest.json                        the plan; the full index of every clip once ready for batching
+      manifest.json                        the plan; the full index of every clip once Live
       raw/
         [channel]/                         topdognix/, topdogwhiskey/, topdogsiblings/: split by channel first
           hooks/[person]/H##.mov           one file per hook, named by code, captions alongside (H##.srt)
@@ -479,8 +491,8 @@ UGC/
           report.json                      the stitcher's run report, entries grouped by channel
 ```
 
-- **Hooks, VOs and CTAs are files named by code**, keeping their own extension. Re-adding one replaces the file. Editors save the edited clip under the same name in `edited/` (the extension can differ).
-- **Captions** sit next to their clip under the same name (e.g. `H01.srt` beside `H01.mov`, `problem/V01.srt` beside `problem/V01.mov`), in `raw/` and `edited/` alike; there's no separate captions folder. Muttiplier writes them when each hook, CTA and VO beat uploads: the script that was read, split into short lines (sentence breaks, at most ~32 characters / 6 words) and timed across the clip's measured length in proportion to each line's length. Editors polish them into `edited/`.
+- **Hooks, VOs and CTAs are files named by code**, keeping their own extension. Re-adding one replaces the file. Pawcessor saves the edited clip under the same name in `edited/` (the extension can differ).
+- **Captions** sit next to their clip under the same name (e.g. `H01.srt` beside `H01.mov`, `problem/V01.srt` beside `problem/V01.mov`), in `raw/` and `edited/` alike; there's no separate captions folder. Muttiplier writes them when each hook, CTA and VO beat uploads: the script that was read, split into short lines (sentence breaks, at most ~32 characters / 6 words) and timed across the clip's measured length in proportion to each line's length. Pawcessor polishes them into `edited/`.
 - **B-roll** is per shoot and loose: any clip in a beat folder can go under any VO with that beat, so clips keep their own names and a clash gets a number rather than overwriting. Beats are filed by name, so the same beat in two formats (e.g. `product`) shares a folder; general product shots go in `general/`. `shared` stands in for the channel only when a shoot has no channels.
 
 All slugs lowercase kebab-case; generate once and never change after a shoot is planned.
@@ -514,17 +526,19 @@ Goal: clips go straight from the shoot into the right Dropbox folders (§10d), s
 
 ---
 
-## 12b. Ready for batching and the manifest
+## 12b. Editing, going Live and the manifest
 
-Once a shoot is **filmed** and the editors have put every clip in `edited/`, the shoot page shows **Edits in? Get it ready for batching**.
+Once a shoot is **filmed**, its General tab shows **Filmed? Send it for editing**.
 
-- **Check edits** (runs in the browser, talking to Dropbox directly so a big shoot isn't cut short): lists `raw/` and `edited/` and checks that every filmed take is in both, named by its code (a VO beat by beat, in its beat's folder: `problem/V01`), a video (every take is filmed, VOs included; an audio file in a take's place is a problem); that `edited/` mirrors `raw/` clip for clip (same folders and names; extensions can differ); that no clips are still on phones; and reads every edited clip's **length** from the start of the file (MP4 / MOV from the movie header; anything unreadable is a problem). Any problem blocks the next step.
-- **Mark ready for batching** writes the **manifest** and sets the shoot to `edited`, shown as **Ready for batching**. **Refresh manifest** later re-checks and writes a new version; **Not ready** goes back to filmed.
-- **The manifest** (`manifest.json` in the shoot folder, and a copy in `shoot_manifests` with a version number) indexes every clip once, so batching and later tools never re-read Dropbox: the plan (shoot, people, channels, formats, items, b-roll shots), and for every take its kind, channel, person, code, beat (VOs), format, CTA mode, angle, the script read, its `edited/` and `raw/` file, its caption file and its length; for every b-roll clip its channel, beat folder (or `general`), the shot it was filmed for (from the checklist's upload records, matched by name) and whether the product is visible (from the shot; a clip in `general/` counts as a product shot). Until then, `manifest.json` holds just the plan (version 0, no clips).
+- **Start editing** writes the plan's manifest (a new version, no clips) to `manifest.json` and sets the shoot to `editing`. It's what **Pawcessor** works from: the plan, and the treatments that are on (combinations with their parts), each with its `description` (Pawcessor's AI writes the treatment's text from it), its `sidecar` name and `applies_to`, the takes that need a treated copy. **Back to filmed** undoes it.
+- **Pawcessor** walks `raw/`, edits each clip into the same place in `edited/` (trims dead space, captions), and for each treatment puts a treated copy beside every clip it applies to: `<clip>.<sidecar>.<ext>` (`hooks/joe/H01.search-bar.mp4`), one per treatment or combination. Where they go: a hook treatment on hooks (and a standalone VO's hook beat), a CTA treatment on CTAs (and a standalone VO's CTA beat), a whole-video treatment on every take, and footage that needs the speaker (greenscreen, picture-in-picture) on VO takes only. A layout (face to camera, over b-roll) needs none: it only chooses which footage plays. A combination gets one wherever any of its non-layout parts applies. B-roll is never treated. Pawcessor knows nothing about recipes.
+- **Check edits** (runs in the browser, talking to Dropbox directly so a big shoot isn't cut short): lists `raw/` and `edited/` and checks that every filmed take is in both, named by its code (a VO beat by beat, in its beat's folder: `problem/V01`), a video; that `edited/` mirrors `raw/` clip for clip (same folders and names; extensions can differ; sidecars aren't extras); that every take has the treated copies it needs; that no clips are still on phones; and reads every edited clip's **length** (sidecars play for their clip's length). Any problem blocks going Live, unless someone goes Live anyway (whatever's missing is left out and the problems are noted in the manifest).
+- **Go Live** writes the full **manifest** and every recipe (`recipes.json`), and sets the shoot to `edited`, shown as **Live**. The treatments are the ones Pawcessor was given, even if the Library changed since. From here the recipes are fixed: batches reference them by ID.
+- **The manifest** (`manifest.json` in the shoot folder, and a copy in `shoot_manifests` with a version number) indexes every clip once, so batching never re-reads Dropbox: the plan, and for every take its kind, channel, person, code, beat and wording (VOs), how it's shown, format, CTA mode, hook type, the script read, its `edited/` and `raw/` file, its caption file, its length and its `sidecars` (treatment sidecar → file); for every b-roll clip its channel, beat folder (or `general`), feature folder and the shot it was filmed for. Before that, `manifest.json` holds just the plan.
 
 ### Recipes and batches
 
-Once a shoot is ready for batching, the shoot page shows **Batches**, working from the latest manifest (no Dropbox reads; it only writes the results).
+Once a shoot is Live its details lock (nothing in the plan's tabs can change), the summary's calculator becomes a **usage bar** (one colour per batch, adding up to the share of the recipes used so far, with "% used") and a **Batches** tab opens first. It works from the Live manifest (no Dropbox reads; it only writes the results).
 
 **A valid recipe** (`shared/utils/recipes.ts`):
 
@@ -537,30 +551,39 @@ Once a shoot is ready for batching, the shoot page shows **Batches**, working fr
 - **How beats are shown**: a beat shown face to camera has no b-roll; one shown over b-roll is covered as below.
 - **B-roll variations**: each hook + VO + CTA gets up to `broll_variations` b-roll selections, each its own recipe (the first keeps the seed recipes always had; later ones stop when the b-roll can't give a different selection).
 - **B-roll per beat**: covered by that channel's clips filed under the beat (beats are filed by name across formats): its generic clips plus any filed for the feature the VO is about (`b-roll/<beat>/<feature>/`; other features' b-roll is never used), added clip by clip in a fixed order until their combined length covers the beat's recording; **general product shots** top a beat up only when its own clips run short. Never looped or slowed: a beat that can't be covered makes the recipe invalid. **No clip repeats** within one video. A **VO CTA** is covered the same way, product shots first.
+- **Treated versions** play the treated copies of the takes the treatment applies to (`hook.file`, each beat's `vo` and `cta.file` point at the sidecars), and aren't made when one is missing. B-roll selection is all Muttiplier's: exact picks per beat, deterministic.
 - Every clip must be in the manifest with a length. The stitcher trims (evenly, proportionally, head and tail; ~1.2 s minimum) and offsets the per-clip captions; hook, VO and CTA clips are never trimmed.
 - **Recipe IDs are deterministic**: `S001_topdognix_joe_H01_V02_C01_<hash of the b-roll picks>`, or for a mixed VO `S001_topdognix_mix_joe-H01_V02-joe.sam.joe_sam-C01_<hash>` (whose hook, whose beat in order, whose CTA). The same inputs give the same ID, which is also the render's file name.
 
-**Batches** (Best in Show; a batch is what gets rendered and submitted to the brand):
+**Batches** (a batch is what gets rendered and submitted to the brand; `shared/utils/batchLoop.ts`):
 
+- **The loop**: each batch goes **Batched** → **Rendering** (Showdog) → **Submitted** (to the brand) → **Measured**. The next batch can only be made once every batch before it is measured, so each learns from the last.
 - **Size** = the shoot's batch size (default 5%) × all valid recipes, at least one.
-- **No two recipes in a batch share a hook + VO pair** (a shared hook is fine), so b-roll variations of one recipe go in later batches. A mixed VO is its own VO here, and mixed recipes count as one more "person" when spreading picks.
-- **Spread**: each pick is the recipe whose person, then format, then hook type has been used least so far, so every person and format appears before any repeats; parts rated good are favoured; CTAs and b-roll only break ties.
-- **Never batch a recipe ID twice** (`shoot_shortlists.entry_ids`), and leave out recipes with a part rated bad.
-- **Ratings**: once ready for batching, each person's hooks, VOs and CTAs can be marked good or bad ("What worked"; stored on their items for every channel).
-- **Files**: `recipes.json` (every valid recipe, with its b-roll per beat and the manifest version, sorted by channel then ID), `batches/B01.json` (the recipe IDs grouped by channel, in pick order within each, with the manifest version; plus `B01.csv` for people, in the same order) and an empty `renders/B01/<channel>/` for each channel in the batch. The stitcher renders each recipe to `renders/B01/<channel>/<recipe id>.mp4` from `edited/` (`<channel>` is the recipe's `channel`) and writes `renders/B01/report.json`.
+- **Never batch a recipe ID twice** (`shoot_shortlists.entry_ids`): no recipe is in more than one batch.
+- **Measuring** scores every element the batch used (`batch_scores`): its treatments, hooks, formats, hook types, VOs, CTAs and people (b-roll isn't scored; a standalone VO's hook and CTA are scored with the VO), each **Winner**, **Mid** or **Loser**, by Motion's benchmark definitions, judged on the ads that used it once they've had time to spend:
+  - **Winner**: at least one ad with it spent 10× the account's median ad, and at least $500;
+  - **Mid**: its ads kept spending for 28+ days, but none became a winner;
+  - **Loser**: its ads got little or no spend.
+  A batch is marked measured once every element is scored.
+- **Exploit / Explore / Drop** (only measured batches' scores count):
+  - **Drop**: an element with 2+ losers and no wins is dropped automatically, and any element can be dropped or kept by hand in the **Elements** panel (`shoot_element_overrides`). Recipes with a dropped element are left out;
+  - **Exploit**: the shoot's exploit share (70% by default, editable per shoot, recorded on each batch) goes to recipes with the most winning elements, treatments, hooks and formats counting double;
+  - **Explore**: the rest goes to recipes with the most untried elements (weighted the same way). Either side running short is topped up from the rest. Before anything has won, the whole batch explores.
+- **Spread** (Best in Show, within exploit and explore alike): no two recipes in a batch share a hook + VO pair (a shared hook is fine), so b-roll variations of one recipe go in later batches; each pick is then the recipe whose person, then format, then hook type, then treatment has been used least so far; CTAs and b-roll only break ties. A mixed VO is its own VO here, and mixed recipes count as one more "person".
+- **Files**: `recipes.json` (every valid recipe, written when the shoot goes Live), `batches/B01.json` (the recipe IDs grouped by channel, in pick order within each, with the manifest version and how many exploit and explore; plus `B01.csv` for people, in the same order) and an empty `renders/B01/<channel>/` for each channel in the batch. Showdog renders each recipe to `renders/B01/<channel>/<recipe id>.mp4` from `edited/` and writes `renders/B01/report.json`.
 
 ### Treatments
 
-A treatment is a way a finished recipe is presented: a layout (every beat face to camera, or every beat over b-roll), an on-screen layer (search bar, text thread, offer badge, then/now labels, unusual text placement) or footage the editor prepares (greenscreen, picture-in-picture). Each tool does only its own part:
+A treatment is a way a finished recipe is presented: a layout (every beat face to camera, or every beat over b-roll), an on-screen layer (search bar, retro look, unusual text placement) or footage Pawcessor prepares (greenscreen, picture-in-picture). Each tool does only its own part:
 
 - **Muttiplier (the Library and the rules).** The Library's **Treatments** tab: each treatment has a name, its kind, where it goes (hook, whole video or CTA), what it needs, its Showdog component and settings, a source link and an on/off switch. Built in and always on: **Face to camera** and **Over b-roll**. The plan lists the treatments that are on (`treatments`), and the recipe builder applies them:
   - every recipe also gets **one version per treatment that applies** to it, alongside the untreated one (one treatment or curated combination per version, so they add rather than multiply). A combination's version carries its parts, each with its own spec. Each version is its own recipe: its ID is the untreated one's plus the treatment's slug (`…_<hash>_search-bar`), and `recipe.treatment` says which (null = untreated). Untreated IDs don't change;
   - a **layout** treatment re-lays the VO's beats (and a standalone VO's own hook and CTA; Library hooks and CTAs keep their own mode) and is covered again with b-roll. It's skipped where it changes nothing, or where the b-roll can't cover it;
-  - any other treatment applies when the recipe has what it needs: **text** (always: the editor writes it), the **speaker's video** (every take is filmed; an audio-only take doesn't qualify), the shoot's **offer** (`{{offer}}` filled in); **old footage** isn't tracked yet, so those don't apply;
+  - any other treatment applies when the recipe has what it needs: **text** (always: Pawcessor writes it), the **speaker's video** (every take is filmed; an audio-only take doesn't qualify), the shoot's **offer** (`{{offer}}` filled in); **old footage** isn't tracked yet, so those don't apply;
   - Best in Show spreads picks across treatments too, and never puts two versions of the same hook + VO in one batch;
   - the calculator counts every treated version, and the shoot's **General** tab has a collapsible **Treatments** card ("N of M applied") listing each treatment that's on with how many recipes it adds, or why it doesn't apply (for a combination, which part).
-- **The editor (makes the content).** For a treated recipe it writes the treatment's text (a search query, the messages of a thread, the hook as placed text) and prepares any footage it needs (a cut-out of the speaker for greenscreen or picture-in-picture), from the recipe's treatment and the plan. It never decides which treatments apply.
-- **Showdog (draws them).** Each recipe in `B01.json` carries its treatment (component and settings); with the editor's content, Showdog draws exactly that, with no rules of its own.
+- **Pawcessor (makes the content).** For every clip a treatment applies to, it makes a treated copy (a sidecar, §12b): its AI writes the treatment's text from the treatment's description and the clip's script (a search query, the hook as placed text), and it prepares any footage it needs (a cut-out of the speaker for greenscreen or picture-in-picture). It never decides which treatments apply to which recipes.
+- **Showdog (stitches them).** A treated recipe's files are the sidecars, and it carries its treatment (component and settings); Showdog stitches exactly that, with no rules of its own.
 
 ### Text Thread format (F21)
 

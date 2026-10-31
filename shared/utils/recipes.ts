@@ -26,8 +26,9 @@
 // and CTA) and is skipped where it changes nothing or the b-roll can't cover it; Library hooks
 // and CTAs keep their own mode. Other treatments apply when the recipe has what they need: text
 // (the editor writes it), the speaker's video (every take filmed), the shoot's {{offer}}; old
-// footage isn't tracked yet. Muttiplier only says which treatment a version carries: the editor
-// makes its text and content, and Showdog draws it.
+// footage isn't tracked yet. Pawcessor makes each treatment's content as a treated copy (a
+// sidecar) beside every clip it applies to; a treated version plays those copies instead, and isn't
+// made when one's missing. Layouts need no sidecar: they only choose which footage plays.
 //
 // Paths are relative to the shoot's edited/ folder.
 
@@ -73,7 +74,7 @@ export interface Recipe {
   cta: { code: string, person: string, item_id: string, take: string | null, mode: string | null, file: string, caption: string | null, duration: number, broll: string[], text: string | null }
   /** the VO beats' captions, in order (each beat's SRT, offset by the running length when stitched) */
   vo_captions: (string | null)[]
-  /** the treatment this version carries (null = untreated): the editor makes its content, Showdog draws it */
+  /** the treatment this version carries (null = untreated): its files are Pawcessor's treated copies, Showdog stitches them */
   treatment: RecipeTreatment | null
 }
 
@@ -88,6 +89,32 @@ export interface RecipeTreatment {
   settings: unknown
   /** a curated combination: its parts, each drawn on its own part of the video */
   parts?: RecipeTreatment[]
+  /** the sidecar Pawcessor makes for it (null: a layout, none needed; older manifests: not said) */
+  sidecar?: string | null
+  /** the takes that get one */
+  applies_to?: string[]
+}
+
+/**
+ * A treated version plays the treated copies (sidecars) of the takes the treatment applies to.
+ * Null when one of them is missing. Treatments without a sidecar leave the recipe as it is.
+ */
+function withSidecars(recipe: Recipe, treatment: RecipeTreatment, byFile: Map<string, TakeClip>): Recipe | null {
+  const sidecar = treatment.sidecar
+  if (!sidecar) return recipe
+  const clips = treatment.applies_to ?? []
+  // '' is a beat shown on screen: nothing filmed, nothing to treat
+  const swap = (file: string, clip: string) => !file || !clips.includes(clip) ? file : byFile.get(file)?.sidecars?.[sidecar] ?? null
+  const hook = swap(recipe.hook.file, 'hook')
+  const cta = swap(recipe.cta.file, 'cta')
+  const beats = recipe.vo.beats.map(beat => ({ ...beat, vo: swap(beat.vo, 'vo') }))
+  if (hook === null || cta === null || beats.some(beat => beat.vo === null)) return null
+  return {
+    ...recipe,
+    hook: { ...recipe.hook, file: hook },
+    vo: { ...recipe.vo, beats: beats as RecipeBeat[] },
+    cta: { ...recipe.cta, file: cta }
+  }
 }
 
 const isVideoFile = (file: string) => /\.(mp4|mov|m4v)$/i.test(file)
@@ -194,6 +221,7 @@ export function buildRecipes(manifest: Manifest): Recipe[] {
   // layouts (and combinations with a layout part) re-lay the beats; the rest are drawn on top
   const layouts = treatments.filter(treatment => layoutOf(treatment))
   const others = treatments.filter(treatment => !layoutOf(treatment))
+  const byFile = new Map(takes.filter(take => take.file).map(take => [take.file, take]))
   const offer = (manifest.plan.shoot.slot_values as Record<string, unknown> | null | undefined)?.offer
   const hasOffer = typeof offer === 'string' && offer.trim() !== ''
 
@@ -342,11 +370,14 @@ export function buildRecipes(manifest: Manifest): Recipe[] {
                 vo_captions: body.map(beat => beat.caption),
                 treatment: layoutTreatment
               }
-              recipes.push(recipe)
+              // a combination with a layout plays its treated copies too
+              const laid = layoutTreatment ? withSidecars(recipe, layoutTreatment, byFile) : recipe
+              if (laid) recipes.push(laid)
               // the other treatments: a version of the untreated recipe for each that applies
               if (!layoutTreatment) {
                 for (const treatment of others.filter(applies)) {
-                  recipes.push({ ...recipe, id: `${recipe.id}_${treatment.slug}`, treatment })
+                  const treated = withSidecars(recipe, treatment, byFile)
+                  if (treated) recipes.push({ ...treated, id: `${recipe.id}_${treatment.slug}`, treatment })
                 }
               }
             }
@@ -402,33 +433,32 @@ export interface BatchOptions {
   size: number
   /** recipe ids already batched: never batched again */
   exclude?: Set<string>
-  /** item id -> rating: recipes with a part rated bad are left out, good parts are favoured */
-  ratings?: Map<string, 'good' | 'bad'>
+  /** lower is picked first, before the spread (the batch loop: recipes with winning or untried elements) */
+  prefer?: (recipe: Recipe) => number
+  /** recipes already picked for this batch: counted in the spread, and their hook + VO pairs are taken */
+  after?: Recipe[]
 }
 
 /** How many recipes a batch takes: the shoot's share of the valid ones (at least one if there are any). */
 export const batchSize = (valid: number, rate: number) => valid ? Math.max(1, Math.round(valid * rate)) : 0
 
-/** The recipes a batch can choose from: never batched, nothing rated bad. */
-export function availableRecipes(recipes: Recipe[], options: Omit<BatchOptions, 'size'>) {
-  const bad = (id: string) => options.ratings?.get(id) === 'bad'
-  const voItems = (recipe: Recipe) => recipe.vo.item_ids ?? [recipe.vo.item_id]
-  return recipes.filter(recipe => !options.exclude?.has(recipe.id) && !bad(recipe.hook.item_id) && !voItems(recipe).some(bad) && !bad(recipe.cta.item_id))
+/** The recipes a batch can choose from: never batched. */
+export function availableRecipes(recipes: Recipe[], options: Pick<BatchOptions, 'exclude'>) {
+  return recipes.filter(recipe => !options.exclude?.has(recipe.id))
 }
 
 /**
  * Choose a batch, one recipe at a time. No two recipes share a hook + VO pair, so b-roll
- * variations of one go in later batches. Each pick is the recipe whose person (mixed VOs count as
- * one more "person"), then format, then hook type has been used least so far (so every person, mixed
- * VOs and every format appear before any repeats), favouring parts rated good; CTAs and b-roll only break
- * ties. Ties after that break on a stable hash.
+ * variations of one go in later batches. Each pick is the recipe `prefer` ranks first, then whose
+ * person (mixed VOs count as one more "person"), then format, then hook type, then treatment has
+ * been used least so far (so every person, mixed VOs and every format appear before any repeats);
+ * CTAs and b-roll only break ties. Ties after that break on a stable hash.
  */
 /** A hook + VO pair: a standalone VO's hook wordings count as different hooks. */
 const pairKey = (recipe: Recipe) => `${recipe.hook.item_id}|${recipe.hook.take ?? ''}|${recipe.vo.item_id}`
 
 export function chooseBatch(recipes: Recipe[], options: BatchOptions): Recipe[] {
   const candidates = availableRecipes(recipes, options)
-  const good = (id: string) => options.ratings?.get(id) === 'good' ? 1 : 0
   const used = new Map<string, number>()
   const count = (key: string) => used.get(key) ?? 0
   const bump = (key: string) => used.set(key, count(key) + 1)
@@ -436,11 +466,11 @@ export function chooseBatch(recipes: Recipe[], options: BatchOptions): Recipe[] 
   const chosen: Recipe[] = []
 
   const score = (recipe: Recipe): number[] => [
+    options.prefer?.(recipe) ?? 0,
     count(`person:${recipe.mixed ? '(mixed)' : recipe.person}`),
     count(`format:${recipe.vo.format}`),
     count(`hook_type:${recipe.hook.hook_type}`),
     count(`treatment:${recipe.treatment?.slug ?? ''}`),
-    -(good(recipe.hook.item_id) + Math.max(0, ...(recipe.vo.item_ids ?? [recipe.vo.item_id]).map(good)) + good(recipe.cta.item_id)),
     count(`hook:${recipe.hook.item_id}`) + count(`vo:${recipe.vo.item_id}`),
     count(`cta:${recipe.cta.item_id}`),
     recipe.vo.beats.flatMap(beat => beat.broll).reduce((sum, file) => sum + count(`broll:${file}`), 0),
@@ -451,19 +481,7 @@ export function chooseBatch(recipes: Recipe[], options: BatchOptions): Recipe[] 
     return false
   }
 
-  while (chosen.length < options.size) {
-    let best: Recipe | null = null
-    let bestScore: number[] = []
-    for (const recipe of candidates) {
-      if (pairs.has(pairKey(recipe))) continue
-      const s = score(recipe)
-      if (!best || better(s, bestScore)) {
-        best = recipe
-        bestScore = s
-      }
-    }
-    if (!best) break
-    chosen.push(best)
+  const take = (best: Recipe) => {
     pairs.add(pairKey(best))
     bump(`person:${best.mixed ? '(mixed)' : best.person}`)
     bump(`format:${best.vo.format}`)
@@ -473,6 +491,24 @@ export function chooseBatch(recipes: Recipe[], options: BatchOptions): Recipe[] 
     bump(`vo:${best.vo.item_id}`)
     bump(`cta:${best.cta.item_id}`)
     for (const file of best.vo.beats.flatMap(beat => beat.broll)) bump(`broll:${file}`)
+  }
+  const taken = new Set((options.after ?? []).map(recipe => recipe.id))
+  for (const recipe of options.after ?? []) take(recipe)
+
+  while (chosen.length < options.size) {
+    let best: Recipe | null = null
+    let bestScore: number[] = []
+    for (const recipe of candidates) {
+      if (taken.has(recipe.id) || pairs.has(pairKey(recipe))) continue
+      const s = score(recipe)
+      if (!best || better(s, bestScore)) {
+        best = recipe
+        bestScore = s
+      }
+    }
+    if (!best) break
+    chosen.push(best)
+    take(best)
   }
   return chosen
 }

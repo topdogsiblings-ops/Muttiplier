@@ -27,20 +27,25 @@ if (!data.value) throw createError({ statusCode: 404, statusMessage: `Shoot ${co
 const bundle = computed(() => data.value!)
 const shoot = computed(() => bundle.value.shoot)
 const isDraft = computed(() => shoot.value.status === 'draft')
+/** Live (edited): the recipes are built, so the shoot's details lock and its batches take over */
+const live = computed(() => shoot.value.status === 'edited')
+const loop = useBatchLoop(bundle)
 const channelIds = computed(() => bundle.value.channels.map(channel => channel.id))
 const busy = ref(false)
 
 // --- tabs ------------------------------------------------------------------
 // General (setup, slots, what's left to do), Formats, then the video in order: Hooks, VOs
-// (written here), CTAs, and B-roll. The open tab lives in the URL so it survives reloads and can
-// be linked.
-const TAB_VALUES = ['general', 'formats', 'hooks', 'vos', 'ctas', 'broll'] as const
+// (written here), CTAs, and B-roll. A Live shoot opens on Batches. The open tab lives in the URL
+// so it survives reloads and can be linked.
+const TAB_VALUES = ['batches', 'general', 'formats', 'hooks', 'vos', 'ctas', 'broll'] as const
 type ShootTab = typeof TAB_VALUES[number]
+const defaultTab = computed<ShootTab>(() => live.value ? 'batches' : 'general')
 const tab = computed<ShootTab>({
-  get: () => TAB_VALUES.includes(route.query.tab as ShootTab) ? route.query.tab as ShootTab : 'general',
-  set: value => router.replace({ query: { ...route.query, tab: value === 'general' ? undefined : value } })
+  get: () => TAB_VALUES.includes(route.query.tab as ShootTab) && (live.value || route.query.tab !== 'batches') ? route.query.tab as ShootTab : defaultTab.value,
+  set: value => router.replace({ query: { ...route.query, tab: value === defaultTab.value ? undefined : value } })
 })
 const tabItems = computed(() => [
+  ...(live.value ? [{ label: 'Batches', value: 'batches', icon: 'i-lucide-layers', badge: loop.batches.value.length || undefined }] : []),
   { label: 'General', value: 'general', icon: 'i-lucide-settings-2' },
   { label: 'Formats', value: 'formats', icon: 'i-lucide-layout-template', badge: shootFormats.value.length || undefined },
   { label: 'Hooks', value: 'hooks', icon: 'i-lucide-anchor', badge: groupsOf('hook').length || undefined },
@@ -789,8 +794,12 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
 
     <template #body>
       <div class="mx-auto w-full max-w-5xl space-y-4">
+        <!-- Live: how much of the recipes the batches have used -->
+        <section v-if="live" class="rounded-lg border border-default p-3 sm:p-4" aria-label="Recipes used">
+          <PlannerBatchUsage :loop="loop" />
+        </section>
         <!-- Summary: the calculator's headline numbers; the full calculator opens from here -->
-        <section class="rounded-lg border border-default p-3 sm:p-4" aria-label="Shoot summary">
+        <section v-else class="rounded-lg border border-default p-3 sm:p-4" aria-label="Shoot summary">
           <div class="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-6">
             <div>
               <p class="text-xs text-muted">
@@ -870,8 +879,11 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
           :ui="{ list: 'overflow-x-auto overflow-y-hidden', label: 'truncate max-sm:sr-only' }"
         />
 
+        <!-- Batches (Live): make, track and measure them -->
+        <PlannerBatches v-if="tab === 'batches'" :bundle="bundle" :loop="loop" @changed="refresh" />
+
         <!-- General: setup, slots and what's left to do -->
-        <div v-if="tab === 'general'" class="space-y-6">
+        <div v-else-if="tab === 'general'" class="space-y-6">
           <UAlert
             v-if="isDraft && blockers.length"
             color="neutral"
@@ -892,8 +904,8 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
             color="info"
             variant="subtle"
             icon="i-lucide-lock"
-            title="Codes and scripts are frozen"
-            :description="shoot.status === 'planned' ? 'Library and product edits no longer affect this shoot. You can still add per-person wording, locations and b-roll shots, or use Back to draft to change the plan.' : 'Library and product edits no longer affect this shoot. You can still add per-person wording, locations and b-roll shots.'"
+            :title="live ? 'Live: the shoot is locked' : 'Codes and scripts are frozen'"
+            :description="live ? 'Its recipes are built from the edited clips, so nothing here can change. Batches are made, tracked and measured in the Batches tab.' : shoot.status === 'planned' ? 'Library and product edits no longer affect this shoot. You can still add per-person wording, locations and b-roll shots, or use Back to draft to change the plan.' : 'Library and product edits no longer affect this shoot. You can still add per-person wording, locations and b-roll shots.'"
           />
           <UAlert
             v-if="result.warnings.length"
@@ -910,9 +922,8 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
               </ul>
             </template>
           </UAlert>
-          <!-- edits in: check them and build the manifest (filmed → ready for batching) -->
-          <PlannerBatchReady v-if="shoot.status === 'filmed' || shoot.status === 'edited'" :bundle="bundle" @changed="refresh" />
-          <PlannerBatches v-if="shoot.status === 'edited'" :bundle="bundle" @changed="refresh" />
+          <!-- filmed → editing (Pawcessor) → Live: check the edits, build the recipes -->
+          <PlannerEditing v-if="shoot.status === 'filmed' || shoot.status === 'editing'" :bundle="bundle" @changed="refresh" />
           <!-- slots nothing fills yet: fill them here (drafts only; planning freezes the scripts) -->
           <PlannerSlotFiller v-if="isDraft" :bundle="bundle" @changed="refresh" />
           <UAlert
@@ -961,7 +972,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
               </div>
             </template>
             <p class="mb-3 text-sm text-muted">
-              Every recipe also gets a version for each treatment that applies to it. The editor makes the treatment's content and Showdog draws it.
+              Every recipe also gets a version for each treatment that applies to it. Pawcessor makes a treated copy of each clip it applies to, and Showdog stitches them.
             </p>
             <ul class="divide-y divide-default">
               <li v-for="treatment in result.treatments" :key="treatment.name" class="flex items-baseline justify-between gap-3 py-1.5 text-sm">
@@ -972,7 +983,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
             </ul>
           </UCard>
 
-          <UCard>
+          <UCard :ui="{ body: live ? 'pointer-events-none opacity-75' : undefined }">
             <template #header>
               <div class="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 class="font-semibold text-highlighted">
@@ -1056,8 +1067,10 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
           </UCard>
         </div>
 
+        <!-- the plan's tabs: locked once Live -->
+        <fieldset v-else :disabled="live" class="m-0 min-w-0 border-0 p-0" :class="{ 'opacity-90': live }">
         <!-- Formats: the VO formats this shoot uses -->
-        <UCard v-else-if="tab === 'formats'">
+        <UCard v-if="tab === 'formats'">
           <template #header>
             <div class="flex items-start justify-between gap-2">
               <p class="text-sm text-muted">
@@ -1255,6 +1268,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
             @changed="refresh"
           />
         </UCard>
+        </fieldset>
       </div>
 
       <USlideover v-model:open="calculatorOpen" title="Calculator" :ui="{ content: 'max-w-md' }">

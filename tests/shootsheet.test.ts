@@ -164,7 +164,7 @@ describe('planSnapshots', () => {
 describe('buildShootsheet', () => {
   it('matches the worker contract', () => {
     const sheet = buildShootsheet(bundle())
-    expect(sheet.schema_version).toBe(8)
+    expect(sheet.schema_version).toBe(9)
     // custom slots are the shoot's own
     expect(sheet.shoot.slot_values).toEqual({ benefit: 'calmer walks' })
     expect(sheet.shoot).toMatchObject({ code: 'S014', date: '2026-10-20', broll_variations: 3, submission_rate: 0.15 })
@@ -227,7 +227,7 @@ describe('skeleton zip', () => {
     expect(folders).toEqual(expect.arrayContaining([`${shoot}/raw`, `${shoot}/edited`, `${shoot}/renders`]))
     // everything lives in the shoot folder
     expect(folders.every(folder => folder.startsWith(shoot))).toBe(true)
-    expect(JSON.parse(files[`${shoot}/manifest.json`]!)).toEqual({ schema_version: 9, version: 0, generated_at: null, plan: sheet, clips: [] })
+    expect(JSON.parse(files[`${shoot}/manifest.json`]!)).toEqual({ schema_version: 10, version: 0, generated_at: null, plan: sheet, clips: [] })
   })
 
   it('files b-roll for a product feature a level down in its beat folder', () => {

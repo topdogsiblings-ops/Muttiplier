@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BundleItem, ShootBundle } from '../shared/utils/shootsheet'
 import { buildManifest, checkEdits } from '../shared/utils/manifest'
+import { sidecarClips } from '../shared/utils/shootsheet'
 
 const format = { code: 'F01', cta_modes: ['sync', 'vo'], beats: ['problem', 'product'] }
 
@@ -124,5 +125,47 @@ describe('a text thread', () => {
     expect(hook).toMatchObject({ file: '', script: 'ok how is Calming Chews so good' })
     // 6 words at 2.5 a second, plus a moment for the typing dots
     expect(hook.duration).toBe(4)
+  })
+})
+
+describe('treatment sidecars', () => {
+  const treatment = (name: string, kind: string, placement: string, needs: string[] = [], parts?: unknown[]) =>
+    ({ name, kind, placement, needs, component: 'x', settings: {}, ...(parts ? { parts } : {}) }) as NonNullable<ShootBundle['treatments']>[number]
+  const retro = treatment('Retro look', 'overlay', 'video')
+  const search = treatment('Search bar', 'overlay', 'hook', ['text'])
+  const greenscreen = treatment('Greenscreen', 'footage', 'video', ['speaker_video'])
+  const face = treatment('Face to camera', 'layout', 'video', ['speaker_video'])
+
+  it('go on the takes each treatment applies to: hooks, every take, or the VO for greenscreen; none for layouts', () => {
+    expect(sidecarClips(search)).toEqual(['hook'])
+    expect(sidecarClips(retro)).toEqual(['hook', 'vo', 'cta'])
+    expect(sidecarClips(greenscreen)).toEqual(['vo'])
+    expect(sidecarClips(face)).toEqual([])
+    // a combination: wherever any of its non-layout parts goes
+    expect(sidecarClips(treatment('Face + search', 'layout', 'video', [], [face, search]))).toEqual(['hook'])
+  })
+
+  const withTreatments = () => ({ ...bundle(), treatments: [search, greenscreen, face] })
+  const sidecars = [
+    'topdognix/hooks/joe/H01.search-bar.mp4',
+    'topdognix/vo/joe/problem/V01.greenscreen.mp4', 'topdognix/vo/joe/product/V01.greenscreen.mp4'
+  ]
+
+  it('are checked for, and aren\u2019t taken for clips of their own', () => {
+    const missing = checkEdits(withTreatments(), raw, edited, { durations })
+    expect(missing.problems).toEqual(['Search bar: no treated copy of 1 clip (topdognix/hooks/joe/H01.search-bar)', 'Greenscreen: no treated copy of 2 clips (topdognix/vo/joe/problem/V01.greenscreen, topdognix/vo/joe/product/V01.greenscreen)'])
+    // sidecars need no length of their own and aren't extras in edited/
+    expect(checkEdits(withTreatments(), raw, [...edited, ...sidecars], { durations })).toMatchObject({ ok: true, problems: [] })
+  })
+
+  it('are listed on each clip in the manifest', () => {
+    const manifest = buildManifest(withTreatments(), [...edited, ...sidecars], raw, durations, { version: 1, generatedAt: '' })
+    const files = manifest.clips.map(clip => clip.file)
+    expect(files.some(file => file.includes('.search-bar.') || file.includes('.greenscreen.'))).toBe(false)
+    const hook = manifest.clips.find(clip => clip.kind === 'hook') as { sidecars?: Record<string, string> }
+    expect(hook.sidecars).toEqual({ 'search-bar': 'topdognix/hooks/joe/H01.search-bar.mp4' })
+    const vo = manifest.clips.find(clip => clip.kind === 'vo') as { sidecars?: Record<string, string> }
+    expect(vo.sidecars).toEqual({ greenscreen: 'topdognix/vo/joe/problem/V01.greenscreen.mp4' })
+    expect(manifest.plan.treatments.map(t => `${t.name}:${t.sidecar}:${t.applies_to.join('+')}`)).toEqual(['Search bar:search-bar:hook', 'Greenscreen:greenscreen:vo', 'Face to camera:null:'])
   })
 })

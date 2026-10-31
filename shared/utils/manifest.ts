@@ -1,14 +1,17 @@
-// The shoot's manifest (spec §14): one index of every clip in edited/, built when the shoot is
-// marked ready for batching, so batching and later tools read it instead of Dropbox. Pure: the
-// app lists Dropbox, reads the clips' lengths and passes them in.
+// The shoot's manifest (spec §14): one index of every clip in edited/, built when the shoot goes
+// Live, so batching and later tools read it instead of Dropbox. Pure: the app lists Dropbox, reads
+// the clips' lengths and passes them in.
+//
+// Pawcessor edits raw/ into edited/ and, for each treatment that needs one, puts a treated copy
+// beside each clip it applies to: <clip>.<treatment sidecar>.<ext>, e.g. "…/hooks/joe/H01.retro-look.mp4".
 //
 // Paths here are relative to the shoot's raw/ or edited/ folder, e.g.
 // "topdognix/hooks/joe/H01.mov" or "topdognix/b-roll/problem/IMG_4821.mov".
 
 import type { BundleItem, ShootBundle } from './shootsheet'
-import type { BeatShow } from './shootsheet'
-import { MANIFEST_SCHEMA_VERSION, beatShow, brollFolder, buildShootsheet, channelFolder, isStandalone, itemBeats, linkedCodes, resolveItemScript, shootFolder, takeLabel, takeSpot } from './shootsheet'
-import { DEFAULT_WORDS_PER_SECOND, beatWordings, estimateSeconds, parseBeats, parseTakeKey } from './slots'
+import type { BeatShow, SidecarClip } from './shootsheet'
+import { MANIFEST_SCHEMA_VERSION, STANDALONE_CTA_BEAT, STANDALONE_HOOK_BEAT, beatShow, sidecarClips, brollFolder, buildShootsheet, channelFolder, isStandalone, itemBeats, linkedCodes, resolveItemScript, shootFolder, takeLabel, takeSpot } from './shootsheet'
+import { DEFAULT_WORDS_PER_SECOND, beatWordings, estimateSeconds, parseBeats, parseTakeKey, slugify } from './slots'
 
 const VIDEO = new Set(['mov', 'mp4', 'm4v', 'hevc'])
 const AUDIO = new Set(['m4a', 'mp3', 'wav', 'aac', 'caf', 'aif', 'aiff'])
@@ -29,6 +32,29 @@ export const spotPath = (bundle: ShootBundle, item: BundleItem, beat: string | n
 const filesAt = (spot: string, files: string[]) =>
   files.filter(file => isClip(file) && withoutExtension(file).toLowerCase() === spot.toLowerCase())
 
+/** The treatments Pawcessor makes sidecars for: each one's sidecar name and the takes that get one. */
+export const shootSidecars = (bundle: ShootBundle) => (bundle.treatments ?? [])
+  .map(treatment => ({ name: treatment.name, slug: slugify(treatment.name), clips: sidecarClips(treatment) }))
+  .filter(treatment => treatment.clips.length)
+
+/** Which kind of take a spot is, for sidecars: a standalone VO's hook and CTA beats count as a hook and a CTA. */
+export function sidecarClipOf(item: BundleItem, beat: string | null): SidecarClip {
+  if (item.kind !== 'body') return item.kind
+  const name = beat ? parseTakeKey(beat).beat : ''
+  if (isStandalone(item) && name === STANDALONE_HOOK_BEAT) return 'hook'
+  if (isStandalone(item) && name === STANDALONE_CTA_BEAT) return 'cta'
+  return 'vo'
+}
+
+/** Is this file a treatment's sidecar (<clip>.<sidecar>.<ext>) rather than a clip of its own? */
+export function sidecarTest(bundle: ShootBundle) {
+  const slugs = new Set(shootSidecars(bundle).map(sidecar => sidecar.slug))
+  return (file: string) => {
+    const name = withoutExtension(file.slice(file.lastIndexOf('/') + 1))
+    return name.includes('.') && slugs.has(name.slice(name.lastIndexOf('.') + 1).toLowerCase())
+  }
+}
+
 /** Every take the shoot's filmed items need: one per item per beat (hooks and CTAs one). */
 export function expectedSpots(bundle: ShootBundle) {
   return bundle.items
@@ -46,7 +72,7 @@ export interface EditsCheck {
 }
 
 /**
- * Before a shoot is ready for batching: every filmed take is in raw/ and edited/, named by its
+ * Before a shoot goes Live: every filmed take is in raw/ and edited/, named by its
  * code (a VO beat by beat) and of the right kind; edited/ mirrors raw/ clip for clip, same
  * folders and names (extensions can differ, editors re-export); every edited clip's length can
  * be read; and nothing is still waiting on a phone. `durations` (edited path -> seconds) is
@@ -59,6 +85,9 @@ export function checkEdits(
   options: { onPhones?: number, durations?: Map<string, number | null> } = {}
 ): EditsCheck {
   const problems: string[] = []
+  const sidecars = shootSidecars(bundle)
+  const isSidecar = sidecarTest(bundle)
+  const missingSidecars = new Map(sidecars.map(sidecar => [sidecar.name, [] as string[]]))
   const person = (id: string) => bundle.people.find(p => p.id === id)?.name ?? 'someone'
   const channel = (id: string | null) => bundle.channels.find(c => c.id === id)?.name ?? 'no channel'
   if (options.onPhones) problems.push(`${options.onPhones} clip${options.onPhones === 1 ? ' is' : 's are'} still on phones: upload them first`)
@@ -72,20 +101,29 @@ export function checkEdits(
       else if (found.length > 1) problems.push(`${label}: ${found.length} files at ${stage}/${spot}`)
       else if (kindOfFile(found[0]!) !== 'video') problems.push(`${label}: ${stage}/${found[0]} should be a video`)
     }
+    // each treatment's treated copy, beside the edited take
+    const clip = sidecarClipOf(item, beat)
+    for (const sidecar of sidecars.filter(sidecar => sidecar.clips.includes(clip))) {
+      if (!filesAt(`${spot}.${sidecar.slug}`, edited).length) missingSidecars.get(sidecar.name)!.push(`${spot}.${sidecar.slug}`)
+    }
   }
 
   // edited/ mirrors raw/: same clips, same places, same names
   const key = (file: string) => withoutExtension(file).toLowerCase()
   const rawKeys = new Map(raw.filter(isClip).map(file => [key(file), file]))
-  const editedKeys = new Map(edited.filter(isClip).map(file => [key(file), file]))
+  const editedKeys = new Map(edited.filter(file => isClip(file) && !isSidecar(file)).map(file => [key(file), file]))
   const missing = [...rawKeys].filter(([k]) => !editedKeys.has(k)).map(([, file]) => file)
   const extra = [...editedKeys].filter(([k]) => !rawKeys.has(k)).map(([, file]) => file)
   const list = (files: string[]) => files.slice(0, 6).join(', ') + (files.length > 6 ? `… (${files.length - 6} more)` : '')
   if (missing.length) problems.push(`Not in edited/ yet: ${list(missing)}`)
   if (extra.length) problems.push(`In edited/ but not raw/ (renamed or misplaced?): ${list(extra)}`)
+  for (const [name, spots] of missingSidecars) {
+    if (spots.length) problems.push(`${name}: no treated copy of ${spots.length} clip${spots.length === 1 ? '' : 's'} (${list(spots)})`)
+  }
 
   if (options.durations) {
-    const unreadable = edited.filter(isClip).filter(file => !options.durations!.get(file))
+    // a sidecar plays for its clip's length, so only the clips themselves are read
+    const unreadable = edited.filter(file => isClip(file) && !isSidecar(file)).filter(file => !options.durations!.get(file))
     if (unreadable.length) problems.push(`Couldn't read the length of ${list(unreadable)} (use .mov or .mp4)`)
   }
 
@@ -138,6 +176,8 @@ export interface TakeClip extends ClipBase {
   script: string
   /** the captions next to it in edited/, if they're there */
   caption: string | null
+  /** each treatment's treated copy beside it in edited/ (sidecar -> file), for the treatments that apply to it */
+  sidecars?: Record<string, string>
 }
 
 export interface BrollClip extends ClipBase {
@@ -179,7 +219,9 @@ export function buildManifest(
 ): Manifest {
   const clips: ManifestClip[] = []
   const personSlug = (id: string) => bundle.people.find(p => p.id === id)?.slug ?? 'unknown'
-  const editedClips = edited.filter(isClip)
+  const isSidecar = sidecarTest(bundle)
+  const sidecars = shootSidecars(bundle)
+  const editedClips = edited.filter(file => isClip(file) && !isSidecar(file))
   // the raw clip at the same place, under its own extension (editors re-export, so it can differ)
   const rawByPlace = new Map(raw.filter(isClip).map(file => [withoutExtension(file).toLowerCase(), file]))
   const rawOf = (file: string) => rawByPlace.get(withoutExtension(file).toLowerCase()) ?? null
@@ -192,6 +234,13 @@ export function buildManifest(
     // a VO take: one wording of one beat
     const take = beat ? parseTakeKey(beat) : null
     const wording = take ? beatWordings(script.beats?.find(b => b.beat === take.beat) ?? { beat: take.beat, script: '' }).find(w => w.option === take.option) : null
+    const clip = sidecarClipOf(item, beat)
+    const treated = Object.fromEntries(sidecars
+      .filter(sidecar => sidecar.clips.includes(clip))
+      .flatMap((sidecar) => {
+        const found = filesAt(`${spot}.${sidecar.slug}`, edited)[0]
+        return found ? [[sidecar.slug, found]] : []
+      }))
     clips.push({
       kind: item.kind === 'body' ? 'vo' : item.kind,
       channel: channelFolder(bundle, item.channel_id),
@@ -212,7 +261,8 @@ export function buildManifest(
       file,
       raw_file: rawOf(file),
       caption,
-      duration: durations.get(file) ?? null
+      duration: durations.get(file) ?? null,
+      ...(sidecars.length ? { sidecars: treated } : {})
     })
   }
 

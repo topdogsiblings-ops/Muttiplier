@@ -1132,6 +1132,82 @@ export type Database = {
           },
         ]
       }
+      batch_scores: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          element_key: string
+          element_kind: string
+          notes: string | null
+          score: string
+          shortlist_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          element_key: string
+          element_kind: string
+          notes?: string | null
+          score: string
+          shortlist_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          element_key?: string
+          element_kind?: string
+          notes?: string | null
+          score?: string
+          shortlist_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "batch_scores_shortlist_id_fkey"
+            columns: ["shortlist_id"]
+            isOneToOne: false
+            referencedRelation: "shoot_shortlists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shoot_element_overrides: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dropped: boolean
+          element_key: string
+          element_kind: string
+          shoot_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dropped: boolean
+          element_key: string
+          element_kind: string
+          shoot_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dropped?: boolean
+          element_key?: string
+          element_kind?: string
+          shoot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shoot_element_overrides_shoot_id_fkey"
+            columns: ["shoot_id"]
+            isOneToOne: false
+            referencedRelation: "shoots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shoot_manifests: {
         Row: {
           created_at: string
@@ -1214,9 +1290,12 @@ export type Database = {
           created_by: string | null
           id: string
           entry_ids: string[]
+          exploit_share: number | null
           manifest_version: number | null
           shoot_id: string
           size: number
+          status: string
+          status_at: string
           updated_at: string
         }
         Insert: {
@@ -1225,9 +1304,12 @@ export type Database = {
           created_by?: string | null
           id?: string
           entry_ids: string[]
+          exploit_share?: number | null
           manifest_version?: number | null
           shoot_id: string
           size: number
+          status?: string
+          status_at?: string
           updated_at?: string
         }
         Update: {
@@ -1236,9 +1318,12 @@ export type Database = {
           created_by?: string | null
           id?: string
           entry_ids?: string[]
+          exploit_share?: number | null
           manifest_version?: number | null
           shoot_id?: string
           size?: number
+          status?: string
+          status_at?: string
           updated_at?: string
         }
         Relationships: [
@@ -1266,6 +1351,7 @@ export type Database = {
           created_by: string | null
           ended_at: string | null
           ended_by: string | null
+          exploit_share: number
           hook_allocation: string
           id: string
           kit: string
@@ -1293,6 +1379,7 @@ export type Database = {
           created_by?: string | null
           ended_at?: string | null
           ended_by?: string | null
+          exploit_share?: number
           hook_allocation?: string
           id?: string
           kit?: string
@@ -1320,6 +1407,7 @@ export type Database = {
           created_by?: string | null
           ended_at?: string | null
           ended_by?: string | null
+          exploit_share?: number
           hook_allocation?: string
           id?: string
           kit?: string

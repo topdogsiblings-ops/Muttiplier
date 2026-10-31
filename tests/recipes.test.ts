@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BrollClip, Manifest, TakeClip } from '../shared/utils/manifest'
 import type { Recipe } from '../shared/utils/recipes'
+import { elementId, elementRecords, elementState, pickBatch, recipeElements } from '../shared/utils/batchLoop'
 import { batchCsv, batchOrder, batchSize, beatMixes, buildRecipes, byChannel, chooseBatch, nextBatchCode, pickCombos, renderFolder } from '../shared/utils/recipes'
 
 const take = (kind: TakeClip['kind'], code: string, person: string, channel: string, extra: Partial<TakeClip> = {}): TakeClip => ({
@@ -351,6 +352,33 @@ describe('a text thread', () => {
   })
 })
 
+describe('treatment sidecars', () => {
+  const retro = { slug: 'retro-look', name: 'Retro look', kind: 'overlay', placement: 'video', needs: [], component: 'x', settings: {}, sidecar: 'retro-look', applies_to: ['hook', 'vo', 'cta'] }
+  const treated = (file: string) => file.replace('.mp4', '.retro-look.mp4')
+  const clips = (sidecars: boolean) => [take('hook', 'H01', 'joe', 'nix'), ...vo('V01', 'joe', 'nix', [['problem', 3], ['product', 2]]), take('cta', 'C01', 'joe', 'nix')]
+    .map(clip => sidecars ? { ...clip, sidecars: { 'retro-look': treated(clip.file) } } : clip)
+  const build = (sidecars: boolean) => {
+    const m = manifest([...clips(sidecars), ...nixBroll])
+    m.plan = { ...m.plan, treatments: [retro] } as Manifest['plan']
+    return buildRecipes(m)
+  }
+
+  it('a treated version plays the treated copies', () => {
+    const recipes = build(true)
+    expect(recipes).toHaveLength(2)
+    const version = recipes.find(recipe => recipe.treatment)!
+    expect(version.hook.file).toBe('nix/hook/joe/H01.retro-look.mp4')
+    expect(version.vo.beats.map(beat => beat.vo)).toEqual(['nix/vo/joe/problem/V01.retro-look.mp4', 'nix/vo/joe/product/V01.retro-look.mp4'])
+    expect(version.cta.file).toBe('nix/cta/joe/C01.retro-look.mp4')
+    // the untreated one is as it was
+    expect(recipes.find(recipe => !recipe.treatment)!.hook.file).toBe('nix/hook/joe/H01.mp4')
+  })
+
+  it('isn\u2019t made when a treated copy is missing', () => {
+    expect(build(false).map(recipe => recipe.treatment)).toEqual([null])
+  })
+})
+
 describe('batches', () => {
   // Joe and Sam on Nix, two hooks each, one VO each in different formats, two CTAs each
   const recipes = buildRecipes(manifest([
@@ -378,17 +406,18 @@ describe('batches', () => {
     expect(batch.slice(0, 2).map(recipe => recipe.person).sort()).toEqual(['joe', 'sam'])
   })
 
-  it('never batches a recipe twice, and leaves out anything rated bad', () => {
+  it('never batches a recipe twice', () => {
     const first = chooseBatch(recipes, { size: 2 })
     const exclude = new Set(first.map(recipe => recipe.id))
-    const second = chooseBatch(recipes, { size: 8, exclude, ratings: new Map([['nix-sam-H02', 'bad']]) })
+    const second = chooseBatch(recipes, { size: 8, exclude })
     expect(second.some(recipe => exclude.has(recipe.id))).toBe(false)
-    expect(second.some(recipe => recipe.hook.item_id === 'nix-sam-H02')).toBe(false)
   })
 
-  it('favours parts rated good', () => {
-    const [pick] = chooseBatch(recipes, { size: 1, ratings: new Map([['nix-sam-C02', 'good']]) })
+  it('picks what it\u2019s told to prefer first, and carries on from recipes already picked', () => {
+    const [pick] = chooseBatch(recipes, { size: 1, prefer: recipe => recipe.cta.item_id === 'nix-sam-C02' ? -1 : 0 })
     expect(pick!.cta.item_id).toBe('nix-sam-C02')
+    const rest = chooseBatch(recipes, { size: 8, after: [pick!] })
+    expect(rest.some(recipe => recipe.id === pick!.id || (recipe.hook.item_id === pick!.hook.item_id && recipe.vo.item_id === pick!.vo.item_id))).toBe(false)
   })
 
   it('writes a batch grouped by channel, keeping the pick order within each channel', () => {
@@ -405,5 +434,49 @@ describe('batches', () => {
   it('numbers batches B01, B02…', () => {
     expect(nextBatchCode([])).toBe('B01')
     expect(nextBatchCode(['B01', 'B03'])).toBe('B04')
+  })
+})
+
+describe('the batch loop', () => {
+  const recipes = buildRecipes(manifest([
+    ...['joe', 'sam'].flatMap(person => [
+      take('hook', 'H01', person, 'nix', { hook_type: 'POV' }), take('hook', 'H02', person, 'nix', { hook_type: 'Problem' }),
+      ...vo('V01', person, 'nix', [['problem', 2]], person === 'joe' ? 'F01' : 'F02'),
+      take('cta', 'C01', person, 'nix'), take('cta', 'C02', person, 'nix')
+    ]),
+    ...nixBroll
+  ]))
+  const score = (kind: string, key: string, value: string) => ({ element_kind: kind, element_key: key, score: value })
+
+  it('scores every element a recipe is made of, b-roll aside', () => {
+    expect(recipeElements(recipes[0]!).map(elementId)).toEqual(['hook:H01', 'format:F01', 'hook_type:POV', 'vo:V01', 'cta:C01', 'person:joe'])
+  })
+
+  it('drops an element after two losers and no wins, unless it’s kept by hand', () => {
+    const records = elementRecords([score('hook', 'H02', 'loser'), score('hook', 'H02', 'loser'), score('hook', 'H01', 'loser'), score('hook', 'H01', 'loser'), score('hook', 'H01', 'winner')])
+    expect(elementState(records.get('hook:H02'))).toBe('dropped')
+    expect(elementState(records.get('hook:H01'))).toBe('winner')
+    expect(elementState(records.get('hook:H03'))).toBe('untried')
+    const kept = elementRecords([score('hook', 'H02', 'loser'), score('hook', 'H02', 'loser')], [{ element_kind: 'hook', element_key: 'H02', dropped: false }])
+    expect(elementState(kept.get('hook:H02'))).toBe('tried')
+    const pick = pickBatch(recipes, { size: 8, records: elementRecords([score('hook', 'H02', 'loser'), score('hook', 'H02', 'loser')]) })
+    expect(pick.dropped).toBe(4)
+    expect(pick.recipes.every(recipe => recipe.hook.code === 'H01')).toBe(true)
+  })
+
+  it('exploits winners with the shoot’s share and explores untried elements with the rest', () => {
+    const records = elementRecords([score('hook', 'H01', 'winner'), score('cta', 'C01', 'mid'), score('cta', 'C02', 'mid')])
+    const pick = pickBatch(recipes, { size: 4, exploitShare: 0.5, records })
+    expect(pick).toMatchObject({ exploit: 2, explore: 2 })
+    expect(pick.recipes.slice(0, 2).map(recipe => recipe.hook.code)).toEqual(['H01', 'H01'])
+    expect(pick.recipes.slice(2).map(recipe => recipe.hook.code)).toEqual(['H02', 'H02'])
+    expect(new Set(pick.recipes.map(recipe => recipe.id)).size).toBe(4)
+  })
+
+  it('explores everything until something has won, and never repeats a batched recipe', () => {
+    const first = pickBatch(recipes, { size: 3 })
+    expect(first).toMatchObject({ exploit: 0, explore: 3 })
+    const second = pickBatch(recipes, { size: 8, exclude: new Set(first.recipes.map(recipe => recipe.id)) })
+    expect(second.recipes.some(recipe => first.recipes.includes(recipe))).toBe(false)
   })
 })
