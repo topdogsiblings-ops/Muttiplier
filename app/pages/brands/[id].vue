@@ -23,7 +23,7 @@ async function loadBrand() {
   products.value = must(prods)
   const ids = products.value.map(product => product.id)
   shoots.value = ids.length
-    ? must(await db.from('shoots').select('id, code, product_id, shoot_date, status').in('product_id', ids).order('code', { ascending: false }))
+    ? must(await db.from('shoots').select('id, code, product_id, shoot_date, status').in('product_id', ids).is('stale_at', null).order('code', { ascending: false }))
     : []
 }
 await Promise.all([load(), loadBrand()])

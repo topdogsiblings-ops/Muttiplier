@@ -627,6 +627,22 @@ async function backToDraft() {
 
 const confirmPlan = ref(false)
 
+// --- stale ---------------------------------------------------------------------
+// Any time, a shoot can be marked stale: archived from view (the shoots list and brand pages hide
+// it) with its status left as it was. Unmarking brings it back.
+const stale = computed(() => !!shoot.value.stale_at)
+const confirmStale = ref(false)
+async function setStale(value: boolean) {
+  busy.value = true
+  const ok = await run(async () => {
+    const by = value ? (await db.auth.getUser()).data.user?.id ?? null : null
+    must(await db.from('shoots').update({ stale_at: value ? new Date().toISOString() : null, stale_by: by }).eq('id', shoot.value.id))
+    await refresh()
+  }, value ? 'Marked stale: archived from the shoots list' : 'No longer stale')
+  busy.value = false
+  if (ok) confirmStale.value = false
+}
+
 // The shoot's whole folder tree in Dropbox (raw/, edited/, renders/ and the plan's manifest.json), made
 // once it's planned and again before uploads. Folders already there are left as they are.
 const dropbox = useDropbox()
@@ -728,8 +744,20 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
         </template>
         <template #trailing>
           <UBadge :label="SHOOT_STATUS_LABELS[shoot.status] ?? shoot.status" :color="SHOOT_STATUS_COLORS[shoot.status]" variant="subtle" />
+          <UBadge v-if="stale" label="Stale" color="neutral" variant="outline" />
         </template>
         <template #right>
+          <UButton
+            :label="stale ? 'Not stale' : 'Mark stale'"
+            :aria-label="stale ? 'Not stale' : 'Mark stale'"
+            :ui="ICON_ON_MOBILE"
+            class="max-sm:px-1.5"
+            :icon="stale ? 'i-lucide-archive-restore' : 'i-lucide-archive'"
+            color="neutral"
+            variant="ghost"
+            :loading="busy && stale"
+            @click="stale ? setStale(false) : confirmStale = true"
+          />
           <template v-if="isDraft">
             <UButton
               label="Re-number"
@@ -1324,6 +1352,22 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
           <div class="flex w-full justify-end gap-2">
             <UButton label="Cancel" color="neutral" variant="ghost" @click="close" />
             <UButton label="Back to draft" icon="i-lucide-lock-open" :loading="busy" @click="backToDraft" />
+          </div>
+        </template>
+      </UModal>
+
+      <UModal v-model:open="confirmStale" :title="`Mark ${shoot.code} as stale?`">
+        <template #body>
+          <ul class="list-disc space-y-1 pl-5 text-sm text-default">
+            <li>It's archived from view: the shoots list and the brand's page hide it. The shoots list's Stale filter still finds it.</li>
+            <li>Nothing else changes: its status, plan, footage and batches stay as they are.</li>
+            <li>You can unmark it any time with Not stale.</li>
+          </ul>
+        </template>
+        <template #footer="{ close }">
+          <div class="flex w-full justify-end gap-2">
+            <UButton label="Cancel" color="neutral" variant="ghost" @click="close" />
+            <UButton label="Mark stale" icon="i-lucide-archive" :loading="busy" @click="setStale(true)" />
           </div>
         </template>
       </UModal>

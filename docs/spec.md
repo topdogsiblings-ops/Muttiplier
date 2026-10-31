@@ -218,6 +218,7 @@ Hooks, CTAs and VOs written in a shoot (`shoot_id` set) can be deleted (RLS), wh
 - `code text unique` — auto-assigned sequential `S001`, `S002`, …
 - `product_id`, `shoot_date date`, `location_notes text`, `notes text`
 - `status text check (status in ('draft','planned','shooting','filmed','editing','edited'))` — `draft` → `planned` → `shooting` → `filmed` (and back, §9) → `editing` (Pawcessor has the manifest) → `edited`, shown as **Live** (recipes built, batches running; §12b). Batches carry their own statuses
+- `stale_at`, `stale_by` — set when someone marks the shoot **stale** (any time, from the shoot page's header; **Not stale** clears it). A stale shoot is archived from view: the shoots list hides it (its **Stale** filter shows only stale shoots) and so does the brand page. Its status and everything else stay as they are.
 - `exploit_share numeric default 0.7` — the share of each new batch that exploits elements that have won (§12b)
 - `started_at`, `started_by`, `ended_at`, `ended_by` — stamped by trigger on status changes only
 - `broll_variations int default 1` (≥ 1) — different b-roll selections per hook + VO + CTA, each its own recipe; also how many clips each channel films of every b-roll shot (the checklist wants that many)
@@ -377,7 +378,9 @@ Test case: Joe on Nix and Whiskey, Sam on Nix, Alex on Both, each with 10 hooks,
 
 ### a) Checklist (on set)
 
-Route: `/shoots/[code]/sheet?person=[slug]&show=[hook|cta|body|broll]`. Both filters are optional and combine (e.g. one person's CTAs); the URL can be shared. A signed-in user linked to a person opens on their own shots.
+Each person sees only what they film: their own hooks, VOs and CTAs, and b-roll for the channels they're on. Admins see everyone's and can filter by person. Someone who isn't on the shoot's cast (and isn't an admin) sees nothing to film.
+
+Route: `/shoots/[code]/sheet?person=[slug]&show=[hook|cta|body|broll]`. Both filters are optional and combine (e.g. one person's CTAs); the URL can be shared. An admin linked to a person opens on their own shots.
 
 - Mobile-first, large tap targets. Updates save immediately.
 - Header: shoot, product, brand, date, elapsed time, progress for what's showing, Start / End / Resume.

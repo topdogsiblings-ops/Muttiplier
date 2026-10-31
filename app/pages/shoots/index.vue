@@ -68,7 +68,8 @@ const productFilter = computed(() => [
   { label: 'All products', value: 'all' },
   ...products.value.filter(p => brand.value === 'all' || p.brand.id === brand.value).map(p => ({ label: p.name, value: p.id }))
 ])
-const statusFilter = [{ label: 'All statuses', value: 'all' }, ...Object.keys(SHOOT_STATUS_COLORS).map(value => ({ label: SHOOT_STATUS_LABELS[value] ?? value, value }))]
+// stale shoots are archived: only the Stale filter shows them
+const statusFilter = [{ label: 'All statuses', value: 'all' }, ...Object.keys(SHOOT_STATUS_COLORS).map(value => ({ label: SHOOT_STATUS_LABELS[value] ?? value, value })), { label: 'Stale', value: 'stale' }]
 watch(brand, () => {
   product.value = 'all'
 })
@@ -77,7 +78,7 @@ const rows = computed(() => shoots.value
   .filter(shoot =>
     (brand.value === 'all' || shoot.product.brand.id === brand.value)
     && (product.value === 'all' || shoot.product.id === product.value)
-    && (status.value === 'all' || shoot.status === status.value))
+    && (status.value === 'stale' ? !!shoot.stale_at : !shoot.stale_at && (status.value === 'all' || shoot.status === status.value)))
   .map(shoot => ({ shoot, totals: estimate(shoot) })))
 
 // --- new shoot -------------------------------------------------------------
@@ -193,6 +194,7 @@ async function save() {
               </td>
               <td class="px-4 py-3">
                 <UBadge :label="SHOOT_STATUS_LABELS[shoot.status] ?? shoot.status" :color="SHOOT_STATUS_COLORS[shoot.status]" variant="subtle" />
+                <UBadge v-if="shoot.stale_at" label="Stale" color="neutral" variant="outline" class="ml-1" />
               </td>
               <td class="px-4 py-3">
                 {{ shoot.shoot_people.map(row => row.person.name).sort().join(', ') || '—' }}

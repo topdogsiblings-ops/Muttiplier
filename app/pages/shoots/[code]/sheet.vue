@@ -23,8 +23,15 @@ if (!data.value) throw createError({ statusCode: 404, statusMessage: `Shoot ${co
 const bundle = computed(() => data.value!)
 const shoot = computed(() => bundle.value.shoot)
 
-// Filters live in the URL: ?person=[slug] (or everyone) and ?show=hook|cta|body|broll (or everything).
-const person = computed(() => bundle.value.people.find(p => p.slug === route.query.person) ?? null)
+// Everyone sees only what they film; admins see everyone's and can filter by person.
+const { access, isAdmin } = useAccess()
+/** the signed-in user's person on this shoot */
+const mine = computed(() => bundle.value.people.find(p => p.allowed_user_id && p.allowed_user_id === access.value?.id) ?? null)
+/** not an admin, and not on this shoot's cast: nothing to film here */
+const notOnShoot = computed(() => !isAdmin.value && !mine.value)
+
+// Filters live in the URL: ?person=[slug] (or everyone; admins only) and ?show=hook|cta|body|broll (or everything).
+const person = computed(() => isAdmin.value ? bundle.value.people.find(p => p.slug === route.query.person) ?? null : mine.value)
 type Show = 'all' | 'hook' | 'cta' | 'body' | 'broll'
 const show = computed<Show>(() => (['hook', 'cta', 'body', 'broll'] as const).find(value => value === route.query.show) ?? 'all')
 function setFilter(next: { person?: string | null, show?: Show }) {
@@ -44,12 +51,10 @@ const showOptions = computed(() => [
   { value: 'broll' as const, label: 'B-roll', count: visibleBroll.value.length }
 ])
 
-// A person linked to the signed-in user opens on their own shots.
-const { access } = useAccess()
+// An admin on the cast opens on their own shots.
 onMounted(() => {
-  if (route.query.person) return
-  const mine = bundle.value.people.find(p => p.allowed_user_id && p.allowed_user_id === access.value?.id)
-  if (mine) setPerson(mine.slug)
+  if (!isAdmin.value || route.query.person) return
+  if (mine.value) setPerson(mine.value.slug)
 })
 
 const personName = (id: string) => bundle.value.people.find(p => p.id === id)?.name ?? ''
@@ -57,7 +62,7 @@ const channelName = (id: string | null) => bundle.value.channels.find(c => c.id 
 
 
 // Everyone films the same shot list: one entry per item, with each person's tick underneath.
-const personItems = computed(() => bundle.value.items.filter(item => !person.value || item.person_id === person.value.id))
+const personItems = computed(() => notOnShoot.value ? [] : bundle.value.items.filter(item => !person.value || item.person_id === person.value.id))
 
 // A standalone VO opens and closes itself: its hook beat is filmed with the hooks and its CTA
 // beat with the CTAs, so each part of it shows in that section; its other beats stay with the VOs.
@@ -135,7 +140,7 @@ const brollChannels = (shot: Row<'broll_shots'>): { id: string | null, name: str
     .filter(channel => !person.value || bundle.value.channelPeople?.[channel.id]?.includes(person.value.id))
     .map(channel => ({ id: channel.id, name: channel.name }))
 }
-const visibleBroll = computed(() => bundle.value.broll.filter(shot => brollChannels(shot).length))
+const visibleBroll = computed(() => notOnShoot.value ? [] : bundle.value.broll.filter(shot => brollChannels(shot).length))
 
 /** B-roll by beat. */
 const brollGroups = computed(() => {
@@ -413,7 +418,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
         </div>
       </div>
 
-      <div class="mt-2 flex gap-1.5 overflow-x-auto">
+      <div v-if="isAdmin" class="mt-2 flex gap-1.5 overflow-x-auto">
         <UButton
           label="Everyone"
           size="sm"
@@ -725,7 +730,10 @@ function skipBroll(shot: Row<'broll_shots'>) {
     </section>
 
     <p v-if="!sections.length && !(showBroll && brollGroups.length)" class="py-16 text-center text-muted">
-      <template v-if="show === 'all' && !person">
+      <template v-if="notOnShoot">
+        You're not on this shoot's cast, so there's nothing for you to film.
+      </template>
+      <template v-else-if="show === 'all' && (!person || !isAdmin)">
         Nothing to film yet.
       </template>
       <template v-else>

@@ -1362,6 +1362,8 @@ export type Database = {
           runway_target: number
           shoot_date: string | null
           slot_values: Json
+          stale_at: string | null
+          stale_by: string | null
           started_at: string | null
           started_by: string | null
           status: string
@@ -1390,6 +1392,8 @@ export type Database = {
           runway_target?: number
           shoot_date?: string | null
           slot_values?: Json
+          stale_at?: string | null
+          stale_by?: string | null
           started_at?: string | null
           started_by?: string | null
           status?: string
@@ -1418,6 +1422,8 @@ export type Database = {
           runway_target?: number
           shoot_date?: string | null
           slot_values?: Json
+          stale_at?: string | null
+          stale_by?: string | null
           started_at?: string | null
           started_by?: string | null
           status?: string
