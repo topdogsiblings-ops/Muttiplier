@@ -292,9 +292,62 @@ describe('treatments', () => {
     expect(face.vo.beats[0]).toMatchObject({ show: 'face', broll: [] })
   })
 
+  it('applies a curated combination where every part would, with its layout and its overlays together', () => {
+    const search = treatment('Search bar', 'overlay', ['text'])
+    const face = treatment('Face to camera', 'layout', ['speaker_video'], { show: 'face' })
+    const pip = treatment('Picture-in-picture', 'footage', ['speaker_video'])
+    const combo = (name: string, parts: ReturnType<typeof treatment>[]) => ({ ...treatment(name, parts.find(part => part.kind !== 'overlay')?.kind ?? 'overlay', [...new Set(parts.flatMap(part => part.needs))]), component: 'combo', parts })
+    const recipes = buildRecipes(withTreatments(clips, [
+      combo('Search, then face to camera', [search, face]),
+      combo('Search, then picture-in-picture', [search, pip]),
+      // an offer part that doesn't apply (no offer on the shoot) stops the whole combination
+      combo('Search, then offer', [search, treatment('Offer badge', 'overlay', ['offer'])])
+    ]))
+    expect(recipes.map(recipe => recipe.treatment?.name ?? null).sort()).toEqual([null, 'Search, then face to camera', 'Search, then picture-in-picture'].sort())
+    const faced = recipes.find(recipe => recipe.treatment?.name === 'Search, then face to camera')!
+    expect(faced.vo.beats[0]).toMatchObject({ show: 'face', broll: [] })
+    expect(faced.treatment!.parts!.map(part => part.name)).toEqual(['Search bar', 'Face to camera'])
+    expect(faced.id).toMatch(/_search-then-face-to-camera$/)
+  })
+
   it('doesn\u2019t use the speaker\u2019s picture when a take is audio only', () => {
     const audio = clips.map(clip => clip.kind === 'vo' ? { ...clip, file: clip.file.replace('.mp4', '.m4a') } : clip)
     expect(buildRecipes(withTreatments(audio, [treatment('Greenscreen', 'footage', ['speaker_video'])]))).toHaveLength(1)
+  })
+})
+
+describe('a text thread', () => {
+  const screen = (code: string, person: string, beat: string, text: string) =>
+    take('vo', code, person, 'nix', { beat, option: 1, show: 'screen', standalone: true, format: 'F21', file: '', script: text, duration: 2 })
+  const note = (code: string, person: string, beat: string) =>
+    take('vo', code, person, 'nix', { beat, option: 1, show: 'voice_note', standalone: true, format: 'F21', file: `nix/vo/${person}/${beat}/${code}.mp4`, duration: 3 })
+  const thread = (person: string) => [screen('V09', person, 'hook', 'ok how is your dog so chill'), note('V09', person, 'voice note'), note('V09', person, 'reply'), screen('V09', person, 'cta', 'link below')]
+  const withPlan = (clips: Manifest['clips'], extra: Record<string, unknown> = {}) => {
+    const m = manifest(clips)
+    m.plan = { ...m.plan, shoot: { ...m.plan.shoot, ...extra } } as Manifest['plan']
+    return m
+  }
+
+  it('makes the whole video from messages and voice notes: no b-roll, no Library hook or CTA', () => {
+    const [recipe, ...rest] = buildRecipes(withPlan([take('hook', 'H01', 'joe', 'nix'), take('cta', 'C01', 'joe', 'nix'), ...thread('joe'), ...nixBroll]))
+    expect(rest).toEqual([])
+    expect(recipe!.hook).toMatchObject({ show: 'screen', text: 'ok how is your dog so chill', broll: [] })
+    expect(recipe!.cta).toMatchObject({ mode: 'screen', text: 'link below', broll: [] })
+    expect(recipe!.vo.beats.map(beat => `${beat.beat}/${beat.show}/${beat.broll.length}`)).toEqual(['voice note/voice_note/0', 'reply/voice_note/0'])
+  })
+
+  it('leaves it alone for layout treatments, but takes overlays that need nothing', () => {
+    const t = (name: string, kind: string, needs: string[], settings = {}) => ({ slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name, kind, placement: 'video', needs, component: 'x', settings })
+    const m = withPlan([...thread('joe'), ...nixBroll])
+    m.plan = { ...m.plan, treatments: [t('Face to camera', 'layout', ['speaker_video'], { show: 'face' }), t('Over b-roll', 'layout', [], { show: 'broll' }), t('Greenscreen', 'footage', ['speaker_video']), t('Retro look', 'overlay', [])] } as Manifest['plan']
+    expect(buildRecipes(m).map(recipe => recipe.treatment?.name ?? null).sort()).toEqual([null, 'Retro look'].sort())
+  })
+
+  it('mixes only the voice notes across the people cast on it', () => {
+    const mixed = buildRecipes(withPlan([...thread('joe'), ...thread('sam'), ...nixBroll], { vo_variations: 9 })).filter(recipe => recipe.mixed)
+    // 2 voice notes, 2 people: joe+sam and sam+joe (never two people swapping identical messages)
+    expect(mixed).toHaveLength(2)
+    expect(mixed.map(recipe => recipe.vo.beats.map(beat => beat.person).join('.')).sort()).toEqual(['joe.sam', 'sam.joe'])
   })
 })
 

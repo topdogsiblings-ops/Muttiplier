@@ -3,9 +3,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '../types/database.types'
 import type { Row } from '../types/models'
-import type { BundleItem, ShootBundle } from './shootsheet'
-import type { CalcInput, CalcSettings, ItemKind } from './calculator'
-import { beatShow, isStandalone, recordingKey } from './shootsheet'
+import type { BundleItem, BundleTreatment, ShootBundle } from './shootsheet'
+import type { CalcInput, CalcSettings, CalcTreatment, ItemKind } from './calculator'
+import { beatShow, isFilmed, isStandalone, recordingKey } from './shootsheet'
 import { beatWordings, parseBeats } from './slots'
 
 export interface LoadedShoot extends ShootBundle {
@@ -118,8 +118,7 @@ export async function loadShootBundle(db: SupabaseClient<Database>, code: string
     db.from('broll_shots').select('*, feature:product_features(slug, name)').eq('shoot_id', shoot.id).order('sort_order').order('created_at'),
     db.from('person_channels').select('person_id, channel_id'),
     db.from('shoot_formats').select('format:formats(id, code, name, description, beats, beat_descriptions, beat_examples, beat_broll, kind, beat_display, source_url)').eq('shoot_id', shoot.id),
-    // the Library's treatments that are on: every recipe gets a version for each that applies
-    db.from('treatments').select('name, kind, placement, needs, component, settings').eq('active', true).eq('archived', false).order('sort_order')
+    loadTreatments(db)
   ])
 
   const peopleRows = unwrap(people).map(row => row.person as Row<'people'>).sort((a, b) => a.name.localeCompare(b.name))
@@ -135,7 +134,7 @@ export async function loadShootBundle(db: SupabaseClient<Database>, code: string
     broll: unwrap(broll) as BrollShot[],
     channelPeople: channelPeopleFor(peopleRows, channelRows, unwrap(links)),
     plannedFormats: unwrap(planned).map(row => row.format as unknown as PlannedFormat).filter(Boolean),
-    treatments: unwrap(treatments)
+    treatments
   }
 }
 
@@ -154,6 +153,24 @@ export function channelPeopleFor(
 
 /** Calculator input for a loaded shoot. */
 /**
+ * The Library's treatments that are on, each combination with its parts (a part can itself be
+ * switched off and still be part of a combination). Every recipe gets a version for each that
+ * applies. Used by the shoot page and the shoots list.
+ */
+export async function loadTreatments(db: SupabaseClient<Database>): Promise<BundleTreatment[]> {
+  const rows = unwrap(await db.from('treatments').select('id, name, kind, placement, needs, component, settings, parts, active')
+    .eq('archived', false).order('sort_order'))
+  const byId = new Map(rows.map(row => [row.id, row]))
+  const spec = (row: typeof rows[number]): BundleTreatment => ({
+    name: row.name, kind: row.kind, placement: row.placement, needs: row.needs, component: row.component, settings: row.settings
+  })
+  return rows.filter(row => row.active).map(row => ({
+    ...spec(row),
+    parts: row.parts.map(id => byId.get(id)).filter((part): part is typeof rows[number] => !!part).map(spec)
+  }))
+}
+
+/**
  * Calculator input for a shoot: the shoot page and the shoots list both use this, so their
  * estimates always match (variations, cast and wording mixes, standalone VOs, links, treatments).
  */
@@ -169,7 +186,8 @@ export function bundleToCalcInput(
       linkedHooks: item.linked_hooks,
       linkedCtas: item.linked_ctas,
       // beats (not takes: alternates are extra takes of a beat), and how many ways the wordings combine
-      beats: item.kind === 'body' ? parseBeats(item.script_snapshot).length : undefined,
+      beats: item.kind === 'body' ? parseBeats(item.script_snapshot).filter(beat => isFilmed(beatShow(item.format, beat.beat))).length : undefined,
+      layoutBeats: item.kind === 'body' ? parseBeats(item.script_snapshot).filter(beat => ['face', 'broll'].includes(beatShow(item.format, beat.beat))).length : undefined,
       wordingCombos: item.kind === 'body' ? parseBeats(item.script_snapshot).reduce((product, beat) => product * beatWordings(beat).length, 1) : undefined,
       standalone: isStandalone(item),
       faceBeats: item.kind === 'body' ? parseBeats(item.script_snapshot).filter(beat => beatShow(item.format, beat.beat) === 'face').length : undefined,
@@ -186,12 +204,15 @@ export function bundleToCalcInput(
     brollVariations: bundle.shoot.broll_variations,
     voVariations: bundle.shoot.vo_variations ?? 0,
     wordingVariations: bundle.shoot.wording_variations ?? 0,
-    treatments: (bundle.treatments ?? []).map(treatment => ({
-      name: treatment.name,
-      kind: treatment.kind,
-      needs: treatment.needs,
-      layout: ((treatment.settings as { show?: string } | null)?.show ?? null) as 'face' | 'broll' | null
-    })),
+    treatments: (bundle.treatments ?? []).map(function toCalc(treatment: BundleTreatment): CalcTreatment {
+      return {
+        name: treatment.name,
+        kind: treatment.kind,
+        needs: treatment.needs,
+        layout: ((treatment.settings as { show?: string } | null)?.show ?? null) as 'face' | 'broll' | null,
+        parts: treatment.parts?.length ? treatment.parts.map(toCalc) : undefined
+      }
+    }),
     offer: typeof (bundle.shoot.slot_values as Record<string, unknown> | null)?.offer === 'string'
       && ((bundle.shoot.slot_values as Record<string, string>).offer ?? '').trim() !== '',
     settings

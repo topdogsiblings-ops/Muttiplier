@@ -87,21 +87,24 @@ const groupChannel = (group: ShotGroup) => group.items[0]?.channel_id ?? null
  */
 const sections = computed(() => {
   const standalones = shotList.value.filter(standaloneGroup)
+  // a standalone VO's hook or CTA shown on screen is a text message: nothing to film there
+  const filmedPart = (part: GroupPart) => (group: ShotGroup) => itemBeats(group.items[0]!).some(beat => beat && partOfBeat(beat) === part)
   const shown = (part: GroupPart) => (group: ShotGroup) => ({ key: `${group.key}|${part}`, group, part })
   const list = [
     {
       title: 'Hooks',
       hint: 'Used for every channel',
-      views: [...shotList.value.filter(group => group.kind === 'hook').map(shown('all')), ...(show.value === 'cta' ? [] : standalones.map(shown('hook')))]
+      views: [...shotList.value.filter(group => group.kind === 'hook').map(shown('all')), ...(show.value === 'cta' ? [] : standalones.filter(filmedPart('hook')).map(shown('hook')))]
     },
     {
       title: 'CTAs',
       hint: '',
-      views: [...shotList.value.filter(group => group.kind === 'cta').map(shown('all')), ...(show.value === 'hook' ? [] : standalones.map(shown('cta')))]
+      views: [...shotList.value.filter(group => group.kind === 'cta').map(shown('all')), ...(show.value === 'hook' ? [] : standalones.filter(filmedPart('cta')).map(shown('cta')))]
     },
     {
       title: 'VOs',
-      hint: 'Recorded off set',
+      // every VO take can be used face to camera (a treatment), so it should look like a real moment
+      hint: 'Film each beat with your dog, doing something real: it can play face to camera',
       views: show.value === 'hook' || show.value === 'cta'
         ? []
         : shotList.value.filter(group => group.kind === 'body')
@@ -163,6 +166,8 @@ const groupScript = (group: ShotGroup, part: GroupPart = 'all') => {
     beats: first.flatMap((beat, index) => beatWordings(beat).map(wording => ({
       key: takeKey(beat.beat, wording.option),
       beat: takeLabel(takeKey(beat.beat, wording.option)),
+      // a message on screen isn't filmed; a voice note is filmed and played as audio
+      show: beatShow(group.items[0]!.format, beat.beat),
       hook_type: wording.hook_type,
       script: mergeVariants(versions.map(version => beatWordings(version.beats?.[index] ?? { beat: beat.beat, script: '' })[wording.option - 1]?.script ?? ''))
     })))
@@ -580,6 +585,8 @@ function skipBroll(shot: Row<'broll_shots'>) {
             <p v-for="beat in groupScript(group, part).beats" :key="beat.key" class="text-base leading-snug text-highlighted">
               <span class="mr-1 text-xs font-semibold text-muted uppercase">{{ beat.beat }}</span>{{ beat.script }}
               <UBadge v-if="beat.hook_type" :label="beat.hook_type" color="neutral" variant="subtle" size="sm" class="ml-1 align-middle" />
+              <UBadge v-if="beat.show === 'screen'" label="On screen: not filmed" color="neutral" variant="outline" size="sm" class="ml-1 align-middle" />
+              <UBadge v-else-if="beat.show === 'voice_note'" label="Voice note" color="info" variant="subtle" size="sm" class="ml-1 align-middle" />
             </p>
           </template>
           <p v-else class="text-lg leading-snug text-highlighted">

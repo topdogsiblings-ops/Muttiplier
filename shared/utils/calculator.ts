@@ -12,13 +12,15 @@ export interface CalcItem {
   /** VOs: the hook / CTA templates it only goes with; empty = any */
   linkedHooks?: string[]
   linkedCtas?: string[]
-  /** VOs: how many beats it has (for working out how many ways it can be mixed) */
+  /** VOs: how many filmed beats it has (for working out how many ways it can be mixed; messages on screen aren't filmed) */
   beats?: number
+  /** VOs: how many of its beats are face to camera or over b-roll (the ones a layout treatment can switch) */
+  layoutBeats?: number
   /** VOs: how many combinations its beats' wordings make (1 when no beat has alternates) */
   wordingCombos?: number
   /** VOs: a standalone format's, with its own hook and CTA: never paired with Library ones */
   standalone?: boolean
-  /** VOs: how many of its beats (a standalone VO's hook and CTA included) are shown face to camera by default */
+  /** VOs: how many of its layout beats (a standalone VO's hook and CTA included) are shown face to camera by default */
   faceBeats?: number
   /** CTAs only: sync (on camera) or vo; decides filming vs recording time */
   ctaMode?: string | null
@@ -65,6 +67,8 @@ export interface CalcTreatment {
   needs: string[]
   /** layout treatments: the layout they give every beat */
   layout?: 'face' | 'broll' | null
+  /** a curated combination: it applies where every part does */
+  parts?: CalcTreatment[]
 }
 
 export interface PersonResult {
@@ -205,12 +209,30 @@ export function calculate(input: CalcInput): CalcResult {
   // the editor writes any text, old footage isn't tracked yet).
   const treatments = input.treatments ?? []
   const added = new Map(treatments.map(treatment => [treatment.name, 0]))
-  const appliesTo = (treatment: CalcTreatment, body: CalcItem) => {
+  const appliesTo = (treatment: CalcTreatment, body: CalcItem): boolean => {
+    if (treatment.parts?.length) return treatment.parts.every(part => appliesTo(part, body))
     if (treatment.kind === 'layout') {
       const face = body.faceBeats ?? 0
-      return treatment.layout === 'face' ? face < (body.beats ?? 0) : treatment.layout === 'broll' ? face > 0 : false
+      return treatment.layout === 'face' ? face < (body.layoutBeats ?? body.beats ?? 0) : treatment.layout === 'broll' ? face > 0 : false
     }
     return treatment.needs.every(need => need === 'text' || need === 'speaker_video' || (need === 'offer' && !!input.offer))
+  }
+  /** why a treatment adds nothing to this shoot (a combination: because of which part) */
+  const whyNot = (treatment: CalcTreatment): string => {
+    const bodies = items.filter(item => item.kind === 'body')
+    if (!bodies.length) return 'no VOs yet'
+    if (treatment.parts?.length) {
+      const blocker = treatment.parts.find(part => !bodies.some(body => appliesTo(part, body)))
+      return blocker ? `${blocker.name} doesn't apply: ${whyNot(blocker)}` : 'no VO has every part'
+    }
+    if (treatment.needs.includes('old_footage')) return 'needs old footage (the footage library isn’t built yet)'
+    if (treatment.needs.includes('offer') && !input.offer) return 'needs the shoot’s {{offer}} filled in'
+    if (treatment.kind === 'layout') {
+      return treatment.layout === 'broll'
+        ? 'every VO here already plays over b-roll throughout, so this version would be the same'
+        : 'every VO here already plays face to camera throughout, so this version would be the same'
+    }
+    return 'no VO has what it needs'
   }
   /** a VO's recipes, with every treatment version that applies to it */
   const withTreatments = (body: CalcItem, recipes: number) => {
@@ -308,15 +330,7 @@ export function calculate(input: CalcInput): CalcResult {
     treatments: treatments.map(treatment => ({
       name: treatment.name,
       recipes: added.get(treatment.name) ?? 0,
-      why: added.get(treatment.name)
-        ? null
-        : treatment.needs.includes('old_footage')
-          ? 'needs old footage (the footage library isn\u2019t built yet)'
-          : treatment.needs.includes('offer') && !input.offer
-            ? 'needs the shoot\u2019s {{offer}} filled in'
-            : treatment.kind === 'layout'
-              ? 'changes nothing: every VO is already laid out that way'
-              : 'no VOs yet'
+      why: added.get(treatment.name) ? null : whyNot(treatment)
     })),
     warnings
   }

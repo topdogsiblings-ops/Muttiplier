@@ -1369,6 +1369,7 @@ export type Database = {
           kind: string
           name: string
           needs: string[]
+          parts: string[]
           placement: string
           settings: Json
           sort_order: number
@@ -1387,6 +1388,7 @@ export type Database = {
           kind: string
           name: string
           needs?: string[]
+          parts?: string[]
           placement: string
           settings?: Json
           sort_order?: number
@@ -1405,6 +1407,7 @@ export type Database = {
           kind?: string
           name?: string
           needs?: string[]
+          parts?: string[]
           placement?: string
           settings?: Json
           sort_order?: number

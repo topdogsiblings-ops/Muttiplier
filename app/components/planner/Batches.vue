@@ -67,11 +67,12 @@ async function generate() {
       recipes: recipes.value
     }, null, 2))
     await dropboxUploader.writeText(`${base.value}/batches/${code}.json`, JSON.stringify({
-      // 6: recipe.treatment (null, or the treatment this version carries: the editor makes its
+      // 7: beats, hook and CTA can be shown screen (text: `text`, no file) or voice_note;
+      // treatments can be combinations (`parts`). 6: recipe.treatment (null, or the treatment this version carries: the editor makes its
       // content, Showdog draws it). 5: standalone VOs (recipe.standalone; hook / cta take, hook.show and hook.broll), each beat's
       // option and show (face or broll). 4: hook.hook_type (was hook.angle; vo.angle gone). 3: mixed
       // VOs (recipe.mixed; each beat, hook and CTA says whose it is). 2: renders split by channel
-      schema_version: 6,
+      schema_version: 7,
       shoot: shoot.value.code,
       batch: code,
       manifest_version: manifestVersion,

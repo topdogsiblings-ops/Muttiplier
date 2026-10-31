@@ -99,3 +99,30 @@ describe('buildManifest', () => {
     expect(manifest.clips.some(clip => clip.kind === 'cta')).toBe(false)
   })
 })
+
+describe('a text thread', () => {
+  const thread = { code: 'F21', cta_modes: [], beats: ['hook', 'voice note', 'cta'], kind: 'standalone', beat_display: { 'hook': 'screen', 'voice note': 'voice_note', 'cta': 'screen' } }
+  const b = () => {
+    const shoot = bundle()
+    shoot.items = [item('t', 'V02', 'body', 'c1', {
+      format: thread,
+      script_snapshot: [{ beat: 'hook', script: 'ok how is {{product}} so good' }, { beat: 'voice note', script: 'tell me everything' }, { beat: 'cta', script: 'link below' }]
+    })]
+    return shoot
+  }
+  const files = ['topdognix/vo/joe/voice-note/V02.mov']
+
+  it('only wants the voice notes filmed', () => {
+    expect(checkEdits(b(), files, files.map(file => file.replace('.mov', '.mp4')), { durations: new Map([['topdognix/vo/joe/voice-note/V02.mp4', 3]]) }).problems).toEqual([])
+  })
+
+  it('carries the messages on screen as clips with no file, timed by how long they take to read', () => {
+    const manifest = buildManifest(b(), files.map(file => file.replace('.mov', '.mp4')), files, new Map([['topdognix/vo/joe/voice-note/V02.mp4', 3]]), { version: 1, generatedAt: '', wordsPerSecond: 2.5 })
+    const vo = manifest.clips.filter(clip => clip.kind === 'vo') as { beat: string, show: string, file: string, script: string, duration: number }[]
+    expect(vo.map(clip => `${clip.beat}/${clip.show}`).sort()).toEqual(['cta/screen', 'hook/screen', 'voice note/voice_note'])
+    const hook = vo.find(clip => clip.beat === 'hook')!
+    expect(hook).toMatchObject({ file: '', script: 'ok how is Calming Chews so good' })
+    // 6 words at 2.5 a second, plus a moment for the typing dots
+    expect(hook.duration).toBe(4)
+  })
+})

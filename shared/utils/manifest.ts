@@ -6,8 +6,9 @@
 // "topdognix/hooks/joe/H01.mov" or "topdognix/b-roll/problem/IMG_4821.mov".
 
 import type { BundleItem, ShootBundle } from './shootsheet'
+import type { BeatShow } from './shootsheet'
 import { MANIFEST_SCHEMA_VERSION, beatShow, brollFolder, buildShootsheet, channelFolder, isStandalone, itemBeats, linkedCodes, resolveItemScript, shootFolder, takeLabel, takeSpot } from './shootsheet'
-import { beatWordings, parseTakeKey } from './slots'
+import { DEFAULT_WORDS_PER_SECOND, beatWordings, estimateSeconds, parseBeats, parseTakeKey } from './slots'
 
 const VIDEO = new Set(['mov', 'mp4', 'm4v', 'hevc'])
 const AUDIO = new Set(['m4a', 'mp3', 'wav', 'aac', 'caf', 'aif', 'aiff'])
@@ -115,8 +116,12 @@ export interface TakeClip extends ClipBase {
   beat: string | null
   /** VOs: which wording of the beat (1 = the first; alternates 2, 3…) */
   option?: number | null
-  /** VOs: how the beat is shown, the speaker on camera (face) or their voice over b-roll (broll) */
-  show?: 'face' | 'broll' | null
+  /**
+   * VOs: how the beat is shown: the speaker on camera (face), their voice over b-roll (broll), a
+   * voice-note bubble (voice_note), or text on screen (screen: not filmed, so no file; `script` is
+   * the message and `duration` its reading time)
+   */
+  show?: BeatShow | null
   /** VOs: a standalone format's VO, which opens and closes itself (its hook and cta beats) */
   standalone?: boolean
   /** VOs: the format */
@@ -170,7 +175,7 @@ export function buildManifest(
   edited: string[],
   raw: string[],
   durations: Map<string, number | null>,
-  options: { version: number, generatedAt: string, brollShots?: Map<string, string>, overridden?: string[] }
+  options: { version: number, generatedAt: string, brollShots?: Map<string, string>, overridden?: string[], wordsPerSecond?: number }
 ): Manifest {
   const clips: ManifestClip[] = []
   const personSlug = (id: string) => bundle.people.find(p => p.id === id)?.slug ?? 'unknown'
@@ -209,6 +214,42 @@ export function buildManifest(
       caption,
       duration: durations.get(file) ?? null
     })
+  }
+
+  // beats shown on screen: text, not filmed. Each wording is a clip with no file, its length the
+  // time to read it (plus a moment for the typing dots), for every filmed VO that has them.
+  const pace = options.wordsPerSecond || DEFAULT_WORDS_PER_SECOND
+  const filmedVos = new Set(clips.filter(clip => clip.kind === 'vo').map(clip => (clip as TakeClip).item_id))
+  for (const item of bundle.items.filter(item => item.kind === 'body' && filmedVos.has(item.id))) {
+    const script = resolveItemScript(bundle, item)
+    for (const beat of parseBeats(item.script_snapshot)) {
+      if (beatShow(item.format, beat.beat) !== 'screen') continue
+      const resolved = script.beats?.find(b => b.beat === beat.beat) ?? beat
+      for (const wording of beatWordings(resolved)) {
+        clips.push({
+          kind: 'vo',
+          channel: channelFolder(bundle, item.channel_id),
+          item_id: item.id,
+          person: personSlug(item.person_id),
+          code: item.code,
+          beat: beat.beat,
+          option: wording.option,
+          show: 'screen',
+          standalone: isStandalone(item),
+          format: item.format?.code ?? null,
+          feature: item.feature_slug ?? null,
+          hooks: linkedCodes(bundle, item, 'hook'),
+          ctas: linkedCodes(bundle, item, 'cta'),
+          mode: null,
+          hook_type: wording.hook_type,
+          script: wording.script,
+          file: '',
+          raw_file: null,
+          caption: null,
+          duration: estimateSeconds(wording.script, pace) + 1
+        })
+      }
+    }
   }
 
   // b-roll: every clip in each channel's b-roll folders, matched to its shot by name (editors

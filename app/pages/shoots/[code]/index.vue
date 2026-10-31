@@ -564,6 +564,8 @@ const shootFormats = computed<BrollFormat[]>(() => {
 const result = computed(() => calculate(bundleToCalcInput(bundle.value, toCalcSettings(settings.value, DEFAULT_CALC_SETTINGS))))
 const unfilled = computed(() => unfilledItems(bundle.value))
 const calculatorOpen = ref(false)
+/** the Treatments card on General starts collapsed */
+const treatmentsOpen = ref(false)
 
 // --- status ----------------------------------------------------------------
 const blockers = computed(() => {
@@ -935,12 +937,26 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
           </UAlert>
 
           <!-- treatments that are on (Library → Treatments): what each adds to this shoot's recipes -->
-          <UCard v-if="result.treatments.length">
+          <UCard v-if="result.treatments.length" :ui="{ body: treatmentsOpen ? undefined : 'hidden' }">
             <template #header>
-              <div class="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 class="font-semibold text-highlighted">
-                  Treatments
-                </h2>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  class="flex items-center gap-2 text-left"
+                  :aria-expanded="treatmentsOpen"
+                  @click="treatmentsOpen = !treatmentsOpen"
+                >
+                  <UIcon name="i-lucide-chevron-right" class="size-4 text-muted transition-transform" :class="{ 'rotate-90': treatmentsOpen }" />
+                  <h2 class="font-semibold text-highlighted">
+                    Treatments
+                  </h2>
+                  <UBadge
+                    :label="`${result.treatments.filter(treatment => treatment.recipes).length} of ${result.treatments.length} applied`"
+                    color="neutral"
+                    variant="subtle"
+                    size="sm"
+                  />
+                </button>
                 <NuxtLink to="/library?tab=treatments" class="text-xs text-muted hover:text-default">Library → Treatments</NuxtLink>
               </div>
             </template>

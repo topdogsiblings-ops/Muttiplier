@@ -44,10 +44,12 @@ const format = computed(() => formatOf(form.format_id))
 const standalone = computed(() => format.value?.kind === 'standalone')
 const guidanceOf = (beat: string) => (format.value?.beat_descriptions as Record<string, string> | null)?.[beat] ?? null
 const exampleOf = (beat: string) => (format.value?.beat_examples as Record<string, string> | null)?.[beat] ?? null
-const showOf = (beat: string): 'face' | 'broll' => {
-  const set = (format.value?.beat_display as Record<string, string> | null)?.[beat]
-  if (set === 'face' || set === 'broll') return set
-  return standalone.value && (beat === 'hook' || beat === 'cta') ? 'face' : 'broll'
+const showOf = (beat: string) => beatShow(format.value as Parameters<typeof beatShow>[0], beat)
+const SHOW_LABELS: Record<string, string> = {
+  face: 'Face to camera',
+  broll: 'Over b-roll',
+  screen: 'On screen: a text message, not filmed',
+  voice_note: 'Voice note: filmed, played as audio'
 }
 const beatTitle = (beat: string) => standalone.value && beat === 'hook' ? 'Hook (opens the video)' : standalone.value && beat === 'cta' ? 'CTA (closes the video)' : `Beat: ${beat}`
 /** a standalone format's hook beat: each wording gets a hook type, like a Library hook */
@@ -415,7 +417,7 @@ async function save() {
             <div class="flex flex-wrap items-center gap-2">
               <span class="text-sm font-medium text-highlighted">{{ beatTitle(beat.beat) }}</span>
               <UBadge
-                :label="showOf(beat.beat) === 'face' ? 'Face to camera' : 'Over b-roll'"
+                :label="SHOW_LABELS[showOf(beat.beat)]"
                 color="neutral"
                 variant="outline"
                 size="sm"

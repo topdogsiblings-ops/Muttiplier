@@ -32,6 +32,7 @@
 // Paths are relative to the shoot's edited/ folder.
 
 import type { BrollClip, Manifest, TakeClip } from './manifest'
+import type { BeatShow } from './shootsheet'
 import { slugify } from './slots'
 
 export interface RecipeBeat {
@@ -40,10 +41,12 @@ export interface RecipeBeat {
   option: number
   /** who recorded this beat (a mixed VO's beats come from different people) */
   person: string
-  /** the speaker on camera (face) or their voice over b-roll (broll) */
-  show: 'face' | 'broll'
-  /** the VO recording for this beat */
+  /** the speaker on camera (face), their voice over b-roll (broll), a voice-note bubble (voice_note) or a message on screen (screen) */
+  show: BeatShow
+  /** the VO recording for this beat ('' for a beat shown on screen: it isn't filmed) */
   vo: string
+  /** a beat shown on screen: its message */
+  text: string | null
   duration: number
   /** b-roll under it, in order: their combined length covers the beat (none for a face beat) */
   broll: string[]
@@ -63,11 +66,11 @@ export interface Recipe {
    * The opening. A standalone VO's is its hook beat (`take` says which wording), shown face or over
    * b-roll; a Library hook is always on camera.
    */
-  hook: { code: string, person: string, item_id: string, take: string | null, file: string, caption: string | null, duration: number, hook_type: string | null, show: 'face' | 'broll', broll: string[] }
+  hook: { code: string, person: string, item_id: string, take: string | null, file: string, caption: string | null, duration: number, hook_type: string | null, show: BeatShow, broll: string[], text: string | null }
   /** item_id: the VO's item (a mixed VO's items joined with +); item_ids: each one. A standalone VO's beats are its middle ones. */
   vo: { code: string, item_id: string, item_ids: string[], format: string | null, beats: RecipeBeat[] }
-  /** The close. A standalone VO's is its CTA beat (mode sync when shown face, vo over b-roll). */
-  cta: { code: string, person: string, item_id: string, take: string | null, mode: string | null, file: string, caption: string | null, duration: number, broll: string[] }
+  /** The close. A standalone VO's is its CTA beat (mode sync when shown face, vo over b-roll, or screen / voice_note). */
+  cta: { code: string, person: string, item_id: string, take: string | null, mode: string | null, file: string, caption: string | null, duration: number, broll: string[], text: string | null }
   /** the VO beats' captions, in order (each beat's SRT, offset by the running length when stitched) */
   vo_captions: (string | null)[]
   /** the treatment this version carries (null = untreated): the editor makes its content, Showdog draws it */
@@ -83,14 +86,19 @@ export interface RecipeTreatment {
   needs: string[]
   component: string
   settings: unknown
+  /** a curated combination: its parts, each drawn on its own part of the video */
+  parts?: RecipeTreatment[]
 }
 
 const isVideoFile = (file: string) => /\.(mp4|mov|m4v)$/i.test(file)
-/** a layout treatment's layout: every beat face to camera, or every beat over b-roll */
+/** a layout treatment's layout (a combination's, from its layout part): every beat face to camera, or every beat over b-roll */
 const layoutOf = (treatment: RecipeTreatment): 'face' | 'broll' | null => {
+  if (treatment.parts?.length) return treatment.parts.map(layoutOf).find(layout => layout) ?? null
   const show = (treatment.settings as { show?: unknown } | null)?.show
   return treatment.kind === 'layout' && (show === 'face' || show === 'broll') ? show : null
 }
+/** a combination's parts other than its layout (a single treatment is its own one part) */
+const nonLayoutParts = (treatment: RecipeTreatment) => treatment.parts?.length ? treatment.parts.filter(part => !layoutOf(part)) : (layoutOf(treatment) ? [] : [treatment])
 
 /** Deterministic string hash, so picks and IDs are the same every time for the same inputs. */
 export function hash(text: string): number {
@@ -183,8 +191,9 @@ export function buildRecipes(manifest: Manifest): Recipe[] {
   const recipes: Recipe[] = []
   // the treatments that are on (older manifests have none)
   const treatments: RecipeTreatment[] = (manifest.plan.treatments ?? []) as RecipeTreatment[]
+  // layouts (and combinations with a layout part) re-lay the beats; the rest are drawn on top
   const layouts = treatments.filter(treatment => layoutOf(treatment))
-  const others = treatments.filter(treatment => treatment.kind !== 'layout')
+  const others = treatments.filter(treatment => !layoutOf(treatment))
   const offer = (manifest.plan.shoot.slot_values as Record<string, unknown> | null | undefined)?.offer
   const hasOffer = typeof offer === 'string' && offer.trim() !== ''
 
@@ -231,20 +240,26 @@ export function buildRecipes(manifest: Manifest): Recipe[] {
       if (standalone && (!ownHook || !ownCta)) return
       const hookChoices = standalone ? [ownHook!] : hooks.filter(hook => !first.hooks || first.hooks.includes(hook.code))
       const ctaChoices = standalone ? [ownCta!] : ctas.filter(cta => !first.ctas || first.ctas.includes(cta.code))
-      // the takes a layout treatment re-lays: the VO's beats, and a standalone VO's own hook and CTA
-      const laidOut = standalone ? [ownHook!, ...body, ownCta!] : body
-      const speakerVideo = laidOut.every(take => isVideoFile(take.file))
-      /** does a treatment (other than a layout) apply to this version? */
-      const applies = (treatment: RecipeTreatment) => treatment.needs.every(need =>
+      // how each take is shown as filmed (older manifests: face or b-roll)
+      const shownAs = (take: TakeClip): BeatShow => take.show ?? 'broll'
+      // the takes a layout treatment re-lays: the VO's face and b-roll beats, and a standalone VO's
+      // own hook and CTA when they're face or b-roll (messages on screen and voice notes stay as they are)
+      const laidOut = (standalone ? [ownHook!, ...body, ownCta!] : body).filter(take => shownAs(take) === 'face' || shownAs(take) === 'broll')
+      const speakerVideo = laidOut.length > 0 && laidOut.every(take => isVideoFile(take.file))
+      /** does a treatment (other than a layout; a combination: every part) apply to this version? */
+      const meets = (treatment: RecipeTreatment) => treatment.needs.every(need =>
         need === 'text' || (need === 'speaker_video' && speakerVideo) || (need === 'offer' && hasOffer))
+      const applies = (treatment: RecipeTreatment) => nonLayoutParts(treatment).every(meets)
 
       // the untreated version, then one per layout treatment that changes something
       for (const layoutTreatment of [null, ...layouts]) {
         const layout = layoutTreatment ? layoutOf(layoutTreatment) : null
-        const showOf = (take: TakeClip): 'face' | 'broll' => layout ?? (take.show === 'face' ? 'face' : 'broll')
+        const showOf = (take: TakeClip): BeatShow => layout && laidOut.includes(take) ? layout : shownAs(take)
         if (layoutTreatment) {
-          if (laidOut.every(take => (take.show === 'face' ? 'face' : 'broll') === layout)) continue
+          if (laidOut.every(take => shownAs(take) === layout)) continue
           if (!layoutTreatment.needs.every(need => need !== 'speaker_video' || speakerVideo)) continue
+          // a combination's other parts have to apply too
+          if (!applies(layoutTreatment)) continue
         }
         for (const hook of hookChoices) {
           for (const cta of ctaChoices) {
@@ -283,11 +298,15 @@ export function buildRecipes(manifest: Manifest): Recipe[] {
                   }
                   files = picked
                 }
-                filled.push({ beat: beat.beat ?? '', option: beat.option ?? 1, person: beat.person, show: showOf(beat), vo: beat.file, duration: beat.duration!, broll: files })
+                filled.push({
+                beat: beat.beat ?? '', option: beat.option ?? 1, person: beat.person, show: showOf(beat), vo: beat.file,
+                text: showOf(beat) === 'screen' ? beat.script : null, duration: beat.duration!, broll: files
+              })
               }
               if (!valid) break
               // a VO CTA (or a standalone CTA shown over b-roll) plays over b-roll, product shots first
-              const ctaMode = standalone ? (showOf(cta) === 'face' ? 'sync' : 'vo') : cta.mode
+              const ctaShow = showOf(cta)
+              const ctaMode = standalone ? (ctaShow === 'face' ? 'sync' : ctaShow === 'broll' ? 'vo' : ctaShow) : cta.mode
               let ctaBroll: string[] = []
               if (ctaMode === 'vo') {
                 const others = channelBroll.filter(clip => clip.section !== 'general')
@@ -311,12 +330,14 @@ export function buildRecipes(manifest: Manifest): Recipe[] {
                 hook: {
                   code: hook.code, person: hook.person, item_id: hook.item_id, take: standalone ? takeKeyOf(hook) : null,
                   file: hook.file, caption: hook.caption, duration: hook.duration!, hook_type: hook.hook_type,
-                  show: standalone ? showOf(hook) : 'face', broll: hookBroll
+                  show: standalone ? showOf(hook) : 'face', broll: hookBroll,
+                  text: standalone && showOf(hook) === 'screen' ? hook.script : null
                 },
                 vo: { code: first.code, item_id: itemIds.join('+'), item_ids: itemIds, format: first.format, beats: filled },
                 cta: {
                   code: cta.code, person: cta.person, item_id: cta.item_id, take: standalone ? takeKeyOf(cta) : null,
-                  mode: ctaMode, file: cta.file, caption: cta.caption, duration: cta.duration!, broll: ctaBroll
+                  mode: ctaMode, file: cta.file, caption: cta.caption, duration: cta.duration!, broll: ctaBroll,
+                  text: standalone && ctaShow === 'screen' ? cta.script : null
                 },
                 vo_captions: body.map(beat => beat.caption),
                 treatment: layoutTreatment
@@ -354,11 +375,17 @@ export function buildRecipes(manifest: Manifest): Recipe[] {
         }
       }
 
-      // cast mixes: first wordings from the people cast on it, with anyone's hook and CTA on this channel
+      // cast mixes: first wordings from the people cast on it, with anyone's hook and CTA on this
+      // channel. Only filmed beats are mixed: a message on screen reads the same whoever wrote it.
       const order = ready[0]?.order ?? []
-      const mixes = beatMixes(ready.map(entry => entry.person), order.length, voVariations, `${shoot}|${channel}|${code}`)
+      const filmed = order.filter(name => ready[0]!.byBeat.get(name)![0]!.show !== 'screen')
+      const mixes = beatMixes(ready.map(entry => entry.person), filmed.length, voVariations, `${shoot}|${channel}|${code}`)
       for (const mix of mixes) {
-        const beats = order.map((name, index) => ready.find(entry => entry.person === mix[index])!.byBeat.get(name)![0]!)
+        const beats = order.map((name) => {
+          const at = filmed.indexOf(name)
+          const person = at >= 0 ? mix[at]! : ready[0]!.person
+          return ready.find(entry => entry.person === person)!.byBeat.get(name)![0]!
+        })
         combine(beats, hooksOn, ctasOn, [...new Set(mix)].sort().join('+'), true, '')
       }
     }

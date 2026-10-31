@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { BeatShow } from '#shared/utils/shootsheet'
 import type { Row } from '#shared/types/models'
 import type { Json } from '#shared/types/database.types'
 
@@ -25,7 +26,7 @@ const form = reactive({
   kind: 'modular' as 'modular' | 'standalone',
   beat_descriptions: {} as Record<string, string>,
   beat_examples: {} as Record<string, string>,
-  beat_display: {} as Record<string, 'face' | 'broll'>,
+  beat_display: {} as Record<string, BeatShow>,
   beat_broll: {} as Record<string, BrollSuggestion[]>,
   target_seconds: undefined as number | undefined,
   source_url: ''
@@ -47,7 +48,7 @@ function edit(row?: Row<'formats'>, duplicate = false) {
     beats: [...(row?.beats ?? DEFAULT_BEATS)],
     beat_descriptions: { ...((row?.beat_descriptions ?? {}) as Record<string, string>) },
     beat_examples: { ...((row?.beat_examples ?? {}) as Record<string, string>) },
-    beat_display: { ...((row?.beat_display ?? {}) as Record<string, 'face' | 'broll'>) },
+    beat_display: { ...((row?.beat_display ?? {}) as Record<string, BeatShow>) },
     beat_broll: parseBeatSuggestions(row?.beat_broll),
     target_seconds: row?.target_seconds ?? undefined,
     source_url: row?.source_url ?? ''
@@ -77,12 +78,16 @@ watch(() => form.kind, (kind) => {
   form.beats = kind === 'standalone' ? [HOOK, ...middle, CTA] : middle.length ? middle : [...DEFAULT_BEATS]
 })
 /** how a beat is shown, as the format would play it: set, or the default for its place */
-const showOf = (beat: string): 'face' | 'broll' =>
+const showOf = (beat: string): BeatShow =>
   form.beat_display[beat] ?? (isStandalone.value && (beat === HOOK || beat === CTA) ? 'face' : 'broll')
-// the default layout: the Face to camera and Over b-roll treatments make whole-video versions on top
+// how each beat is shown. Face and b-roll are the default layout (the Face to camera and Over
+// b-roll treatments make whole-video versions on top); a beat on screen is a text message, not
+// filmed; a voice note plays the take's sound in a bubble on that screen (a text thread)
 const showItems = [
   { label: 'Face to camera', value: 'face' },
-  { label: 'Over b-roll', value: 'broll' }
+  { label: 'Over b-roll', value: 'broll' },
+  { label: 'On screen (text, not filmed)', value: 'screen' },
+  { label: 'Voice note', value: 'voice_note' }
 ]
 const beatTitle = (beat: string) => isStandalone.value && beat === HOOK ? 'hook (opens the video)' : isStandalone.value && beat === CTA ? 'cta (closes the video)' : beat
 
@@ -171,8 +176,8 @@ async function save() {
                   :model-value="showOf(beat)"
                   :items="showItems"
                   size="xs"
-                  class="w-40"
-                  @update:model-value="form.beat_display[beat] = $event as 'face' | 'broll'"
+                  class="w-56"
+                  @update:model-value="form.beat_display[beat] = $event as BeatShow"
                 />
               </div>
               <UTextarea

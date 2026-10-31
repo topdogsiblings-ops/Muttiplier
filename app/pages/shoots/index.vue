@@ -36,9 +36,8 @@ async function loadShoots() {
     if (page.length < 1000) break
   }
   itemsByShoot.value = grouped
-  // the Library's treatments that are on: every recipe gets a version for each that applies
-  treatments.value = must(await db.from('treatments').select('name, kind, placement, needs, component, settings')
-    .eq('active', true).eq('archived', false).order('sort_order'))
+  // the Library's treatments that are on (combinations with their parts), as the shoot page loads them
+  treatments.value = await loadTreatments(db)
 }
 await Promise.all([load(), loadShoots()])
 

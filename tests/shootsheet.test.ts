@@ -164,7 +164,7 @@ describe('planSnapshots', () => {
 describe('buildShootsheet', () => {
   it('matches the worker contract', () => {
     const sheet = buildShootsheet(bundle())
-    expect(sheet.schema_version).toBe(7)
+    expect(sheet.schema_version).toBe(8)
     // custom slots are the shoot's own
     expect(sheet.shoot.slot_values).toEqual({ benefit: 'calmer walks' })
     expect(sheet.shoot).toMatchObject({ code: 'S014', date: '2026-10-20', broll_variations: 3, submission_rate: 0.15 })
@@ -227,7 +227,7 @@ describe('skeleton zip', () => {
     expect(folders).toEqual(expect.arrayContaining([`${shoot}/raw`, `${shoot}/edited`, `${shoot}/renders`]))
     // everything lives in the shoot folder
     expect(folders.every(folder => folder.startsWith(shoot))).toBe(true)
-    expect(JSON.parse(files[`${shoot}/manifest.json`]!)).toEqual({ schema_version: 8, version: 0, generated_at: null, plan: sheet, clips: [] })
+    expect(JSON.parse(files[`${shoot}/manifest.json`]!)).toEqual({ schema_version: 9, version: 0, generated_at: null, plan: sheet, clips: [] })
   })
 
   it('files b-roll for a product feature a level down in its beat folder', () => {
@@ -302,5 +302,17 @@ describe('performs', () => {
     expect(performs(vo, 'brennen', 'siblings')).toBe(false)
     // hooks and CTAs: everyone
     expect(performs({ kind: 'hook', writer_id: null }, 'brennen', 'nix')).toBe(true)
+  })
+})
+
+describe('beats shown on screen', () => {
+  it('aren\u2019t filmed: no take, no file in the plan', () => {
+    const b = bundle()
+    const vo = b.items.find(item => item.kind === 'body')!
+    vo.format = { ...vo.format!, kind: 'standalone', beats: ['hook', 'problem', 'cta'], beat_display: { hook: 'screen', problem: 'voice_note', cta: 'screen' } }
+    vo.script_snapshot = [{ beat: 'hook', script: 'hey' }, { beat: 'problem', script: 'listen', alternates: [{ script: 'listen up' }] }, { beat: 'cta', script: 'link' }]
+    expect(itemBeats(vo)).toEqual(['problem', 'problem~2'])
+    const sheetVo = buildShootsheet(b).items.find(item => item.kind === 'body') as { beats: { beat: string, show: string, file: string | null }[] }
+    expect(sheetVo.beats.map(beat => `${beat.beat}/${beat.show}/${beat.file ? 'file' : 'none'}`)).toEqual(['hook/screen/none', 'problem/voice_note/file', 'problem/voice_note/file', 'cta/screen/none'])
   })
 })

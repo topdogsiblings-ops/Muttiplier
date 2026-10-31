@@ -32,6 +32,7 @@ const COMPONENTS = [
   { label: 'Layout (face or b-roll)', value: 'layout' },
   { label: 'Search bar', value: 'search_bar' },
   { label: 'Text thread', value: 'text_thread' },
+  { label: 'Retro look', value: 'retro_look' },
   { label: 'Then & now labels', value: 'then_now_labels' },
   { label: 'Offer badge', value: 'offer_badge' },
   { label: 'Placed text', value: 'placed_text' },
@@ -65,12 +66,17 @@ const form = reactive({
   component: 'search_bar',
   settings: '{}',
   source_url: '',
-  active: true
+  active: true,
+  /** a curated combination's parts (treatment ids); empty = a single treatment */
+  parts: [] as string[],
+  combination: false
 })
 const requestOpen = useGuardedClose(open, form)
 
-function edit(row?: Row<'treatments'>) {
+function edit(row?: Row<'treatments'>, combination = false) {
   Object.assign(form, {
+    parts: [...(row?.parts ?? [])],
+    combination: combination || !!row?.parts?.length,
     id: row?.id ?? '',
     system: row?.system ?? false,
     name: row?.name ?? '',
@@ -99,7 +105,39 @@ const settings = computed(() => {
     return null
   }
 })
-const canSave = computed(() => !!form.name.trim() && !!settings.value && isValidUrl(form.source_url))
+// --- curated combinations ------------------------------------------------------------------
+// A combination is two (or more) treatments drawn together, each on its own part of the video:
+// e.g. a search bar over the hook, then the VO face to camera. Only combinations set up here
+// exist; nothing else combines. At most one part sets how the VO looks (a layout, greenscreen or
+// picture-in-picture), and no two parts go on the same part of the video.
+const byId = (id: string) => library.rows.value.find(row => row.id === id)
+const partOptions = computed(() => library.rows.value
+  .filter(row => !row.archived && !row.parts.length && row.id !== form.id)
+  .map(row => ({ label: `${row.name} · ${labelOf(PLACEMENTS, row.placement).toLowerCase()}`, value: row.id })))
+const looks = (row: Row<'treatments'>) => row.kind === 'layout' || row.kind === 'footage'
+const partProblem = computed(() => {
+  if (!form.combination) return null
+  const parts = form.parts.map(byId).filter((row): row is Row<'treatments'> => !!row)
+  if (parts.length < 2) return 'Pick at least two treatments to combine.'
+  if (parts.filter(looks).length > 1) return 'Only one part can set how the VO looks (face to camera, over b-roll, greenscreen or picture-in-picture).'
+  const overlays = parts.filter(part => !looks(part))
+  if (new Set(overlays.map(part => part.placement)).size < overlays.length) return 'Two overlays can\u2019t go on the same part of the video.'
+  return null
+})
+/** what a combination is, from its parts: how it looks if a part sets that, and everything its parts need */
+function fromParts() {
+  const parts = form.parts.map(byId).filter((row): row is Row<'treatments'> => !!row)
+  const look = parts.find(looks)
+  return {
+    kind: look?.kind ?? 'overlay',
+    placement: 'video',
+    component: 'combo',
+    needs: [...new Set(parts.flatMap(part => part.needs))]
+  }
+}
+const partNames = (row: Row<'treatments'>) => row.parts.map(id => byId(id)?.name ?? 'a removed treatment').join(' + ')
+
+const canSave = computed(() => !!form.name.trim() && !!settings.value && isValidUrl(form.source_url) && !partProblem.value)
 
 async function save() {
   saving.value = true
@@ -113,10 +151,12 @@ async function save() {
       source_url: normalizeUrl(form.source_url),
       active: form.active,
       // a built-in treatment's kind and component stay as they are
-      ...(form.system ? {} : { kind: form.kind, component: form.component })
+      ...(form.system ? {} : { kind: form.kind, component: form.component }),
+      // a combination is what its parts make it
+      ...(form.combination ? { parts: form.parts, ...fromParts() } : { parts: [] })
     }
     if (form.id) must(await db.from('treatments').update(fields).eq('id', form.id))
-    else must(await db.from('treatments').insert({ ...fields, kind: form.kind, component: form.component, sort_order: Math.max(0, ...library.rows.value.map(row => row.sort_order)) + 1 }))
+    else must(await db.from('treatments').insert({ kind: form.kind, component: form.component, ...fields, sort_order: Math.max(0, ...library.rows.value.map(row => row.sort_order)) + 1 }))
     await library.reload()
   }, 'Treatment saved')
   saving.value = false
@@ -132,7 +172,11 @@ async function save() {
       v-model:show-archived="library.showArchived.value"
       new-label="New treatment"
       @create="edit()"
-    />
+    >
+      <template #actions>
+        <UButton label="New combination" icon="i-lucide-layers" color="neutral" variant="subtle" @click="edit(undefined, true)" />
+      </template>
+    </LibraryToolbar>
 
     <p class="text-sm text-muted">
       Every treatment that's on is applied to every recipe that has what it needs, as an extra version alongside the untreated one.
@@ -150,13 +194,16 @@ async function save() {
           <p class="flex flex-wrap items-center gap-2 font-medium text-highlighted">
             {{ row.name }}
             <UBadge v-if="row.system" label="Built in" icon="i-lucide-lock" color="neutral" variant="outline" size="sm" />
+            <UBadge v-if="row.parts.length" :label="`Combines ${partNames(row)}`" icon="i-lucide-layers" color="secondary" variant="subtle" size="sm" />
           </p>
           <p v-if="row.description" class="text-sm text-muted">
             {{ row.description }}
           </p>
           <div class="flex flex-wrap items-center gap-1.5 text-xs text-muted">
-            <UBadge :label="labelOf(KINDS, row.kind)" color="primary" variant="subtle" size="sm" />
-            <UBadge :label="labelOf(PLACEMENTS, row.placement)" color="neutral" variant="subtle" size="sm" />
+            <template v-if="!row.parts.length">
+              <UBadge :label="labelOf(KINDS, row.kind)" color="primary" variant="subtle" size="sm" />
+              <UBadge :label="labelOf(PLACEMENTS, row.placement)" color="neutral" variant="subtle" size="sm" />
+            </template>
             <UBadge v-for="need in row.needs" :key="need" :label="`Needs ${labelOf(NEEDS, need).toLowerCase()}`" color="neutral" variant="outline" size="sm" />
             <SourceLink :url="row.source_url" />
           </div>
@@ -188,7 +235,7 @@ async function save() {
     </div>
     <ListPager v-model:page="library.page.value" :total="list.length" :page-size="library.pageSize" />
 
-    <USlideover :open="open" @update:open="requestOpen" :title="form.id ? 'Edit treatment' : 'New treatment'" :ui="{ content: 'max-w-xl' }">
+    <USlideover :open="open" @update:open="requestOpen" :title="form.combination ? (form.id ? 'Edit combination' : 'New combination') : (form.id ? 'Edit treatment' : 'New treatment')" :ui="{ content: 'max-w-xl' }">
       <template #body>
         <div class="space-y-5">
           <UAlert
@@ -204,7 +251,15 @@ async function save() {
           <UFormField label="Description" help="What it looks like, and when it works best">
             <UTextarea v-model="form.description" autoresize class="w-full" />
           </UFormField>
-          <div class="grid gap-4 sm:grid-cols-2">
+          <UFormField
+            v-if="form.combination"
+            label="Combines"
+            help="Each part is drawn on its own part of the video. At most one sets how the VO looks; no two overlays on the same part. It applies where every part would."
+            :error="partProblem ?? undefined"
+          >
+            <USelectMenu v-model="form.parts" :items="partOptions" value-key="value" multiple placeholder="Pick the treatments" class="w-full" />
+          </UFormField>
+          <div v-if="!form.combination" class="grid gap-4 sm:grid-cols-2">
             <UFormField label="Kind">
               <USelect v-model="form.kind" :items="KINDS" class="w-full" :disabled="form.system" />
             </UFormField>
@@ -212,7 +267,7 @@ async function save() {
               <USelect v-model="form.placement" :items="PLACEMENTS" class="w-full" />
             </UFormField>
           </div>
-          <UFormField label="What a recipe needs for it" help="A recipe without all of these doesn't get this treatment">
+          <UFormField v-if="!form.combination" label="What a recipe needs for it" help="A recipe without all of these doesn't get this treatment">
             <div class="space-y-1.5">
               <UCheckbox
                 v-for="need in NEEDS"
@@ -224,10 +279,10 @@ async function save() {
               />
             </div>
           </UFormField>
-          <UFormField label="Showdog component" help="What Showdog draws it with. A new component has to be built in Showdog first.">
+          <UFormField v-if="!form.combination" label="Showdog component" help="What Showdog draws it with. A new component has to be built in Showdog first.">
             <USelect v-model="form.component" :items="COMPONENTS" class="w-full" :disabled="form.system" />
           </UFormField>
-          <UFormField label="Settings" help="Passed to the component as they are (JSON), e.g. position or colours" :error="settings ? undefined : 'Enter valid JSON, e.g. {}'">
+          <UFormField v-if="!form.combination" label="Settings" help="Passed to the component as they are (JSON), e.g. position or colours" :error="settings ? undefined : 'Enter valid JSON, e.g. {}'">
             <UTextarea v-model="form.settings" autoresize :rows="3" class="w-full font-mono text-xs" />
           </UFormField>
           <UFormField label="Source" help="An example of it in a real ad" :error="isValidUrl(form.source_url) ? undefined : 'Enter a valid link'">

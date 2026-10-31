@@ -134,7 +134,9 @@ export default defineEventHandler(async (event): Promise<{ drafts: AiDraft[] }> 
       ...format.beats.map((beat) => {
         const guidance = (format.beat_descriptions as Record<string, string> | null)?.[beat]
         const example = (format.beat_examples as Record<string, string> | null)?.[beat]
-        return guidance || example ? `- ${beat}: ${guidance ?? ''}${example ? ` Example: "${example}"` : ''}` : ''
+        const show = (format.beat_display as Record<string, string> | null)?.[beat]
+        const how = show === 'screen' ? ' (a text message on screen: short, like a real text)' : show === 'voice_note' ? ' (a spoken voice note: casual, a few seconds)' : ''
+        return guidance || example || how ? `- ${beat}${how}: ${guidance ?? ''}${example ? ` Example: "${example}"` : ''}` : ''
       }),
       format.kind === 'standalone'
         ? 'This format is standalone: the video has no separate hook or CTA. The "hook" beat is the video\'s opening line and must stop the scroll on its own; the "cta" beat closes the video and tells the viewer what to do.'

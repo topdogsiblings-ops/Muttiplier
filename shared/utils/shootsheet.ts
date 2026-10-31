@@ -5,6 +5,8 @@ import { beatWordings, buildSlotContext, joinBeats, parseBeats, parseTakeKey, re
 import type { ItemKind } from './calculator'
 
 /**
+ * 8: beats can be shown `screen` (text on a phone screen, not filmed: file null) or `voice_note`;
+ * treatments can be curated combinations (`parts`).
  * 7: the plan lists the treatments that are on (`treatments`).
  * 6: VO beats are takes, one per wording (`option`, with alternates), each saying how it's shown
  * (`show`: face or broll); VO items say if they're `standalone`; formats carry `kind` and
@@ -14,7 +16,7 @@ import type { ItemKind } from './calculator'
  * `broll_variations`, now used). 3: b-roll shots no
  * longer carry product_visible or min_clips. 2: custom slot values moved to plan.shoot.
  */
-export const SHOOTSHEET_SCHEMA_VERSION = 7
+export const SHOOTSHEET_SCHEMA_VERSION = 8
 export const DEFAULT_BEATS = ['problem', 'product', 'result']
 
 export interface BundleChannel {
@@ -93,15 +95,22 @@ export const STANDALONE_CTA_BEAT = 'cta'
 export const isStandalone = (item: Pick<BundleItem, 'kind' | 'format'>) => item.kind === 'body' && item.format?.kind === 'standalone'
 
 /**
- * How a VO beat is shown: the speaker on camera (face) or their voice over b-roll. Set per beat on
- * the format; a standalone format's hook and CTA beats default to face, everything else to b-roll.
- * Treatments can change it later.
+ * How a VO beat is shown:
+ * - face: the speaker on camera; broll: their voice over b-roll (layout treatments can switch these);
+ * - screen: its text as a message bubble on a phone screen, not filmed (its length is its reading time);
+ * - voice_note: a voice-note bubble on that screen, playing the take's sound (filmed like any beat).
+ * Set per beat on the format; a standalone format's hook and CTA beats default to face, everything
+ * else to b-roll.
  */
-export function beatShow(format: Pick<NonNullable<BundleItem['format']>, 'kind' | 'beat_display'> | null | undefined, beat: string): 'face' | 'broll' {
+export type BeatShow = 'face' | 'broll' | 'screen' | 'voice_note'
+export const BEAT_SHOWS: BeatShow[] = ['face', 'broll', 'screen', 'voice_note']
+export function beatShow(format: Pick<NonNullable<BundleItem['format']>, 'kind' | 'beat_display'> | null | undefined, beat: string): BeatShow {
   const set = format?.beat_display?.[beat]
-  if (set === 'face' || set === 'broll') return set
+  if (BEAT_SHOWS.includes(set as BeatShow)) return set as BeatShow
   return format?.kind === 'standalone' && (beat === STANDALONE_HOOK_BEAT || beat === STANDALONE_CTA_BEAT) ? 'face' : 'broll'
 }
+/** a beat shown on screen is text, not filmed: it has no take */
+export const isFilmed = (show: BeatShow) => show !== 'screen'
 
 export interface BundleBroll {
   id?: string
@@ -127,6 +136,8 @@ export interface BundleTreatment {
   needs: string[]
   component: string
   settings: unknown
+  /** a curated combination: the treatments it's made of (each drawn on its own part of the video) */
+  parts?: BundleTreatment[]
 }
 
 export interface ShootBundle {
@@ -434,12 +445,15 @@ export const isVoiceover = (item: Pick<BundleItem, 'kind' | 'cta_mode'>) =>
   item.kind === 'body' || (item.kind === 'cta' && item.cta_mode === 'vo')
 
 /**
- * The takes a VO is recorded in, one file each: every wording of every beat, as take keys (the
- * beat's name for its first wording, `<beat>~2`… for alternates). Hooks and CTAs are one take (null).
+ * The takes a VO is recorded in, one file each: every wording of every filmed beat, as take keys
+ * (the beat's name for its first wording, `<beat>~2`… for alternates). A beat shown on screen is
+ * text, not filmed, so it has none. Hooks and CTAs are one take (null).
  */
-export function itemBeats(item: Pick<BundleItem, 'kind' | 'script_snapshot'>): (string | null)[] {
+export function itemBeats(item: Pick<BundleItem, 'kind' | 'script_snapshot' | 'format'>): (string | null)[] {
   if (item.kind !== 'body') return [null]
-  const takes = parseBeats(item.script_snapshot).flatMap(beat => beatWordings(beat).map(wording => takeKey(beat.beat, wording.option)))
+  const takes = parseBeats(item.script_snapshot)
+    .filter(beat => isFilmed(beatShow(item.format, beat.beat)))
+    .flatMap(beat => beatWordings(beat).map(wording => takeKey(beat.beat, wording.option)))
   return takes.length ? takes : [null]
 }
 
@@ -566,8 +580,9 @@ export function buildShootsheet(bundle: ShootBundle) {
           script: wording.script,
           hook_type: wording.hook_type,
           show: beatShow(item.format, beat.beat),
-          file: itemPath(bundle, item, 'edited', takeKey(beat.beat, wording.option)),
-          raw_file: itemPath(bundle, item, 'raw', takeKey(beat.beat, wording.option))
+          // a beat shown on screen is text: there's no file
+          file: isFilmed(beatShow(item.format, beat.beat)) ? itemPath(bundle, item, 'edited', takeKey(beat.beat, wording.option)) : null,
+          raw_file: isFilmed(beatShow(item.format, beat.beat)) ? itemPath(bundle, item, 'raw', takeKey(beat.beat, wording.option)) : null
         })))
         // linked hooks / CTAs: the only ones it goes with (null = any); a standalone VO goes with none
         return {
@@ -585,7 +600,17 @@ export function buildShootsheet(bundle: ShootBundle) {
       placement: treatment.placement,
       needs: treatment.needs,
       component: treatment.component,
-      settings: treatment.settings ?? {}
+      settings: treatment.settings ?? {},
+      // a combination's parts, each as Showdog draws it
+      parts: (treatment.parts ?? []).map(part => ({
+        slug: slugify(part.name),
+        name: part.name,
+        kind: part.kind,
+        placement: part.placement,
+        needs: part.needs,
+        component: part.component,
+        settings: part.settings ?? {}
+      }))
     })),
     // one entry per shot per channel; its clips go loose into the folder, under their own names
     broll: bundle.broll.filter(shot => shot.status !== 'skipped').flatMap(shot =>
@@ -661,7 +686,8 @@ export function skeletonFolders(bundle: ShootBundle): string[] {
   const folders = new Set<string>([`${shoot}/raw`, `${shoot}/edited`, `${shoot}/renders`])
   for (const item of sheet.items) {
     const files = 'beats' in item ? item.beats.flatMap(beat => [beat.file, beat.raw_file]) : [item.file, item.raw_file]
-    for (const file of files) folders.add(parentFolder(file))
+    // beats shown on screen have no file, so no folder
+    for (const file of files) if (file) folders.add(parentFolder(file))
   }
   for (const shot of sheet.broll) {
     folders.add(shot.folder)
@@ -671,6 +697,8 @@ export function skeletonFolders(bundle: ShootBundle): string[] {
 }
 
 /**
+ * 9: a VO beat shown on screen is a clip with no file (`file` ''), its text in `script` and its
+ * reading time as `duration`; `show` can be screen or voice_note (shoot sheet 8).
  * 8: the plan carries the treatments that are on (shoot sheet 7).
  * 7: VO clips are takes: `option` (which wording of the beat), `show` (face or broll) and, for a
  * standalone hook beat, `hook_type`; the plan follows shoot sheet 6.
@@ -680,7 +708,7 @@ export function skeletonFolders(bundle: ShootBundle): string[] {
  * longer carry product_visible. 3: clips carry `feature` (VOs the feature they're about, b-roll its
  * feature folder or null).
  */
-export const MANIFEST_SCHEMA_VERSION = 8
+export const MANIFEST_SCHEMA_VERSION = 9
 
 /**
  * The manifest before the edits are in (spec §14): just the plan, version 0, no clips. Written

@@ -190,6 +190,23 @@ describe('calculate: treatments', () => {
     expect(result.treatments.map(entry => [entry.name, entry.recipes])).toEqual([['Face to camera', 2], ['Over b-roll', 0], ['Search bar', 2], ['Offer badge', 0]])
     expect(result.treatments[3]!.why).toMatch(/offer/)
   })
+
+  it('counts a combination where every part applies', () => {
+    const on = (kind: 'hook' | 'body' | 'cta', templateId: string, extra: Partial<CalcItem> = {}) =>
+      ({ personId: 'joe', channelId: 'nix', kind, templateId, ctaMode: kind === 'cta' ? 'sync' : undefined, ...extra })
+    const search = { name: 'Search bar', kind: 'overlay', needs: ['text'] }
+    const result = calculate(base([on('hook', 'h1'), on('cta', 'c1'), on('body', 'v1', { beats: 3, faceBeats: 0 })], {
+      people: [people[0]!],
+      channels: [channels[0]!],
+      treatments: [
+        { name: 'Search, then face', kind: 'layout', needs: ['text', 'speaker_video'], parts: [search, { name: 'Face to camera', kind: 'layout', needs: [], layout: 'face' }] },
+        // over b-roll changes nothing on an all-b-roll VO, so the combination doesn't apply
+        { name: 'Search, then b-roll', kind: 'layout', needs: ['text'], parts: [search, { name: 'Over b-roll', kind: 'layout', needs: [], layout: 'broll' }] }
+      ]
+    }))
+    expect(result.totals.recipes).toBe(1 + 1)
+    expect(result.treatments.map(entry => entry.recipes)).toEqual([1, 0])
+  })
 })
 
 describe('monthsOfSupply', () => {
