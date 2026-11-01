@@ -1,10 +1,10 @@
 // Build a shoot's whole folder tree in Dropbox (spec §10d): every clip folder under raw/ and
 // edited/, plus renders/, and (until the edits are in) the plan as manifest.json. Folders that already exist are left
 // exactly as they are (no renaming, nothing removed), so this is safe to run again and again:
-// after planning, before each upload, or by hand. Any allowlisted user; not for drafts, whose
+// after planning, before each upload, or by hand. Any member of the org; not for drafts, whose
 // codes can still change.
 export default defineEventHandler(async (event) => {
-  const { db } = await requireAllowed(event)
+  const { db } = await requireMember(event)
   const { shootCode } = await readBody<{ shootCode?: string }>(event)
   if (!shootCode) throw createError({ statusCode: 400, statusMessage: 'Which shoot?' })
 

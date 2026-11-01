@@ -3,7 +3,7 @@ import type { H3Event } from 'h3'
 import { serverSupabaseClient, serverSupabaseUser } from '#supabase/server'
 import type { Database } from '#shared/types/database.types'
 
-// Dropbox (spec §12): one team connection, made by an admin in Settings. The server keeps the
+// Dropbox (spec §12): one connection per org, made by an admin in Settings. The server keeps the
 // refresh token (encrypted in public.dropbox_connection) and hands signed-in phones short-lived
 // access tokens, so clips upload from the phone straight to Dropbox.
 
@@ -42,18 +42,19 @@ export function decryptToken(sealed: string, secret: string) {
 
 // --- who's asking ---------------------------------------------------------------------------
 
-/** The signed-in user's Supabase client, if they're on the allowlist; `admin` from their role. */
-export async function requireAllowed(event: H3Event) {
+/** The signed-in user's Supabase client, if they're in an org; `admin` from their role in the current one. */
+export async function requireMember(event: H3Event) {
   const user = await serverSupabaseUser(event).catch(() => null)
   if (!user?.email) throw createError({ statusCode: 401, statusMessage: 'Sign in first' })
   const db = await serverSupabaseClient<Database>(event)
-  const { data } = await db.from('allowed_users').select('role').eq('email', user.email.toLowerCase()).maybeSingle()
-  if (!data) throw createError({ statusCode: 403, statusMessage: 'No access' })
-  return { db, admin: data.role === 'admin' }
+  const { data } = await db.rpc('my_orgs')
+  const current = data?.find(org => org.is_current)
+  if (!current) throw createError({ statusCode: 403, statusMessage: 'No access' })
+  return { db, admin: current.role === 'admin' }
 }
 
 export async function requireAdmin(event: H3Event) {
-  const access = await requireAllowed(event)
+  const access = await requireMember(event)
   if (!access.admin) throw createError({ statusCode: 403, statusMessage: 'Only admins can connect Dropbox' })
   return access.db
 }

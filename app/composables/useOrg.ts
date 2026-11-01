@@ -1,0 +1,56 @@
+export interface MyOrg {
+  id: string
+  name: string
+  slug: string
+  role: string
+  display_name: string | null
+  is_current: boolean
+  has_chosen: boolean
+}
+
+/**
+ * The signed-in user's orgs (spec §3). The org pays and its admins invite members; everything a
+ * request reads or writes belongs to its current org, which the database works out, so queries
+ * don't filter on it. Someone in several orgs picks one, and switching reloads the app so nothing
+ * from the last org lingers on screen.
+ */
+export const useOrg = () => {
+  const db = useDb()
+  const orgs = useState<MyOrg[]>('orgs', () => [])
+  const currentOrg = computed(() => orgs.value.find(org => org.is_current) ?? null)
+  /** in several orgs and hasn't chosen one yet */
+  const needsPicker = computed(() => orgs.value.length > 1 && !orgs.value.some(org => org.has_chosen))
+
+  async function load() {
+    const { data, error } = await db.rpc('my_orgs')
+    if (error) throw error
+    orgs.value = data ?? []
+    return orgs.value
+  }
+
+  async function enter(path = '/shoots') {
+    // a new access token carries the new org, once the token hook is on
+    await db.auth.refreshSession()
+    window.location.assign(path)
+  }
+
+  async function switchOrg(id: string) {
+    const { error } = await db.rpc('set_active_org', { p_org_id: id })
+    if (error) throw error
+    await enter()
+  }
+
+  async function createOrg(name: string, slug: string) {
+    const { error } = await db.rpc('create_org', { p_name: name, p_slug: slug })
+    if (error) throw error
+    await enter()
+  }
+
+  /** whether someone can start a new org; closed until billing exists */
+  async function signupOpen() {
+    const { data } = await db.rpc('org_signup_open')
+    return !!data
+  }
+
+  return { orgs, currentOrg, needsPicker, load, switchOrg, createOrg, signupOpen }
+}

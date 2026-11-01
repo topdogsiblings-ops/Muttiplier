@@ -1,6 +1,6 @@
-// Whether Dropbox is connected, and to which account and folder. Any allowlisted user.
+// Whether Dropbox is connected, and to which account and folder. Any member of the org.
 export default defineEventHandler(async (event) => {
-  const { db } = await requireAllowed(event)
+  const { db } = await requireMember(event)
   const configured = !!useRuntimeConfig(event).dropboxAppKey
   const { data } = await db.from('dropbox_connection').select('account_name, account_email, root, created_at').maybeSingle()
   return {

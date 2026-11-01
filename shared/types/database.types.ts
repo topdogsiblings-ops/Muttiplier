@@ -46,6 +46,7 @@ export type Database = {
       }
       angles: {
         Row: {
+          org_id: string
           archived: boolean
           created_at: string
           created_by: string | null
@@ -56,6 +57,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          org_id?: string
           archived?: boolean
           created_at?: string
           created_by?: string | null
@@ -66,6 +68,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          org_id?: string
           archived?: boolean
           created_at?: string
           created_by?: string | null
@@ -79,14 +82,17 @@ export type Database = {
       }
       body_template_products: {
         Row: {
+          org_id: string
           body_template_id: string
           product_id: string
         }
         Insert: {
+          org_id?: string
           body_template_id: string
           product_id: string
         }
         Update: {
+          org_id?: string
           body_template_id?: string
           product_id?: string
         }
@@ -109,6 +115,7 @@ export type Database = {
       }
       body_templates: {
         Row: {
+          org_id: string
           angle_id: string | null
           archived: boolean
           beats: Json
@@ -129,6 +136,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          org_id?: string
           angle_id?: string | null
           archived?: boolean
           beats?: Json
@@ -149,6 +157,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          org_id?: string
           angle_id?: string | null
           archived?: boolean
           beats?: Json
@@ -201,14 +210,17 @@ export type Database = {
       }
       brand_channels: {
         Row: {
+          org_id: string
           brand_id: string
           channel_id: string
         }
         Insert: {
+          org_id?: string
           brand_id: string
           channel_id: string
         }
         Update: {
+          org_id?: string
           brand_id?: string
           channel_id?: string
         }
@@ -231,6 +243,7 @@ export type Database = {
       }
       brands: {
         Row: {
+          org_id: string
           commission_pct: number | null
           created_at: string
           created_by: string | null
@@ -250,6 +263,7 @@ export type Database = {
           videos_required: number | null
         }
         Insert: {
+          org_id?: string
           commission_pct?: number | null
           created_at?: string
           created_by?: string | null
@@ -269,6 +283,7 @@ export type Database = {
           videos_required?: number | null
         }
         Update: {
+          org_id?: string
           commission_pct?: number | null
           created_at?: string
           created_by?: string | null
@@ -291,6 +306,7 @@ export type Database = {
       }
       broll_shots: {
         Row: {
+          org_id: string
           beat: string
           channel_id: string | null
           clips_filmed: number
@@ -306,6 +322,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          org_id?: string
           beat: string
           channel_id?: string | null
           clips_filmed?: number
@@ -321,6 +338,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          org_id?: string
           beat?: string
           channel_id?: string | null
           clips_filmed?: number
@@ -368,6 +386,7 @@ export type Database = {
       }
       channels: {
         Row: {
+          org_id: string
           active: boolean
           created_at: string
           created_by: string | null
@@ -380,6 +399,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          org_id?: string
           active?: boolean
           created_at?: string
           created_by?: string | null
@@ -392,6 +412,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          org_id?: string
           active?: boolean
           created_at?: string
           created_by?: string | null
@@ -407,6 +428,7 @@ export type Database = {
       }
       cta_templates: {
         Row: {
+          org_id: string
           archived: boolean
           created_at: string
           created_by: string | null
@@ -422,6 +444,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          org_id?: string
           archived?: boolean
           created_at?: string
           created_by?: string | null
@@ -437,6 +460,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          org_id?: string
           archived?: boolean
           created_at?: string
           created_by?: string | null
@@ -455,6 +479,7 @@ export type Database = {
       }
       dropbox_connection: {
         Row: {
+          org_id: string
           account_email: string | null
           account_id: string
           account_name: string | null
@@ -467,6 +492,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          org_id?: string
           account_email?: string | null
           account_id: string
           account_name?: string | null
@@ -479,6 +505,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          org_id?: string
           account_email?: string | null
           account_id?: string
           account_name?: string | null
@@ -502,6 +529,7 @@ export type Database = {
       }
       formats: {
         Row: {
+          org_id: string
           archived: boolean
           beat_broll: Json
           beat_display: Json
@@ -521,6 +549,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          org_id?: string
           archived?: boolean
           beat_broll?: Json
           beat_display?: Json
@@ -540,6 +569,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          org_id?: string
           archived?: boolean
           beat_broll?: Json
           beat_display?: Json
@@ -562,6 +592,7 @@ export type Database = {
       }
       hook_templates: {
         Row: {
+          org_id: string
           angle_id: string | null
           archived: boolean
           caption: string | null
@@ -580,6 +611,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          org_id?: string
           angle_id?: string | null
           archived?: boolean
           caption?: string | null
@@ -598,6 +630,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          org_id?: string
           angle_id?: string | null
           archived?: boolean
           caption?: string | null
@@ -639,8 +672,119 @@ export type Database = {
           },
         ]
       }
+      org_invites: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          display_name: string | null
+          email: string
+          org_id: string
+          role: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          display_name?: string | null
+          email: string
+          org_id?: string
+          role?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          display_name?: string | null
+          email?: string
+          org_id?: string
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_invites_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      org_members: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          org_id: string
+          role: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          org_id: string
+          role?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          org_id?: string
+          role?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_members_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "org_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orgs: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          next_shoot_number: number
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          next_shoot_number?: number
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          next_shoot_number?: number
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: [
+
+        ]
+      }
       people: {
         Row: {
+          user_id: string | null
+          org_id: string
           active: boolean
           allowed_user_id: string | null
           created_at: string
@@ -651,6 +795,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          user_id?: string | null
+          org_id?: string
           active?: boolean
           allowed_user_id?: string | null
           created_at?: string
@@ -661,6 +807,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          user_id?: string | null
+          org_id?: string
           active?: boolean
           allowed_user_id?: string | null
           created_at?: string
@@ -681,14 +829,17 @@ export type Database = {
         ]      }
       person_channels: {
         Row: {
+          org_id: string
           channel_id: string
           person_id: string
         }
         Insert: {
+          org_id?: string
           channel_id: string
           person_id: string
         }
         Update: {
+          org_id?: string
           channel_id?: string
           person_id?: string
         }
@@ -711,6 +862,7 @@ export type Database = {
       }
       product_features: {
         Row: {
+          org_id: string
           created_at: string
           created_by: string | null
           description: string | null
@@ -722,6 +874,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          org_id?: string
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -733,6 +886,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          org_id?: string
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -762,6 +916,7 @@ export type Database = {
       }
       products: {
         Row: {
+          org_id: string
           brand_id: string
           claims_allowed: string | null
           claims_forbidden: string | null
@@ -774,6 +929,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          org_id?: string
           brand_id: string
           claims_allowed?: string | null
           claims_forbidden?: string | null
@@ -786,6 +942,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          org_id?: string
           brand_id?: string
           claims_allowed?: string | null
           claims_forbidden?: string | null
@@ -809,6 +966,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          active_org_id: string | null
           avatar_url: string | null
           email: string | null
           full_name: string | null
@@ -816,6 +974,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          active_org_id?: string | null
           avatar_url?: string | null
           email?: string | null
           full_name?: string | null
@@ -823,6 +982,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          active_org_id?: string | null
           avatar_url?: string | null
           email?: string | null
           full_name?: string | null
@@ -833,6 +993,7 @@ export type Database = {
       }
       settings: {
         Row: {
+          org_id: string
           clip_aspect_height: number
           clip_aspect_width: number
           clip_max_fps: number
@@ -856,6 +1017,7 @@ export type Database = {
           words_per_second: number
         }
         Insert: {
+          org_id?: string
           clip_aspect_height?: number
           clip_aspect_width?: number
           clip_max_fps?: number
@@ -879,6 +1041,7 @@ export type Database = {
           words_per_second?: number
         }
         Update: {
+          org_id?: string
           clip_aspect_height?: number
           clip_aspect_width?: number
           clip_max_fps?: number
@@ -905,14 +1068,17 @@ export type Database = {
       }
       shoot_channels: {
         Row: {
+          org_id: string
           channel_id: string
           shoot_id: string
         }
         Insert: {
+          org_id?: string
           channel_id: string
           shoot_id: string
         }
         Update: {
+          org_id?: string
           channel_id?: string
           shoot_id?: string
         }
@@ -935,6 +1101,7 @@ export type Database = {
       }
       shoot_clips: {
         Row: {
+          org_id: string
           created_at: string
           created_by: string | null
           file_name: string
@@ -947,6 +1114,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          org_id?: string
           created_at?: string
           created_by?: string | null
           file_name: string
@@ -959,6 +1127,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          org_id?: string
           created_at?: string
           created_by?: string | null
           file_name?: string
@@ -989,14 +1158,17 @@ export type Database = {
       }
       shoot_formats: {
         Row: {
+          org_id: string
           format_id: string
           shoot_id: string
         }
         Insert: {
+          org_id?: string
           format_id: string
           shoot_id: string
         }
         Update: {
+          org_id?: string
           format_id?: string
           shoot_id?: string
         }
@@ -1019,6 +1191,7 @@ export type Database = {
       }
       shoot_items: {
         Row: {
+          org_id: string
           body_template_id: string | null
           caption: string | null
           channel_id: string | null
@@ -1042,6 +1215,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          org_id?: string
           body_template_id?: string | null
           caption?: string | null
           channel_id?: string | null
@@ -1065,6 +1239,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          org_id?: string
           body_template_id?: string | null
           caption?: string | null
           channel_id?: string | null
@@ -1134,6 +1309,7 @@ export type Database = {
       }
       batch_scores: {
         Row: {
+          org_id: string
           created_at: string
           created_by: string | null
           element_key: string
@@ -1144,6 +1320,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          org_id?: string
           created_at?: string
           created_by?: string | null
           element_key: string
@@ -1154,6 +1331,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          org_id?: string
           created_at?: string
           created_by?: string | null
           element_key?: string
@@ -1175,6 +1353,7 @@ export type Database = {
       }
       shoot_element_overrides: {
         Row: {
+          org_id: string
           created_at: string
           created_by: string | null
           dropped: boolean
@@ -1183,6 +1362,7 @@ export type Database = {
           shoot_id: string
         }
         Insert: {
+          org_id?: string
           created_at?: string
           created_by?: string | null
           dropped: boolean
@@ -1191,6 +1371,7 @@ export type Database = {
           shoot_id: string
         }
         Update: {
+          org_id?: string
           created_at?: string
           created_by?: string | null
           dropped?: boolean
@@ -1210,6 +1391,7 @@ export type Database = {
       }
       shoot_manifests: {
         Row: {
+          org_id: string
           created_at: string
           created_by: string | null
           data: Json
@@ -1219,6 +1401,7 @@ export type Database = {
           version: number
         }
         Insert: {
+          org_id?: string
           created_at?: string
           created_by?: string | null
           data: Json
@@ -1228,6 +1411,7 @@ export type Database = {
           version: number
         }
         Update: {
+          org_id?: string
           created_at?: string
           created_by?: string | null
           data?: Json
@@ -1255,14 +1439,17 @@ export type Database = {
       }
       shoot_people: {
         Row: {
+          org_id: string
           person_id: string
           shoot_id: string
         }
         Insert: {
+          org_id?: string
           person_id: string
           shoot_id: string
         }
         Update: {
+          org_id?: string
           person_id?: string
           shoot_id?: string
         }
@@ -1285,6 +1472,7 @@ export type Database = {
       }
       shoot_shortlists: {
         Row: {
+          org_id: string
           code: string
           created_at: string
           created_by: string | null
@@ -1299,6 +1487,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          org_id?: string
           code: string
           created_at?: string
           created_by?: string | null
@@ -1313,6 +1502,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          org_id?: string
           code?: string
           created_at?: string
           created_by?: string | null
@@ -1345,6 +1535,7 @@ export type Database = {
       }
       shoots: {
         Row: {
+          org_id: string
           broll_variations: number
           code: string
           created_at: string
@@ -1375,6 +1566,7 @@ export type Database = {
           wording_variations: number
         }
         Insert: {
+          org_id?: string
           broll_variations?: number
           code?: string
           created_at?: string
@@ -1405,6 +1597,7 @@ export type Database = {
           wording_variations?: number
         }
         Update: {
+          org_id?: string
           broll_variations?: number
           code?: string
           created_at?: string
@@ -1453,6 +1646,7 @@ export type Database = {
       }
       treatments: {
         Row: {
+          org_id: string
           active: boolean
           archived: boolean
           component: string
@@ -1472,6 +1666,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          org_id?: string
           active?: boolean
           archived?: boolean
           component: string
@@ -1491,6 +1686,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          org_id?: string
           active?: boolean
           archived?: boolean
           component?: string
@@ -1513,16 +1709,19 @@ export type Database = {
       }
       vo_cast: {
         Row: {
+          org_id: string
           body_template_id: string
           created_at: string
           person_id: string
         }
         Insert: {
+          org_id?: string
           body_template_id: string
           created_at?: string
           person_id: string
         }
         Update: {
+          org_id?: string
           body_template_id?: string
           created_at?: string
           person_id?: string
@@ -1546,16 +1745,19 @@ export type Database = {
       }
       vo_cta_links: {
         Row: {
+          org_id: string
           body_template_id: string
           created_at: string
           cta_template_id: string
         }
         Insert: {
+          org_id?: string
           body_template_id: string
           created_at?: string
           cta_template_id: string
         }
         Update: {
+          org_id?: string
           body_template_id?: string
           created_at?: string
           cta_template_id?: string
@@ -1579,16 +1781,19 @@ export type Database = {
       }
       vo_hook_links: {
         Row: {
+          org_id: string
           body_template_id: string
           created_at: string
           hook_template_id: string
         }
         Insert: {
+          org_id?: string
           body_template_id: string
           created_at?: string
           hook_template_id: string
         }
         Update: {
+          org_id?: string
           body_template_id?: string
           created_at?: string
           hook_template_id?: string
@@ -1622,6 +1827,21 @@ export type Database = {
       }
     }
     Functions: {
+      create_org: { Args: { p_name: string; p_slug: string }; Returns: string }
+      my_orgs: {
+        Args: never
+        Returns: {
+          display_name: string | null
+          has_chosen: boolean
+          id: string
+          is_current: boolean
+          name: string
+          role: string
+          slug: string
+        }[]
+      }
+      org_signup_open: { Args: never; Returns: boolean }
+      set_active_org: { Args: { p_org_id: string }; Returns: undefined }
       renumber_shoot_items: { Args: { p_shoot_id: string }; Returns: undefined }
       revert_shoot: { Args: { p_shoot_id: string }; Returns: undefined }
     }

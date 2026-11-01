@@ -11,16 +11,23 @@ const { access } = useAccess()
 const tabs = [
   { label: 'People', value: 'people', icon: 'i-lucide-users' },
   { label: 'Channels', value: 'channels', icon: 'i-lucide-tv' },
-  { label: 'Allowlist', value: 'allowlist', icon: 'i-lucide-shield-check' },
+  { label: 'Members', value: 'members', icon: 'i-lucide-shield-check' },
   { label: 'Defaults', value: 'defaults', icon: 'i-lucide-timer' },
   { label: 'Dropbox', value: 'dropbox', icon: 'i-simple-icons-dropbox' }
 ]
 const route = useRoute()
 const tab = ref(tabs.some(t => t.value === route.query.tab) ? String(route.query.tab) : 'people')
 
-const allowed = ref<Row<'allowed_users'>[]>([])
-async function loadAllowed() {
-  allowed.value = must(await db.from('allowed_users').select('*').order('email'))
+// the org's members, and the emails invited who haven't signed in yet
+const members = ref<(Row<'org_members'> & { profile: { email: string | null, full_name: string | null } | null })[]>([])
+const invites = ref<Row<'org_invites'>[]>([])
+async function loadMembers() {
+  const [memberRows, inviteRows] = await Promise.all([
+    db.from('org_members').select('*, profile:profiles(email, full_name)').order('created_at'),
+    db.from('org_invites').select('*').order('email')
+  ])
+  members.value = must(memberRows) as typeof members.value
+  invites.value = must(inviteRows)
 }
 
 // which channels each person appears on
@@ -30,33 +37,33 @@ async function loadPersonChannels() {
 }
 const channelsOf = (personId: string) => personChannels.value.filter(link => link.person_id === personId).map(link => link.channel_id)
 
-await Promise.all([load(true), loadAllowed(), loadPersonChannels()])
+await Promise.all([load(true), loadMembers(), loadPersonChannels()])
 
 const saving = ref(false)
 
 // --- people ----------------------------------------------------------------
 const personOpen = ref(false)
-const person = reactive({ id: '', name: '', slug: '', active: true, allowed_user_id: undefined as string | undefined, channel_ids: [] as string[] })
+const person = reactive({ id: '', name: '', slug: '', active: true, user_id: undefined as string | undefined, channel_ids: [] as string[] })
 const requestPersonOpen = useGuardedClose(personOpen, person)
 
 function editPerson(row?: Row<'people'>) {
-  Object.assign(person, { id: row?.id ?? '', name: row?.name ?? '', slug: row?.slug ?? '', active: row?.active ?? true, allowed_user_id: row?.allowed_user_id ?? undefined, channel_ids: row ? channelsOf(row.id) : [] })
+  Object.assign(person, { id: row?.id ?? '', name: row?.name ?? '', slug: row?.slug ?? '', active: row?.active ?? true, user_id: row?.user_id ?? undefined, channel_ids: row ? channelsOf(row.id) : [] })
   personOpen.value = true
 }
 watch(() => person.name, (name) => {
   if (!person.id) person.slug = slugify(name)
 })
 
-/** Allowlisted users not already linked to another person. */
-const linkOptions = computed(() => allowed.value
-  .filter(user => !people.value.some(p => p.allowed_user_id === user.id && p.id !== person.id))
-  .map(user => ({ label: user.display_name ? `${user.display_name} (${user.email})` : user.email, value: user.id })))
-const linkedUser = (id: string | null) => allowed.value.find(user => user.id === id)
+/** Members not already linked to another person. */
+const linkOptions = computed(() => members.value
+  .filter(member => !people.value.some(p => p.user_id === member.user_id && p.id !== person.id))
+  .map(member => ({ label: member.display_name ? `${member.display_name} (${member.profile?.email})` : member.profile?.email ?? '', value: member.user_id })))
+const linkedUser = (id: string | null) => members.value.find(member => member.user_id === id)
 
 async function savePerson() {
   saving.value = true
   const ok = await run(async () => {
-    const fields = { name: person.name.trim(), active: person.active, allowed_user_id: person.allowed_user_id ?? null }
+    const fields = { name: person.name.trim(), active: person.active, user_id: person.user_id ?? null }
     const id = person.id
       ? (must(await db.from('people').update(fields).eq('id', person.id)), person.id)
       : mustOne(await db.from('people').insert({ ...fields, slug: person.slug }).select('id').single()).id
@@ -110,41 +117,56 @@ async function saveChannel() {
   if (ok) channelOpen.value = false
 }
 
-// --- allowlist -------------------------------------------------------------
+// --- members -----------------------------------------------------------------
+// Admins invite by email; members don't pay. An invite becomes a membership when that Google
+// account signs in (straight away if it already has).
 const userOpen = ref(false)
-const allowedUser = reactive({ id: '', email: '', role: 'member', display_name: '' })
-const requestUserOpen = useGuardedClose(userOpen, allowedUser)
+const member = reactive({ user_id: '', invited: false, email: '', role: 'member', display_name: '' })
+const requestUserOpen = useGuardedClose(userOpen, member)
 const roles = [{ label: 'Member', value: 'member' }, { label: 'Admin', value: 'admin' }]
-const isSelf = (email: string) => email === access.value?.email
+const isSelf = (userId: string) => userId === access.value?.id
 
-function editUser(row?: Row<'allowed_users'>) {
-  Object.assign(allowedUser, { id: row?.id ?? '', email: row?.email ?? '', role: row?.role ?? 'member', display_name: row?.display_name ?? '' })
+function editMember(row?: typeof members.value[number]) {
+  Object.assign(member, { user_id: row?.user_id ?? '', invited: false, email: row?.profile?.email ?? '', role: row?.role ?? 'member', display_name: row?.display_name ?? '' })
   userOpen.value = true
 }
 
-async function saveUser() {
+function editInvite(row: Row<'org_invites'>) {
+  Object.assign(member, { user_id: '', invited: true, email: row.email, role: row.role, display_name: row.display_name ?? '' })
+  userOpen.value = true
+}
+
+async function saveMember() {
   saving.value = true
   const ok = await run(async () => {
-    const fields = { role: allowedUser.role, display_name: allowedUser.display_name.trim() || null }
-    if (allowedUser.id) must(await db.from('allowed_users').update(fields).eq('id', allowedUser.id))
-    else must(await db.from('allowed_users').insert({ ...fields, email: allowedUser.email.trim().toLowerCase() }))
-    await loadAllowed()
-  }, 'Allowlist updated')
+    const fields = { role: member.role, display_name: member.display_name.trim() || null }
+    if (member.user_id) must(await db.from('org_members').update(fields).eq('user_id', member.user_id))
+    else if (member.invited) must(await db.from('org_invites').update(fields).eq('email', member.email))
+    else must(await db.from('org_invites').insert({ ...fields, email: member.email.trim().toLowerCase() }))
+    await loadMembers()
+  }, 'Members updated')
   saving.value = false
   if (ok) userOpen.value = false
 }
 
-async function removeUser(row: Row<'allowed_users'>) {
+async function removeMember(row: typeof members.value[number]) {
   if (!(await confirmDialog({
-    title: `Remove ${row.email} from the allowlist?`,
+    title: `Remove ${row.profile?.email} from the organisation?`,
     description: 'They lose access immediately.',
     confirmLabel: 'Remove',
     danger: true
   }))) return
   await run(async () => {
-    must(await db.from('allowed_users').delete().eq('id', row.id))
-    await loadAllowed()
+    must(await db.from('org_members').delete().eq('user_id', row.user_id))
+    await loadMembers()
   }, 'Removed')
+}
+
+async function removeInvite(row: Row<'org_invites'>) {
+  await run(async () => {
+    must(await db.from('org_invites').delete().eq('email', row.email))
+    await loadMembers()
+  }, 'Invite removed')
 }
 
 // --- defaults --------------------------------------------------------------
@@ -276,8 +298,8 @@ async function saveDefaults() {
             >
               <span class="font-medium text-highlighted">{{ row.name }}</span>
               <code class="text-xs text-muted">{{ row.slug }}</code>
-              <span v-if="linkedUser(row.allowed_user_id)" class="flex items-center gap-1 text-xs text-muted">
-                <UIcon name="i-lucide-link" />{{ linkedUser(row.allowed_user_id)!.email }}
+              <span v-if="linkedUser(row.user_id)" class="flex items-center gap-1 text-xs text-muted">
+                <UIcon name="i-lucide-link" />{{ linkedUser(row.user_id)!.profile?.email }}
               </span>
               <UBadge
                 v-for="channelId in channelsOf(row.id)"
@@ -320,19 +342,19 @@ async function saveDefaults() {
           </div>
         </template>
 
-        <!-- Allowlist -->
-        <template v-else-if="tab === 'allowlist'">
+        <!-- Members -->
+        <template v-else-if="tab === 'members'">
           <div class="flex items-center justify-between">
             <p class="text-sm text-muted">
-              Only these Google accounts can sign in.
+              Only these Google accounts can use this organisation. Members don't pay.
             </p>
-            <UButton icon="i-lucide-plus" label="Add email" @click="editUser()" />
+            <UButton icon="i-lucide-plus" label="Invite" @click="editMember()" />
           </div>
           <div class="divide-y divide-default rounded-lg border border-default">
-            <div v-for="row in allowed" :key="row.id" class="flex items-center gap-3 px-4 py-3">
-              <button type="button" class="min-w-0 flex-1 text-left" @click="editUser(row)">
+            <div v-for="row in members" :key="row.user_id" class="flex items-center gap-3 px-4 py-3">
+              <button type="button" class="min-w-0 flex-1 text-left" @click="editMember(row)">
                 <p class="truncate font-medium text-highlighted">
-                  {{ row.email }}
+                  {{ row.profile?.email }}
                 </p>
                 <p v-if="row.display_name" class="text-sm text-muted">
                   {{ row.display_name }}
@@ -344,9 +366,21 @@ async function saveDefaults() {
                 color="error"
                 variant="ghost"
                 aria-label="Remove"
-                :disabled="isSelf(row.email)"
-                @click="removeUser(row)"
+                :disabled="isSelf(row.user_id)"
+                @click="removeMember(row)"
               />
+            </div>
+            <div v-for="row in invites" :key="row.email" class="flex items-center gap-3 px-4 py-3">
+              <button type="button" class="min-w-0 flex-1 text-left" @click="editInvite(row)">
+                <p class="truncate font-medium text-highlighted">
+                  {{ row.email }}
+                </p>
+                <p class="text-sm text-muted">
+                  Invited: joins when they sign in with Google
+                </p>
+              </button>
+              <UBadge :label="row.role" :color="row.role === 'admin' ? 'primary' : 'neutral'" variant="subtle" class="capitalize" />
+              <UButton icon="i-lucide-trash-2" color="error" variant="ghost" aria-label="Remove invite" @click="removeInvite(row)" />
             </div>
           </div>
         </template>
@@ -437,9 +471,9 @@ async function saveDefaults() {
                 class="w-full"
               />
             </UFormField>
-            <UFormField label="Linked user" help="The allowlisted account this person signs in with. Their checklist opens on their own shots.">
+            <UFormField label="Linked user" help="The member account this person signs in with. Their checklist shows their own shots.">
               <USelectMenu
-                v-model="person.allowed_user_id"
+                v-model="person.user_id"
                 :items="linkOptions"
                 value-key="value"
                 placeholder="Not linked"
@@ -488,22 +522,22 @@ async function saveDefaults() {
         </template>
       </UModal>
 
-      <UModal :open="userOpen" @update:open="requestUserOpen" :title="allowedUser.id ? 'Edit access' : 'Add to allowlist'">
+      <UModal :open="userOpen" @update:open="requestUserOpen" :title="member.user_id || member.invited ? 'Edit access' : 'Invite someone'">
         <template #body>
           <div class="space-y-4">
             <UFormField label="Google account email" required>
-              <UInput v-model="allowedUser.email" type="email" class="w-full" :disabled="!!allowedUser.id" />
+              <UInput v-model="member.email" type="email" class="w-full" :disabled="!!member.user_id || member.invited" />
             </UFormField>
             <UFormField label="Display name">
-              <UInput v-model="allowedUser.display_name" class="w-full" />
+              <UInput v-model="member.display_name" class="w-full" />
             </UFormField>
-            <UFormField label="Role" :help="isSelf(allowedUser.email) ? 'You can\'t change your own role' : undefined">
-              <USelect v-model="allowedUser.role" :items="roles" class="w-full" :disabled="isSelf(allowedUser.email)" />
+            <UFormField label="Role" :help="isSelf(member.user_id) ? 'You can\'t change your own role' : undefined">
+              <USelect v-model="member.role" :items="roles" class="w-full" :disabled="isSelf(member.user_id)" />
             </UFormField>
           </div>
         </template>
         <template #footer>
-          <UButton label="Save" :loading="saving" :disabled="!allowedUser.email.includes('@')" @click="saveUser" />
+          <UButton label="Save" :loading="saving" :disabled="!member.email.includes('@')" @click="saveMember" />
         </template>
       </UModal>
     </template>

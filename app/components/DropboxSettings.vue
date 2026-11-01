@@ -75,11 +75,12 @@ const crumbs = computed(() => {
   return [{ name: 'Dropbox', path: '' }, ...parts.map((name, index) => ({ name, path: `/${parts.slice(0, index + 1).join('/')}` }))]
 })
 
+const { currentOrg } = useOrg()
 const saving = ref(false)
 async function useFolder() {
   saving.value = true
   const ok = await run(async () => {
-    must(await db.from('dropbox_connection').update({ root: folderPath.value }).eq('singleton', true))
+    must(await db.from('dropbox_connection').update({ root: folderPath.value }).eq('org_id', currentOrg.value!.id))
     await refresh()
   }, `Clips will go into ${folderPath.value}`)
   saving.value = false

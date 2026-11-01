@@ -38,7 +38,7 @@ This spec covers the Library, Brands and Planner. Ingest, rendering and submissi
 
 - **Frontend/app:** Nuxt 4 (SPA, `ssr: false`) + Nuxt UI v4 + Tailwind, deployed on **Vercel**.
 - **Database + auth:** **Supabase** (Postgres, Auth, Row Level Security) via `@nuxtjs/supabase`.
-- **Auth:** Google OAuth via Supabase Auth, restricted to an email allowlist.
+- **Auth:** Google OAuth via Supabase Auth; access comes from membership of an org.
 - **Server routes:** Nuxt server (Nitro) API routes for anything needing secrets (AI drafting, exports). They run as the signed-in user under RLS.
 - **AI drafting:** Anthropic API (`@anthropic-ai/sdk`) called from server routes, structured output validated with Zod. Model name in an env var.
 - Mobile-friendly throughout. The checklist is used on phones on set.
@@ -57,13 +57,15 @@ ANTHROPIC_MODEL=claude-opus-5-5
 
 ## 3. Users and access
 
-- Sign in with Google. After sign-in, check the email against `allowed_users`. Not on the list → signed out with a "no access" message.
-- Two roles:
-  - **admin** — everything, plus managing people, channels, allowlist and settings.
+- **Orgs**, like Shopify: an org owns everything in the app (`org_id` on every table) and pays; its admins invite members by email, and members don't pay. Names, slugs and codes are unique within an org, and each org counts its own shoots (S001…).
+- Sign in with Google. Not in an org → signed out with a "no access" message. (Starting a new org at `/onboarding` is closed until billing exists: `private.platform.org_signup_open`.)
+- **Invites** (`org_invites`): Settings → Members. An invite becomes a membership (`org_members`) when that Google account signs in, or straight away if it already has. Google only, because its emails are verified.
+- **The current org**: `private.current_org_id()` is the `org_id` claim in the access token (`public.custom_access_token_hook`, optional, turned on in the Supabase dashboard), else the org the user last switched to (`profiles.active_org_id`), else their first; always one they're a member of right now. Someone in several orgs picks one at `/orgs` and switches from the sidebar. Inserts default to it, so app queries don't mention orgs.
+- Two roles, per org:
+  - **admin** — everything, plus managing people, channels, members and settings.
   - **member** — full read/write on the Library, Brands and Planner.
-- Enforce with RLS: every table readable/writable only by allowlisted authenticated users; admin-only tables (`allowed_users`, `settings`) writable by admins only.
-- `profiles` mirrors each auth user's name and email so the app can show who created or changed things.
-- Seed admin: `joe@thesmilyfam.com`.
+- Enforce with RLS: every org-owned table is readable and writable only in the request's current org, so someone in two orgs never sees them mixed; admin-only tables are writable by that org's admins only. `supabase/tests/org_isolation.sql` checks orgs can't reach each other.
+- `profiles` mirrors each auth user's name and email so the app can show who created or changed things; only people sharing your current org are visible.
 
 ---
 
@@ -74,7 +76,7 @@ ANTHROPIC_MODEL=claude-opus-5-5
 | **Library** | Hooks (scripts and types), CTAs, **Formats** (VOs are written in shoots) |
 | **Planner** | Shoots list → shoot planner (with calculator) → checklist → exports |
 | **Brands** | Brands (Trybe deal data, CSV import, filters), products with slot values, brand → channel assignment |
-| **Settings** (admin) | People, channels, allowlist, defaults (time per item, speech pace, general product shots) |
+| **Settings** (admin) | People, channels, members, defaults (time per item, speech pace, general product shots) |
 
 UI conventions: every destructive or state-changing action asks in an in-app confirm dialog (never a browser alert); collapsible sections start collapsed; long lists paginate and show a spinner while loading; each Library tab has a `?` help popover.
 
@@ -126,7 +128,7 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 
 **people** — on-camera talent
 - `name text`, `slug text unique` (lowercase kebab, used in folder names), `active boolean`
-- `allowed_user_id` — optional link to an allowlisted user; that user's checklist opens on their own shots
+- `user_id` — optional link to a member's account; that member's checklist shows their own shots. A person belongs to one org: someone in two orgs is a separate person in each
 
 **person_channels** — `person_id`, `channel_id`, pk on both. People linked to a channel; recipes on that channel can mix their parts (§9).
 
@@ -521,8 +523,8 @@ Goal: clips go straight from the shoot into the right Dropbox folders (§10d), s
 
 - **One connection for the team**, to a personal Dropbox for now. A Dropbox app (App Console: scoped access, Full Dropbox, `files.metadata.*` and `files.content.*` scopes) with `DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` in the env and redirect URIs `<origin>/api/dropbox/callback` (production and `http://localhost:3000`).
 - **Settings → Dropbox** (admins): **Connect Dropbox** signs in on Dropbox (`token_access_type=offline`) and comes back connected; **Choose folder** browses the Dropbox to pick the root folder everything goes under (default `/UGC`); **Disconnect** revokes and forgets it.
-- **`dropbox_connection`** (singleton): account id / name / email, `root`, and the refresh token **encrypted by the server** (AES-GCM, key derived from `DROPBOX_APP_SECRET`), so reading the row gives nobody Dropbox access. Readable by allowlisted users; written by admins.
-- **Server routes** (`/api/dropbox/…`): `connect`, `callback`, `status`, `folders` (admins), `disconnect` (admins), and `token`, which hands a signed-in, allowlisted phone a short-lived access token (about 4 hours). The refresh token never leaves the server.
+- **`dropbox_connection`** (one per org): account id / name / email, `root`, and the refresh token **encrypted by the server** (AES-GCM, key derived from `DROPBOX_APP_SECRET`), so reading the row gives nobody Dropbox access. Readable by the org's members; written by its admins.
+- **Server routes** (`/api/dropbox/…`): `connect`, `callback`, `status`, `folders` (admins), `disconnect` (admins), and `token`, which hands a signed-in member's phone a short-lived access token (about 4 hours). The refresh token never leaves the server.
 - **Uploads go from the phone straight to Dropbox** (not through Vercel), into `<root>/<path>` (§10d), in 8 MB pieces through an upload session (one request for small files), each piece retried on dropped connections, rate limits and server errors; an expired token is renewed. Hooks, VOs and CTAs overwrite (re-added clips replace the file); b-roll is added with autorename, never overwriting. Dropbox creates missing folders on upload.
 - Uploading is triggered from the checklist once the shoot is ended (**Upload all phones**, §10a). Until Dropbox is connected, uploads run in test mode.
 - **The shoot's whole tree is built in Dropbox** (`/api/dropbox/tree`): every clip folder under `raw/` and `edited/`, `renders/`, and the current `shootsheet.json` (overwritten each time so it matches the plan). It runs when a shoot is marked as planned, at the start of every Upload all phones, and from **Export → Create folders in Dropbox**. Folders are created with autorename off, so ones that already exist are left exactly as they are and only missing ones are added; safe to run again and again. Not for drafts, whose codes can still change. The skeleton zip still works without Dropbox.

@@ -26,7 +26,7 @@ const shoot = computed(() => bundle.value.shoot)
 // Everyone sees only what they film; admins see everyone's and can filter by person.
 const { access, isAdmin } = useAccess()
 /** the signed-in user's person on this shoot */
-const mine = computed(() => bundle.value.people.find(p => p.allowed_user_id && p.allowed_user_id === access.value?.id) ?? null)
+const mine = computed(() => bundle.value.people.find(p => p.user_id && p.user_id === access.value?.id) ?? null)
 /** not an admin, and not on this shoot's cast: nothing to film here */
 const notOnShoot = computed(() => !isAdmin.value && !mine.value)
 

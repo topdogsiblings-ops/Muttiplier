@@ -49,8 +49,8 @@ export default defineEventHandler(async (event): Promise<{ shots: DraftBrollShot
   const config = useRuntimeConfig(event)
   const db = await serverSupabaseClient<Database>(event)
 
-  // RLS only returns allowlist rows to allowlisted users, so this doubles as the access check.
-  const { data: access } = await db.from('allowed_users').select('id').limit(1)
+  // RLS only returns the current org's members to its members, so this doubles as the access check.
+  const { data: access } = await db.from('org_members').select('user_id').limit(1)
   if (!access?.length) throw createError({ statusCode: 403, statusMessage: 'No access' })
   if (!config.anthropicApiKey) {
     throw createError({ statusCode: 503, statusMessage: 'AI drafting isn\'t configured. Set ANTHROPIC_API_KEY.' })

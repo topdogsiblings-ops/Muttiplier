@@ -1,7 +1,7 @@
 // A short-lived Dropbox access token (about 4 hours) for a signed-in phone to upload its clips
 // with, straight from the phone. The refresh token never leaves the server.
 export default defineEventHandler(async (event) => {
-  const { db } = await requireAllowed(event)
+  const { db } = await requireMember(event)
   const app = dropboxApp(event)
   const { data } = await db.from('dropbox_connection').select('refresh_token_enc, root').maybeSingle()
   if (!data) throw createError({ statusCode: 409, statusMessage: 'Dropbox isn\'t connected. An admin can connect it in Settings.' })

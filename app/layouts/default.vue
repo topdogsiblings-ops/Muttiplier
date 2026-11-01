@@ -2,6 +2,15 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 
 const { access, isAdmin, reset } = useAccess()
+const { orgs, currentOrg, switchOrg } = useOrg()
+const run = useAction()
+const orgItems = computed(() => orgs.value.map(org => ({
+  label: org.name,
+  icon: org.is_current ? 'i-lucide-check' : undefined,
+  onSelect: () => {
+    if (!org.is_current) run(() => switchOrg(org.id))
+  }
+})))
 const supabase = useSupabaseClient()
 const route = useRoute()
 
@@ -39,10 +48,13 @@ async function signOut() {
             <p class="truncate text-sm font-medium text-highlighted">
               {{ access?.display_name || access?.email }}
             </p>
-            <p class="text-xs text-muted capitalize">
-              {{ access?.role }}
+            <p class="truncate text-xs text-muted">
+              {{ currentOrg?.name }} · <span class="capitalize">{{ access?.role }}</span>
             </p>
           </div>
+          <UDropdownMenu v-if="orgs.length > 1" :items="orgItems">
+            <UButton icon="i-lucide-repeat" color="neutral" variant="ghost" aria-label="Switch organisation" />
+          </UDropdownMenu>
           <UButton icon="i-lucide-log-out" color="neutral" variant="ghost" aria-label="Sign out" @click="signOut" />
         </div>
       </template>

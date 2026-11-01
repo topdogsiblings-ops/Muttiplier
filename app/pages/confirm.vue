@@ -3,7 +3,7 @@ definePageMeta({ layout: 'plain' })
 
 const user = useSupabaseUser()
 
-// The allowlist check runs in the global middleware on the way to the app.
+// The org check runs in the global middleware on the way to the app.
 watch(user, () => {
   if (user.value) return navigateTo('/shoots')
 }, { immediate: true })

@@ -39,7 +39,7 @@ async function signIn() {
           variant="subtle"
           icon="i-lucide-shield-x"
           title="No access"
-          description="That Google account isn't on the allowlist. Ask an admin to add your email, then sign in again."
+          description="That Google account isn't in an organisation. Ask an admin to invite your email, then sign in again."
           class="text-left"
         />
 
