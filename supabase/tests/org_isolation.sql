@@ -11,6 +11,7 @@ declare
   b_user uuid := gen_random_uuid();
   b_org uuid;
   a_brand uuid := (select id from public.brands where org_id = (select id from public.orgs where slug = 'topdogugc') limit 1);
+  a_channel uuid := (select id from public.channels where org_id = (select id from public.orgs where slug = 'topdogugc') limit 1);
   t text;
   n bigint;
   tables text[] := array[
@@ -78,6 +79,28 @@ begin
     update public.brands set org_id = a_org where org_id = b_org;
     raise exception 'FAILED: B moved a row into another org';
   exception when insufficient_privilege then null;
+  end;
+
+  -- B's rows can't point at A's, even knowing the ids
+  if a_channel is not null then
+    begin
+      insert into public.brand_channels (brand_id, channel_id)
+      select id, a_channel from public.brands where slug = 'shared-slug';
+      raise exception 'FAILED: B linked its brand to another org''s channel';
+    exception when foreign_key_violation then null;
+    end;
+  end if;
+  if a_brand is not null then
+    begin
+      insert into public.products (brand_id, name, slug) values (a_brand, 'Sneaky', 'sneaky');
+      raise exception 'FAILED: B added a product to another org''s brand';
+    exception when foreign_key_violation then null;
+    end;
+  end if;
+  begin
+    insert into public.people (name, slug, user_id) values ('Sneaky', 'sneaky', a_user);
+    raise exception 'FAILED: B linked a person to someone outside its org';
+  exception when foreign_key_violation then null;
   end;
 
   -- --- as A: B's rows aren't there, and A's are ------------------------------------------------

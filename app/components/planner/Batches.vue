@@ -13,6 +13,8 @@ const props = defineProps<{ bundle: LoadedShoot, loop: BatchLoop }>()
 const emit = defineEmits<{ changed: [] }>()
 
 const db = useDb()
+// admins run the batches (the database enforces it); members can see them
+const { isAdmin } = useAccess()
 const run = useAction()
 const toast = useToast()
 const dropbox = useDropbox()
@@ -205,6 +207,7 @@ const KIND_ICONS: Record<ElementKind, string> = {
           </p>
         </div>
         <UButton
+          v-if="isAdmin"
           :label="`Make ${nextCode}`"
           icon="i-lucide-sparkles"
           size="sm"
@@ -213,7 +216,7 @@ const KIND_ICONS: Record<ElementKind, string> = {
           @click="generate"
         />
       </div>
-      <div class="flex flex-wrap items-center gap-2 text-sm">
+      <div v-if="isAdmin" class="flex flex-wrap items-center gap-2 text-sm">
         <span class="text-muted">Exploit</span>
         <UInput v-model.number="exploitPct" type="number" min="0" max="100" class="w-20" size="sm" @change="saveShare">
           <template #trailing>
@@ -235,7 +238,7 @@ const KIND_ICONS: Record<ElementKind, string> = {
         <span v-if="pct(batch.exploit_share) !== null" class="text-xs text-dimmed">{{ pct(batch.exploit_share) }}% exploit</span>
         <span class="ml-auto text-xs text-muted">{{ BATCH_STATUS_LABELS[batch.status] }} {{ when(batch.status_at) }}</span>
         <UButton
-          v-if="NEXT[batch.status]"
+          v-if="isAdmin && NEXT[batch.status]"
           :label="`Mark ${NEXT[batch.status]!.label.toLowerCase()}`"
           :icon="NEXT[batch.status]!.icon"
           size="xs"
@@ -244,7 +247,7 @@ const KIND_ICONS: Record<ElementKind, string> = {
           @click="advance(batch, NEXT[batch.status]!.status)"
         />
         <UButton
-          v-else
+          v-else-if="isAdmin"
           :label="batch.status === 'measured' ? 'Scores' : 'Measure'"
           icon="i-lucide-gauge"
           size="xs"
@@ -281,6 +284,7 @@ const KIND_ICONS: Record<ElementKind, string> = {
           <UBadge :label="STATE_BADGE[stateOf(element)].label" :color="STATE_BADGE[stateOf(element)].color" variant="subtle" size="sm" />
           <UIcon v-if="records.get(elementId(element))?.manual" name="i-lucide-hand" class="size-3.5 text-muted" title="Set by hand" />
           <UButton
+            v-if="isAdmin"
             :label="stateOf(element) === 'dropped' ? 'Keep' : 'Drop'"
             size="xs"
             :color="stateOf(element) === 'dropped' ? 'neutral' : 'error'"

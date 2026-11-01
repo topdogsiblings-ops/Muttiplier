@@ -27,6 +27,8 @@ if (!data.value) throw createError({ statusCode: 404, statusMessage: `Shoot ${co
 const bundle = computed(() => data.value!)
 const shoot = computed(() => bundle.value.shoot)
 const isDraft = computed(() => shoot.value.status === 'draft')
+// only admins move a shoot through its statuses (the database enforces it)
+const { isAdmin } = useAccess()
 /** Live (edited): the recipes are built, so the shoot's details lock and its batches take over */
 const live = computed(() => shoot.value.status === 'edited')
 const loop = useBatchLoop(bundle)
@@ -768,6 +770,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
               @click="renumber"
             />
             <UButton
+              v-if="isAdmin"
               label="Mark as planned"
               aria-label="Mark as planned"
               :ui="ICON_ON_MOBILE"
@@ -793,7 +796,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
               <UButton label="Export" aria-label="Export" icon="i-lucide-download" color="neutral" variant="subtle" :ui="ICON_ON_MOBILE" class="max-sm:px-1.5" />
             </UDropdownMenu>
             <UButton
-              v-if="shoot.status === 'planned'"
+              v-if="isAdmin && shoot.status === 'planned'"
               label="Back to draft"
               aria-label="Back to draft"
               :ui="ICON_ON_MOBILE"
@@ -804,7 +807,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
               @click="confirmUnplan = true"
             />
             <UButton
-              v-if="shoot.status === 'shooting' || shoot.status === 'filmed'"
+              v-if="isAdmin && (shoot.status === 'shooting' || shoot.status === 'filmed')"
               label="Revert"
               aria-label="Revert the shoot to planned"
               :ui="ICON_ON_MOBILE"
@@ -951,7 +954,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
             </template>
           </UAlert>
           <!-- filmed → editing (Pawcessor) → Live: check the edits, build the recipes -->
-          <PlannerEditing v-if="shoot.status === 'filmed' || shoot.status === 'editing'" :bundle="bundle" @changed="refresh" />
+          <PlannerEditing v-if="isAdmin && (shoot.status === 'filmed' || shoot.status === 'editing')" :bundle="bundle" @changed="refresh" />
           <!-- slots nothing fills yet: fill them here (drafts only; planning freezes the scripts) -->
           <PlannerSlotFiller v-if="isDraft" :bundle="bundle" @changed="refresh" />
           <UAlert

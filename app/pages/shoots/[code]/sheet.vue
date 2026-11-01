@@ -29,6 +29,8 @@ const { access, isAdmin } = useAccess()
 const mine = computed(() => bundle.value.people.find(p => p.user_id && p.user_id === access.value?.id) ?? null)
 /** not an admin, and not on this shoot's cast: nothing to film here */
 const notOnShoot = computed(() => !isAdmin.value && !mine.value)
+/** only an admin starts a shoot: until then a member can read their shots but not film them */
+const waitingToStart = computed(() => !isAdmin.value && ['draft', 'planned'].includes(shoot.value.status))
 
 // Filters live in the URL: ?person=[slug] (or everyone; admins only) and ?show=hook|cta|body|broll (or everything).
 const person = computed(() => isAdmin.value ? bundle.value.people.find(p => p.slug === route.query.person) ?? null : mine.value)
@@ -187,10 +189,11 @@ const remaining = computed(() =>
 const controls = useTemplateRef<{ start: () => Promise<void>, end: () => void }>('controls')
 
 /**
- * After a tick: the first shot filmed on a planned shoot starts it, and once nothing is
+ * After an admin's tick: the first shot filmed on a planned shoot starts it, and once nothing is
  * left we offer to end it (ending is always a person's call).
  */
 async function afterTick(next: string) {
+  if (!isAdmin.value) return
   if (shoot.value.status === 'planned' && next === 'filmed') {
     await controls.value?.start()
   } else if (shoot.value.status === 'shooting' && remaining.value === 0) {
@@ -468,8 +471,8 @@ function skipBroll(shot: Row<'broll_shots'>) {
       color="info"
       variant="subtle"
       icon="i-lucide-clapperboard"
-      title="Ready when you are"
-      description="Press Start shoot, or just tick off the first shot and the shoot starts automatically."
+      :title="isAdmin ? 'Ready when you are' : 'Waiting for an admin to start the shoot'"
+      :description="isAdmin ? 'Press Start shoot, or just tick off the first shot and the shoot starts automatically.' : 'Your shots are below to read through. You can tick them off and add clips once it starts.'"
     />
 
 
@@ -553,6 +556,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
       </ul>
     </div>
 
+    <fieldset :disabled="waitingToStart" class="m-0 min-w-0 border-0 p-0">
     <section v-for="section in sections" :key="section.title" class="mt-6">
       <h2 class="mb-2 flex items-baseline gap-2 text-sm font-semibold text-highlighted uppercase">
         {{ section.title }}
@@ -728,6 +732,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
         </div>
       </div>
     </section>
+    </fieldset>
 
     <p v-if="!sections.length && !(showBroll && brollGroups.length)" class="py-16 text-center text-muted">
       <template v-if="notOnShoot">

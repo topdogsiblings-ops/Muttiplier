@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Start / end a shoot on set: planned -> shooting -> filmed. The database records who
-// started and ended it, and when. Ending with shots still unticked asks first, and an ended
+// Start / end a shoot on set: planned -> shooting -> filmed. Admins only; the database enforces it
+// and records who started and ended it, and when. Ending with shots still unticked asks first, and an ended
 // shoot with shots still unticked can be resumed.
 const props = defineProps<{
   shoot: { id: string, status: string }
@@ -13,6 +13,7 @@ const props = defineProps<{
 const emit = defineEmits<{ changed: [] }>()
 
 const db = useDb()
+const { isAdmin } = useAccess()
 const run = useAction()
 const busy = ref(false)
 const confirmingEnd = ref(false)
@@ -42,7 +43,7 @@ const compact = computed(() => props.iconOnMobile ? { ui: ICON_ON_MOBILE, class:
 
 <template>
   <UButton
-    v-if="props.shoot.status === 'planned'"
+    v-if="isAdmin && props.shoot.status === 'planned'"
     label="Start shoot"
     aria-label="Start shoot"
     v-bind="compact"
@@ -53,7 +54,7 @@ const compact = computed(() => props.iconOnMobile ? { ui: ICON_ON_MOBILE, class:
     @click="start"
   />
   <UButton
-    v-else-if="props.shoot.status === 'shooting'"
+    v-else-if="isAdmin && props.shoot.status === 'shooting'"
     label="End shoot"
     aria-label="End shoot"
     v-bind="compact"
@@ -64,7 +65,7 @@ const compact = computed(() => props.iconOnMobile ? { ui: ICON_ON_MOBILE, class:
     @click="end"
   />
   <UButton
-    v-else-if="props.shoot.status === 'filmed' && props.remaining > 0"
+    v-else-if="isAdmin && props.shoot.status === 'filmed' && props.remaining > 0"
     label="Resume shoot"
     aria-label="Resume shoot"
     v-bind="compact"

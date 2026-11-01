@@ -43,6 +43,10 @@ This spec covers the Library, Brands and Planner. Ingest, rendering and submissi
 - **AI drafting:** Anthropic API (`@anthropic-ai/sdk`) called from server routes, structured output validated with Zod. Model name in an env var.
 - Mobile-friendly throughout. The checklist is used on phones on set.
 
+### Design tokens
+
+`shared/design/tokens.ts` holds the look as plain values (Nuxt UI colour names, surfaces, chart colours) so other tools can match it. `app/app.config.ts` reads the colours from it; `main.css` and `nuxt.config.ts` keep their own copies as CSS and meta tags, and `tests/tokens.test.ts` fails if they drift.
+
 ### Environment variables
 
 ```
@@ -62,9 +66,9 @@ ANTHROPIC_MODEL=claude-opus-5-5
 - **Invites** (`org_invites`): Settings → Members. An invite becomes a membership (`org_members`) when that Google account signs in, or straight away if it already has. Google only, because its emails are verified.
 - **The current org**: `private.current_org_id()` is the `org_id` claim in the access token (`public.custom_access_token_hook`, optional, turned on in the Supabase dashboard), else the org the user last switched to (`profiles.active_org_id`), else their first; always one they're a member of right now. Someone in several orgs picks one at `/orgs` and switches from the sidebar. Inserts default to it, so app queries don't mention orgs.
 - Two roles, per org:
-  - **admin** — everything, plus managing people, channels, members and settings.
-  - **member** — full read/write on the Library, Brands and Planner.
-- Enforce with RLS: every org-owned table is readable and writable only in the request's current org, so someone in two orgs never sees them mixed; admin-only tables are writable by that org's admins only. `supabase/tests/org_isolation.sql` checks orgs can't reach each other.
+  - **admin** — everything, plus managing people, channels, members and settings. Only admins move a shoot through its statuses (planning it, starting and ending filming, editing, going Live) and run its batches (making them, moving them on, scoring, dropping elements). The database enforces it.
+  - **member** — full read/write on the Library, Brands and planning a shoot. Once an admin has started a shoot, members tick off their shots and add their clips; before that the checklist is read-only for them. They can see batches but not change them.
+- Enforce with RLS: every org-owned table is readable and writable only in the request's current org, so someone in two orgs never sees them mixed; admin-only tables are writable by that org's admins only. Foreign keys include `org_id`, so a row can only point at rows in its own org, and a person can only be linked to a member of theirs. `supabase/tests/org_isolation.sql` checks orgs can't reach each other.
 - `profiles` mirrors each auth user's name and email so the app can show who created or changed things; only people sharing your current org are visible.
 
 ---
