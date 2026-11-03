@@ -180,7 +180,7 @@ defineExpose({ edit })
 const blocked = computed(() => {
   if (form.id) return canEditVo(form.person_id) ? null : `Only ${personName(form.person_id)} (who wrote it) or an admin can edit this VO.`
   if (isAdmin.value) return props.people.length ? null : 'Add people to the shoot first.'
-  if (!me.value) return 'Your account isn\'t linked to anyone on the cast, so you can\'t write VOs. An admin can link you in Settings → People.'
+  if (!me.value) return 'Your account isn\'t linked to anyone on the cast, so you can\'t write VOs. An admin can add you to a channel in Settings → Channels.'
   if (!props.people.some(person => person.id === me.value!.id)) return `You (${me.value.name}) aren't on this shoot. Add yourself in General to write VOs for it.`
   return null
 })

@@ -641,6 +641,7 @@ export type Database = {
       }
       org_invites: {
         Row: {
+          channel_ids: string[]
           created_at: string
           created_by: string | null
           display_name: string | null
@@ -649,6 +650,7 @@ export type Database = {
           role: string
         }
         Insert: {
+          channel_ids?: string[]
           created_at?: string
           created_by?: string | null
           display_name?: string | null
@@ -657,6 +659,7 @@ export type Database = {
           role?: string
         }
         Update: {
+          channel_ids?: string[]
           created_at?: string
           created_by?: string | null
           display_name?: string | null
@@ -1796,6 +1799,10 @@ export type Database = {
       }
       org_signup_open: { Args: never; Returns: boolean }
       set_active_org: { Args: { p_org_id: string }; Returns: undefined }
+      set_channel_members: {
+        Args: { p_channel_id: string; p_user_ids: string[] }
+        Returns: undefined
+      }
       renumber_shoot_items: { Args: { p_shoot_id: string }; Returns: undefined }
       revert_shoot: { Args: { p_shoot_id: string }; Returns: undefined }
     }

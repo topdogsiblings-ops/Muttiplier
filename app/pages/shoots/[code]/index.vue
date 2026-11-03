@@ -158,7 +158,7 @@ async function setChannels(next: string[]) {
 /**
  * Make sure everyone on a draft shoot has an item for every shot-list entry on every one of the
  * shoot's channels they're linked to (apart from VOs someone else wrote for themselves). Runs
- * after people or channels change, and when a draft opens, so a link made in Settings → People
+ * after people or channels change, and when a draft opens, so a channel member added in Settings
  * later is picked up too. The links are read fresh: a person who's just joined isn't in the
  * loaded ones yet. Returns how many items it added.
  */

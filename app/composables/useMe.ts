@@ -1,5 +1,5 @@
 /**
- * The signed-in user's person on the cast (Settings → People links them), and whether they're an
+ * The signed-in user's person on the cast (being on a channel in Settings makes it), and whether they're an
  * admin. A VO is written by, and only edited by, its writer (or an admin).
  */
 export const useMe = () => {

@@ -9,14 +9,13 @@ const { people, channels, settings, load } = useRefData()
 const { access } = useAccess()
 
 const tabs = [
-  { label: 'People', value: 'people', icon: 'i-lucide-users' },
   { label: 'Channels', value: 'channels', icon: 'i-lucide-tv' },
   { label: 'Members', value: 'members', icon: 'i-lucide-shield-check' },
   { label: 'Defaults', value: 'defaults', icon: 'i-lucide-timer' },
   { label: 'Dropbox', value: 'dropbox', icon: 'i-simple-icons-dropbox' }
 ]
 const route = useRoute()
-const tab = ref(tabs.some(t => t.value === route.query.tab) ? String(route.query.tab) : 'people')
+const tab = ref(tabs.some(t => t.value === route.query.tab) ? String(route.query.tab) : 'channels')
 
 // the org's members, and the emails invited who haven't signed in yet
 const members = ref<(Row<'org_members'> & { profile: { email: string | null, full_name: string | null } | null })[]>([])
@@ -30,59 +29,36 @@ async function loadMembers() {
   invites.value = must(inviteRows)
 }
 
-// which channels each person appears on
+// who's on each channel
 const personChannels = ref<{ person_id: string, channel_id: string }[]>([])
 async function loadPersonChannels() {
   personChannels.value = must(await db.from('person_channels').select('person_id, channel_id'))
 }
-const channelsOf = (personId: string) => personChannels.value.filter(link => link.person_id === personId).map(link => link.channel_id)
 
 await Promise.all([load(true), loadMembers(), loadPersonChannels()])
 
 const saving = ref(false)
 
-// --- people ----------------------------------------------------------------
-const personOpen = ref(false)
-const person = reactive({ id: '', name: '', slug: '', active: true, user_id: undefined as string | undefined, channel_ids: [] as string[] })
-const requestPersonOpen = useGuardedClose(personOpen, person)
-
-function editPerson(row?: Row<'people'>) {
-  Object.assign(person, { id: row?.id ?? '', name: row?.name ?? '', slug: row?.slug ?? '', active: row?.active ?? true, user_id: row?.user_id ?? undefined, channel_ids: row ? channelsOf(row.id) : [] })
-  personOpen.value = true
-}
-watch(() => person.name, (name) => {
-  if (!person.id) person.slug = slugify(name)
-})
-
-/** Members not already linked to another person. */
-const linkOptions = computed(() => members.value
-  .filter(member => !people.value.some(p => p.user_id === member.user_id && p.id !== person.id))
-  .map(member => ({ label: member.display_name ? `${member.display_name} (${member.profile?.email})` : member.profile?.email ?? '', value: member.user_id })))
-const linkedUser = (id: string | null) => members.value.find(member => member.user_id === id)
-
-async function savePerson() {
-  saving.value = true
-  const ok = await run(async () => {
-    const fields = { name: person.name.trim(), active: person.active, user_id: person.user_id ?? null }
-    const id = person.id
-      ? (must(await db.from('people').update(fields).eq('id', person.id)), person.id)
-      : mustOne(await db.from('people').insert({ ...fields, slug: person.slug }).select('id').single()).id
-    // channels: add the newly ticked, remove the unticked
-    const current = channelsOf(id)
-    const added = person.channel_ids.filter(channelId => !current.includes(channelId))
-    const removed = current.filter(channelId => !person.channel_ids.includes(channelId))
-    if (added.length) must(await db.from('person_channels').insert(added.map(channel_id => ({ person_id: id, channel_id }))))
-    if (removed.length) must(await db.from('person_channels').delete().eq('person_id', id).in('channel_id', removed))
-    await Promise.all([load(true), loadPersonChannels()])
-  }, 'Person saved')
-  saving.value = false
-  if (ok) personOpen.value = false
-}
-
 // --- channels --------------------------------------------------------------
 const channelOpen = ref(false)
-const channel = reactive({ id: '', name: '', slug: '', dogs: [] as string[], dog_phrase: '', folder_slug: '', active: true })
+const channel = reactive({ id: '', name: '', slug: '', dogs: [] as string[], dog_phrase: '', folder_slug: '', active: true, members: [] as string[] })
 const requestChannelOpen = useGuardedClose(channelOpen, channel)
+
+// A channel's members: signed-in members (user:<id>), and invited emails (invite:<email>) who join it
+// when they first sign in. Adding a member makes their person record in the database.
+const memberOptions = computed(() => [
+  ...members.value.map(row => ({ label: row.display_name || row.profile?.full_name || row.profile?.email || '', value: `user:${row.user_id}` })),
+  ...invites.value.map(row => ({ label: `${row.display_name || row.email} (invited)`, value: `invite:${row.email}` }))
+])
+function membersOf(channelId: string) {
+  const linked = personChannels.value.filter(link => link.channel_id === channelId)
+    .map(link => people.value.find(person => person.id === link.person_id)?.user_id)
+  const chosen = new Set([
+    ...linked.filter(Boolean).map(id => `user:${id}`),
+    ...invites.value.filter(row => row.channel_ids.includes(channelId)).map(row => `invite:${row.email}`)
+  ])
+  return memberOptions.value.filter(option => chosen.has(option.value))
+}
 
 function editChannel(row?: Row<'channels'>) {
   Object.assign(channel, {
@@ -92,7 +68,8 @@ function editChannel(row?: Row<'channels'>) {
     dogs: [...(row?.dogs ?? [])],
     dog_phrase: row?.dog_phrase ?? '',
     folder_slug: row?.folder_slug ?? '',
-    active: row?.active ?? true
+    active: row?.active ?? true,
+    members: row ? membersOf(row.id).map(entry => entry.value) : []
   })
   channelOpen.value = true
 }
@@ -109,9 +86,21 @@ async function saveChannel() {
       dog_phrase: channel.dog_phrase.trim(),
       active: channel.active
     }
-    if (channel.id) must(await db.from('channels').update(fields).eq('id', channel.id))
-    else must(await db.from('channels').insert({ ...fields, slug: channel.slug, folder_slug: slugify(channel.folder_slug) }))
-    await load(true)
+    const id = channel.id
+      ? (must(await db.from('channels').update(fields).eq('id', channel.id)), channel.id)
+      : mustOne(await db.from('channels').insert({ ...fields, slug: channel.slug, folder_slug: slugify(channel.folder_slug) }).select('id').single()).id
+    must(await db.rpc('set_channel_members', {
+      p_channel_id: id,
+      p_user_ids: channel.members.filter(value => value.startsWith('user:')).map(value => value.slice(5))
+    }))
+    // invited emails keep their channels on the invite until they sign in
+    for (const row of invites.value) {
+      const wanted = channel.members.includes(`invite:${row.email}`)
+      if (wanted === row.channel_ids.includes(id)) continue
+      const channelIds = wanted ? [...row.channel_ids, id] : row.channel_ids.filter(channelId => channelId !== id)
+      must(await db.from('org_invites').update({ channel_ids: channelIds }).eq('email', row.email))
+    }
+    await Promise.all([load(true), loadPersonChannels(), loadMembers()])
   }, 'Channel saved')
   saving.value = false
   if (ok) channelOpen.value = false
@@ -140,10 +129,14 @@ async function saveMember() {
   saving.value = true
   const ok = await run(async () => {
     const fields = { role: member.role, display_name: member.display_name.trim() || null }
-    if (member.user_id) must(await db.from('org_members').update(fields).eq('user_id', member.user_id))
+    if (member.user_id) {
+      must(await db.from('org_members').update(fields).eq('user_id', member.user_id))
+      // how they read on shot lists (their folder slug never changes)
+      if (fields.display_name) must(await db.from('people').update({ name: fields.display_name }).eq('user_id', member.user_id))
+    }
     else if (member.invited) must(await db.from('org_invites').update(fields).eq('email', member.email))
     else must(await db.from('org_invites').insert({ ...fields, email: member.email.trim().toLowerCase() }))
-    await loadMembers()
+    await Promise.all([load(true), loadMembers()])
   }, 'Members updated')
   saving.value = false
   if (ok) userOpen.value = false
@@ -152,13 +145,18 @@ async function saveMember() {
 async function removeMember(row: typeof members.value[number]) {
   if (!(await confirmDialog({
     title: `Remove ${row.profile?.email} from the organisation?`,
-    description: 'They lose access immediately.',
+    description: 'They lose access immediately and come off their channels. Past shoots keep them.',
     confirmLabel: 'Remove',
     danger: true
   }))) return
   await run(async () => {
+    const person = people.value.find(entry => entry.user_id === row.user_id)
+    if (person) {
+      must(await db.from('person_channels').delete().eq('person_id', person.id))
+      must(await db.from('people').update({ active: false }).eq('id', person.id))
+    }
     must(await db.from('org_members').delete().eq('user_id', row.user_id))
-    await loadMembers()
+    await Promise.all([load(true), loadMembers(), loadPersonChannels()])
   }, 'Removed')
 }
 
@@ -280,48 +278,11 @@ async function saveDefaults() {
 
     <template #body>
       <div class="mx-auto w-full max-w-3xl space-y-4">
-        <!-- People -->
-        <template v-if="tab === 'people'">
-          <div class="flex items-center justify-between">
-            <p class="text-sm text-muted">
-              On-camera talent. The slug is used in folder names and can't change once set.
-            </p>
-            <UButton icon="i-lucide-plus" label="Add person" @click="editPerson()" />
-          </div>
-          <div class="divide-y divide-default rounded-lg border border-default">
-            <button
-              v-for="row in people"
-              :key="row.id"
-              type="button"
-              class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-elevated/50"
-              @click="editPerson(row)"
-            >
-              <span class="font-medium text-highlighted">{{ row.name }}</span>
-              <code class="text-xs text-muted">{{ row.slug }}</code>
-              <span v-if="linkedUser(row.user_id)" class="flex items-center gap-1 text-xs text-muted">
-                <UIcon name="i-lucide-link" />{{ linkedUser(row.user_id)!.profile?.email }}
-              </span>
-              <UBadge
-                v-for="channelId in channelsOf(row.id)"
-                :key="channelId"
-                :label="channels.find(c => c.id === channelId)?.name ?? '?'"
-                color="neutral"
-                variant="outline"
-                size="sm"
-              />
-              <UBadge v-if="!row.active" label="Inactive" color="neutral" variant="subtle" class="ml-auto" />
-            </button>
-            <p v-if="!people.length" class="px-4 py-6 text-center text-sm text-muted">
-              No people yet. Add everyone who appears on camera.
-            </p>
-          </div>
-        </template>
-
         <!-- Channels -->
-        <template v-else-if="tab === 'channels'">
+        <template v-if="tab === 'channels'">
           <div class="flex items-center justify-between">
             <p class="text-sm text-muted">
-              Creator channels. The dog phrase fills <code v-pre>{{dog}}</code>.
+              Creator channels and who's on them. The dog phrase fills <code v-pre>{{dog}}</code>.
             </p>
             <UButton icon="i-lucide-plus" label="Add channel" @click="editChannel()" />
           </div>
@@ -338,6 +299,10 @@ async function saveDefaults() {
               <span class="text-sm text-muted">“{{ row.dog_phrase }}”</span>
               <code class="ml-auto text-xs text-muted">b-roll/{{ row.folder_slug }}</code>
               <UBadge v-if="!row.active" label="Inactive" color="neutral" variant="subtle" />
+              <span class="flex w-full flex-wrap items-center gap-1.5">
+                <UBadge v-for="entry in membersOf(row.id)" :key="entry.value" :label="entry.label" color="neutral" variant="outline" size="sm" />
+                <span v-if="!membersOf(row.id).length" class="text-xs text-muted">No members yet</span>
+              </span>
             </button>
           </div>
         </template>
@@ -447,48 +412,6 @@ async function saveDefaults() {
         </template>
       </div>
 
-      <UModal :open="personOpen" @update:open="requestPersonOpen" :title="person.id ? 'Edit person' : 'Add person'">
-        <template #body>
-          <div class="space-y-4">
-            <UFormField label="Name" required>
-              <UInput v-model="person.name" class="w-full" autofocus />
-            </UFormField>
-            <UFormField label="Slug" help="Lowercase, used in folder names">
-              <UInput v-model="person.slug" class="w-full" :disabled="!!person.id" />
-            </UFormField>
-            <UFormField
-              label="Channels"
-              required
-              help="The channels this person appears on (at least one). On a shoot they film every hook, VO and CTA for each of them."
-              :error="person.channel_ids.length ? undefined : 'Pick at least one channel'"
-            >
-              <USelectMenu
-                v-model="person.channel_ids"
-                :items="channels.filter(c => c.active || person.channel_ids.includes(c.id)).map(c => ({ label: c.name, value: c.id }))"
-                value-key="value"
-                multiple
-                placeholder="No channels"
-                class="w-full"
-              />
-            </UFormField>
-            <UFormField label="Linked user" help="The member account this person signs in with. Their checklist shows their own shots.">
-              <USelectMenu
-                v-model="person.user_id"
-                :items="linkOptions"
-                value-key="value"
-                placeholder="Not linked"
-                class="w-full"
-                clear
-              />
-            </UFormField>
-            <USwitch v-model="person.active" label="Active" description="Inactive people can't be added to new shoots" />
-          </div>
-        </template>
-        <template #footer>
-          <UButton label="Save" :loading="saving" :disabled="!person.name.trim() || !person.slug || !person.channel_ids.length" @click="savePerson" />
-        </template>
-      </UModal>
-
       <UModal :open="channelOpen" @update:open="requestChannelOpen" :title="channel.id ? 'Edit channel' : 'Add channel'">
         <template #body>
           <div class="space-y-4">
@@ -508,6 +431,16 @@ async function saveDefaults() {
             </UFormField>
             <UFormField label="Dog phrase" help="Fills {{dog}}, e.g. “my Doberman”">
               <UInput v-model="channel.dog_phrase" class="w-full" />
+            </UFormField>
+            <UFormField label="Members" help="Who films for this channel. On a shoot they film every hook, VO and CTA for it. Invite someone in the Members tab to add them here.">
+              <USelectMenu
+                v-model="channel.members"
+                :items="memberOptions"
+                value-key="value"
+                multiple
+                placeholder="No members"
+                class="w-full"
+              />
             </UFormField>
             <USwitch v-model="channel.active" label="Active" />
           </div>

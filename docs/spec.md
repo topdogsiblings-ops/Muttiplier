@@ -80,7 +80,7 @@ ANTHROPIC_MODEL=claude-opus-5-5
 | **Library** | Hooks (scripts and types), CTAs, **Formats** (VOs are written in shoots) |
 | **Planner** | Shoots list → shoot planner (with calculator) → checklist → exports |
 | **Brands** | Brands (Trybe deal data, CSV import, filters), products with slot values, brand → channel assignment |
-| **Settings** (admin) | People, channels, members, defaults (time per item, speech pace, general product shots) |
+| **Settings** (admin) | Channels and who's on them, members, defaults (time per item, speech pace, general product shots) |
 
 UI conventions: every destructive or state-changing action asks in an in-app confirm dialog (never a browser alert); collapsible sections start collapsed; long lists paginate and show a spinner while loading; each Library tab has a `?` help popover.
 
@@ -136,6 +136,7 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 **people** — on-camera talent
 - `name text`, `slug text unique` (lowercase kebab, used in folder names), `active boolean`
 - `user_id` — optional link to a member's account; that member's checklist shows their own shots. A person belongs to one org: someone in two orgs is a separate person in each
+- Everyone on camera has a login. A person isn't managed directly: adding a member to a channel (Settings → Channels) makes their record, named from their display name. Their slug never changes, renaming them in Members renames the person, and taking them off their last channel makes them inactive (they can't join new shoots; past shoots keep them). An invited email can be added to channels too, and joins them on first sign-in (`org_invites.channel_ids`).
 
 **person_channels** — `person_id`, `channel_id`, pk on both. People linked to a channel; recipes on that channel can mix their parts (§9).
 
