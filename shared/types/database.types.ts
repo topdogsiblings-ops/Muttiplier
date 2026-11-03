@@ -14,36 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      allowed_users: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          display_name: string | null
-          email: string
-          id: string
-          role: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          display_name?: string | null
-          email: string
-          id?: string
-          role?: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          display_name?: string | null
-          email?: string
-          id?: string
-          role?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       angles: {
         Row: {
           org_id: string
@@ -488,7 +458,6 @@ export type Database = {
           id: string
           refresh_token_enc: string
           root: string
-          singleton: boolean
           updated_at: string
         }
         Insert: {
@@ -501,7 +470,6 @@ export type Database = {
           id?: string
           refresh_token_enc: string
           root?: string
-          singleton?: boolean
           updated_at?: string
         }
         Update: {
@@ -514,7 +482,6 @@ export type Database = {
           id?: string
           refresh_token_enc?: string
           root?: string
-          singleton?: boolean
           updated_at?: string
         }
         Relationships: [
@@ -786,7 +753,6 @@ export type Database = {
           user_id: string | null
           org_id: string
           active: boolean
-          allowed_user_id: string | null
           created_at: string
           created_by: string | null
           id: string
@@ -798,7 +764,6 @@ export type Database = {
           user_id?: string | null
           org_id?: string
           active?: boolean
-          allowed_user_id?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -810,7 +775,6 @@ export type Database = {
           user_id?: string | null
           org_id?: string
           active?: boolean
-          allowed_user_id?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -819,13 +783,6 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "people_allowed_user_id_fkey"
-            columns: ["allowed_user_id"]
-            isOneToOne: true
-            referencedRelation: "allowed_users"
-            referencedColumns: ["id"]
-          },
         ]      }
       person_channels: {
         Row: {
@@ -1010,7 +967,6 @@ export type Database = {
           minutes_per_hook: number
           minutes_per_vo: number
           productive_hours_per_day: number
-          singleton: boolean
           updated_at: string
           vo_max_share: number
           vo_min_share: number
@@ -1034,7 +990,6 @@ export type Database = {
           minutes_per_hook?: number
           minutes_per_vo?: number
           productive_hours_per_day?: number
-          singleton?: boolean
           updated_at?: string
           vo_max_share?: number
           vo_min_share?: number
@@ -1058,7 +1013,6 @@ export type Database = {
           minutes_per_hook?: number
           minutes_per_vo?: number
           productive_hours_per_day?: number
-          singleton?: boolean
           updated_at?: string
           vo_max_share?: number
           vo_min_share?: number

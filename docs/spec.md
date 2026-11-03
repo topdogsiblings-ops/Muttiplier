@@ -113,8 +113,11 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 
 ### Reference data
 
-**allowed_users**
-- `email text unique` (lowercase), `role text check (role in ('admin','member'))`, `display_name text`
+**orgs** — `name`, `slug unique`, `next_shoot_number` (each org counts its own shoots)
+
+**org_members** — `org_id`, `user_id`, `role check (role in ('admin','member'))`, `display_name`
+
+**org_invites** — `org_id`, `email`, `role`, `display_name`: an email invited who hasn't signed in yet (§3)
 
 **profiles** — one per auth user, synced by trigger
 - `id` (= auth user id), `email`, `full_name`, `avatar_url`
