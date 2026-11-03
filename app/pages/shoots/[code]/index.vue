@@ -630,7 +630,7 @@ async function backToDraft() {
 const confirmPlan = ref(false)
 
 // --- stale ---------------------------------------------------------------------
-// Any time, a shoot can be marked stale: archived from view (the shoots list and brand pages hide
+// Any time, an admin can mark a shoot stale: archived from view (the shoots list and brand pages hide
 // it) with its status left as it was. Unmarking brings it back.
 const stale = computed(() => !!shoot.value.stale_at)
 const confirmStale = ref(false)
@@ -750,6 +750,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
         </template>
         <template #right>
           <UButton
+            v-if="isAdmin"
             :label="stale ? 'Not stale' : 'Mark stale'"
             :aria-label="stale ? 'Not stale' : 'Mark stale'"
             :ui="ICON_ON_MOBILE"
@@ -762,6 +763,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
           />
           <template v-if="isDraft">
             <UButton
+              v-if="isAdmin"
               label="Re-number"
               icon="i-lucide-list-ordered"
               color="neutral"

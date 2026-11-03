@@ -41,6 +41,20 @@ begin
     raise exception 'FAILED: a member moved a shoot''s status';
   end if;
 
+  -- or mark it stale, or renumber it
+  begin
+    update public.shoots set stale_at = now() where id = a_shoot;
+    raise exception 'FAILED: a member marked a shoot stale';
+  exception when raise_exception then
+    if sqlerrm like 'FAILED%' then raise; end if;
+  end;
+  begin
+    perform public.renumber_shoot_items(a_shoot);
+    raise exception 'FAILED: a member renumbered a shoot';
+  exception when raise_exception then
+    if sqlerrm like 'FAILED%' then raise; end if;
+  end;
+
   -- or film before it's started, though they can skip a shot
   if a_item is not null then
     begin
@@ -80,6 +94,14 @@ begin
 
   -- an admin can do all of it, and then the member can film
   perform set_config('request.jwt.claims', be_admin, true);
+  update public.shoots set stale_at = now() where id = a_shoot;
+  update public.shoots set stale_at = null where id = a_shoot;
+  begin
+    perform public.renumber_shoot_items(a_shoot);
+  exception when raise_exception then
+    -- codes are frozen once a shoot is planned: that's the draft rule, not the admin one
+    if sqlerrm like 'Only an admin%' then raise exception 'FAILED: an admin couldn''t renumber'; end if;
+  end;
   update public.shoots set status = 'shooting' where id = a_shoot;
   insert into public.shoot_shortlists (shoot_id, code, size, entry_ids) values (a_shoot, 'B99', 1, '{test}');
   update public.shoot_shortlists set status = 'rendering', status_at = now() where shoot_id = a_shoot and code = 'B99';
