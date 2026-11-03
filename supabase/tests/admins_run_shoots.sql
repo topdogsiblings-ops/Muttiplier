@@ -11,6 +11,7 @@ declare
   member_user uuid := (select user_id from public.org_members where org_id = (select id from public.orgs where slug = 'topdogugc') and role = 'member' limit 1);
   a_shoot uuid := (select id from public.shoots where org_id = (select id from public.orgs where slug = 'topdogugc') order by code desc limit 1);
   a_item uuid;
+  a_shot uuid;
   n bigint;
   be_admin text := json_build_object('sub', admin_user, 'role', 'authenticated')::text;
   be_member text := json_build_object('sub', member_user, 'role', 'authenticated')::text;
@@ -20,6 +21,7 @@ begin
   end if;
   update public.shoots set status = 'planned' where id = a_shoot;
   select id into a_item from public.shoot_items where shoot_id = a_shoot limit 1;
+  select id into a_shot from public.broll_shots where shoot_id = a_shoot limit 1;
 
   perform set_config('role', 'authenticated', true);
   perform set_config('request.jwt.claims', be_member, true);
@@ -53,9 +55,25 @@ begin
     update public.shoot_items set status = 'planned' where id = a_item;
   end if;
 
+  -- the same for b-roll and clips
+  if a_shot is not null then
+    begin
+      update public.broll_shots set clips_filmed = clips_filmed + 1 where id = a_shot;
+      raise exception 'FAILED: a member added b-roll before the shoot started';
+    exception when raise_exception then
+      if sqlerrm like 'FAILED%' then raise; end if;
+    end;
+  end if;
+  begin
+    insert into public.shoot_clips (shoot_id, target, file_name, size, state) values (a_shoot, 'item:test', 'test.mov', 1, 'saved');
+    raise exception 'FAILED: a member added a clip before the shoot started';
+  exception when raise_exception then
+    if sqlerrm like 'FAILED%' then raise; end if;
+  end;
+
   -- or make a batch
   begin
-    insert into public.shoot_shortlists (shoot_id, code, size, entry_ids) values (a_shoot, 'B99', 0, '{}');
+    insert into public.shoot_shortlists (shoot_id, code, size, entry_ids) values (a_shoot, 'B99', 1, '{test}');
     raise exception 'FAILED: a member made a batch';
   exception when insufficient_privilege then null;
   end;
@@ -63,7 +81,7 @@ begin
   -- an admin can do all of it, and then the member can film
   perform set_config('request.jwt.claims', be_admin, true);
   update public.shoots set status = 'shooting' where id = a_shoot;
-  insert into public.shoot_shortlists (shoot_id, code, size, entry_ids) values (a_shoot, 'B99', 0, '{}');
+  insert into public.shoot_shortlists (shoot_id, code, size, entry_ids) values (a_shoot, 'B99', 1, '{test}');
   update public.shoot_shortlists set status = 'rendering', status_at = now() where shoot_id = a_shoot and code = 'B99';
   get diagnostics n = row_count;
   if n <> 1 then raise exception 'FAILED: an admin couldn''t move a batch on'; end if;
@@ -74,6 +92,12 @@ begin
     get diagnostics n = row_count;
     if n <> 1 then raise exception 'FAILED: a member couldn''t film a started shoot'; end if;
   end if;
+  if a_shot is not null then
+    update public.broll_shots set clips_filmed = clips_filmed + 1 where id = a_shot;
+    get diagnostics n = row_count;
+    if n <> 1 then raise exception 'FAILED: a member couldn''t add b-roll to a started shoot'; end if;
+  end if;
+  insert into public.shoot_clips (shoot_id, target, file_name, size, state) values (a_shoot, 'item:test', 'test.mov', 1, 'saved');
   begin
     update public.shoot_shortlists set status = 'submitted' where shoot_id = a_shoot and code = 'B99';
     get diagnostics n = row_count;
