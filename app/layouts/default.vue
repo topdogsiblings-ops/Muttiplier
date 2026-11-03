@@ -18,7 +18,7 @@ const items = computed<NavigationMenuItem[]>(() => [
   { label: 'Library', icon: 'i-lucide-library', to: '/library' },
   { label: 'Planner', icon: 'i-lucide-clapperboard', to: '/shoots', active: route.path.startsWith('/shoots') },
   { label: 'Brands', icon: 'i-lucide-store', to: '/brands', active: route.path.startsWith('/brands') },
-  ...(isAdmin.value ? [{ label: 'Settings', icon: 'i-lucide-settings', to: '/settings' }] : [])
+  ...(isAdmin.value ? [{ label: 'Settings', icon: 'i-lucide-settings', to: '/settings' }, { label: 'Billing', icon: 'i-lucide-credit-card', to: '/billing' }] : [])
 ])
 
 async function signOut() {

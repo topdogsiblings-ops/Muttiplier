@@ -6,6 +6,8 @@ export interface MyOrg {
   display_name: string | null
   is_current: boolean
   has_chosen: boolean
+  /** its subscription (or trial) is live, or it's billing-exempt */
+  entitled: boolean
 }
 
 /**
@@ -43,7 +45,8 @@ export const useOrg = () => {
   async function createOrg(name: string, slug: string) {
     const { error } = await db.rpc('create_org', { p_name: name, p_slug: slug })
     if (error) throw error
-    await enter()
+    // a new org starts by subscribing (with its free trial)
+    await enter('/billing')
   }
 
   /** whether someone can start a new org; closed until billing exists */

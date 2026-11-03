@@ -35,7 +35,11 @@ export default defineNuxtConfig({
     anthropicModel: process.env.ANTHROPIC_MODEL ?? 'claude-opus-5-5',
     // Dropbox app (spec §12); its redirect URIs are <origin>/api/dropbox/callback
     dropboxAppKey: process.env.DROPBOX_APP_KEY ?? '',
-    dropboxAppSecret: process.env.DROPBOX_APP_SECRET ?? ''
+    dropboxAppSecret: process.env.DROPBOX_APP_SECRET ?? '',
+    // Billing (Stripe, Managed Payments); the webhook is <origin>/api/billing/webhook
+    stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? '',
+    stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
+    stripePriceLookupKey: process.env.STRIPE_PRICE_LOOKUP_KEY ?? 'top_dog_kit_monthly'
   },
 
   compatibilityDate: '2026-10-01',

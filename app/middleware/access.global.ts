@@ -17,5 +17,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   if (needsPicker.value && to.path !== '/orgs') return navigateTo('/orgs')
+  // no live subscription: only billing (and switching org) are open
+  const { currentOrg } = useOrg()
+  if (currentOrg.value && !currentOrg.value.entitled && !['/billing', '/orgs'].includes(to.path)) return navigateTo('/billing')
   if (to.path.startsWith('/settings') && !isAdmin.value) return navigateTo('/')
 })

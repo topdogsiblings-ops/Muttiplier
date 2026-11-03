@@ -43,6 +43,15 @@ This spec covers the Library, Brands and Planner. Ingest, rendering and submissi
 - **AI drafting:** Anthropic API (`@anthropic-ai/sdk`) called from server routes, structured output validated with Zod. Model name in an env var.
 - Mobile-friendly throughout. The checklist is used on phones on set.
 
+### Billing
+
+Top Dog Kit is **$54.99 USD a month per org**, the whole team included, with a **30-day free trial** the first time (card on file). Stripe Checkout with **Managed Payments**: Stripe is the merchant of record and handles sales tax, fraud, disputes and receipts.
+- **Billing page** (`/billing`, admins in the sidebar): **Start free trial** / **Subscribe** opens Checkout (`/api/billing/checkout`); **Manage billing** opens Stripe's Customer Portal (`/api/billing/portal`) for the payment method, invoices and cancelling. Members see the status.
+- **The webhook** (`/api/billing/webhook`, signed) re-reads the subscription from Stripe on every event, so events arriving out of order can't leave `org_subscriptions` stale. Only the server writes billing rows, with the service role.
+- **Entitlement**: an org can use the app while its subscription is trialing, active or past due (Stripe is retrying), or when it's billing-exempt (`orgs.billing_exempt`: topdogugc). Otherwise every page but Billing redirects there, and AI drafting refuses. A new org goes to Billing first.
+- **AI usage**: each drafting request's tokens are added to `org_ai_usage` (per org per month). The monthly limit isn't set yet.
+- The price is found by lookup key (`top_dog_kit_monthly`), so the app holds no price ID. Env: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY` (and optionally `STRIPE_PRICE_LOOKUP_KEY`).
+
 ### Design tokens
 
 `shared/design/tokens.ts` holds the look as plain values (Nuxt UI colour names, surfaces, chart colours) so other tools can match it. `app/app.config.ts` reads the colours from it; `main.css` and `nuxt.config.ts` keep their own copies as CSS and meta tags, and `tests/tokens.test.ts` fails if they drift.

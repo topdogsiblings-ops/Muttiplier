@@ -42,7 +42,7 @@ export function decryptToken(sealed: string, secret: string) {
 
 // --- who's asking ---------------------------------------------------------------------------
 
-/** The signed-in user's Supabase client, if they're in an org; `admin` from their role in the current one. */
+/** The signed-in user's Supabase client, if they're in an org: `admin` from their role in the current one, and whether the org can use the app (billing). */
 export async function requireMember(event: H3Event) {
   const user = await serverSupabaseUser(event).catch(() => null)
   if (!user?.email) throw createError({ statusCode: 401, statusMessage: 'Sign in first' })
@@ -50,7 +50,7 @@ export async function requireMember(event: H3Event) {
   const { data } = await db.rpc('my_orgs')
   const current = data?.find(org => org.is_current)
   if (!current) throw createError({ statusCode: 403, statusMessage: 'No access' })
-  return { db, admin: current.role === 'admin' }
+  return { db, admin: current.role === 'admin', orgId: current.id, entitled: current.entitled }
 }
 
 export async function requireAdmin(event: H3Event) {

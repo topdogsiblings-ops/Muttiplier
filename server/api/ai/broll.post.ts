@@ -1,7 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { z } from 'zod'
-import { serverSupabaseClient } from '#supabase/server'
 import type { Database } from '#shared/types/database.types'
 
 // Drafts b-roll shots for every section of a shoot's b-roll list: one section per format
@@ -47,11 +46,10 @@ function clip(text: string | null | undefined, max: number) {
 
 export default defineEventHandler(async (event): Promise<{ shots: DraftBrollShot[] }> => {
   const config = useRuntimeConfig(event)
-  const db = await serverSupabaseClient<Database>(event)
+  // in an org, and the org's subscription (or trial) is live
+  const { db, orgId, entitled } = await requireMember(event)
+  if (!entitled) throw createError({ statusCode: 402, statusMessage: 'Your organisation\'s subscription isn\'t active' })
 
-  // RLS only returns the current org's members to its members, so this doubles as the access check.
-  const { data: access } = await db.from('org_members').select('user_id').limit(1)
-  if (!access?.length) throw createError({ statusCode: 403, statusMessage: 'No access' })
   if (!config.anthropicApiKey) {
     throw createError({ statusCode: 503, statusMessage: 'AI drafting isn\'t configured. Set ANTHROPIC_API_KEY.' })
   }
@@ -131,6 +129,8 @@ export default defineEventHandler(async (event): Promise<{ shots: DraftBrollShot
       messages: [{ role: 'user', content: `${brief}\n\n${sections}\n\n${task}` }],
       output_config: { effort: 'medium', format: zodOutputFormat(outputSchema) }
     })
+    // count it against the org, whatever the outcome
+    await recordAiUsage(event, orgId, response.usage)
     if (response.stop_reason === 'refusal') {
       throw createError({ statusCode: 422, statusMessage: 'The model declined this request.' })
     }
