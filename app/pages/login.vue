@@ -26,7 +26,7 @@ async function signIn() {
         <UIcon name="i-lucide-dog" class="size-10 text-primary" />
         <div>
           <h1 class="text-xl font-semibold text-highlighted">
-            Muttiplier
+            Top Dog Kit
           </h1>
           <p class="text-sm text-muted">
             topdogugc script library and shoot planner

@@ -8,13 +8,13 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-      title: 'Muttiplier',
+      title: 'Top Dog Kit',
       meta: [
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         // Saved to the home screen, open as a standalone app rather than in Safari.
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
         { name: 'mobile-web-app-capable', content: 'yes' },
-        { name: 'apple-mobile-web-app-title', content: 'Muttiplier' },
+        { name: 'apple-mobile-web-app-title', content: 'Top Dog Kit' },
         { name: 'apple-mobile-web-app-status-bar-style', content: 'default' },
         // The status bar follows the app's background in light and dark mode.
         { name: 'theme-color', content: '#ffffff', media: '(prefers-color-scheme: light)' },

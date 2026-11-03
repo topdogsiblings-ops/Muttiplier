@@ -1,5 +1,5 @@
 -- Treatments: ways a finished recipe is presented. Every active treatment applies to every recipe
--- that has what it needs; each treated version is its own recipe. Muttiplier decides where they
+-- that has what it needs; each treated version is its own recipe. Top Dog Kit decides where they
 -- apply, the editor prepares any footage they need, and Showdog draws them from the spec.
 create table public.treatments (
   id uuid primary key default gen_random_uuid(),

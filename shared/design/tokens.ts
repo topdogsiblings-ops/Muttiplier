@@ -1,4 +1,4 @@
-// Muttiplier's look, as plain values with no framework attached, so other tools can match it.
+// Top Dog Kit's look, as plain values with no framework attached, so other tools can match it.
 // app.config.ts reads the colours from here. main.css holds the chart colours and surfaces as CSS
 // (tests/tokens.test.ts keeps them in step).
 

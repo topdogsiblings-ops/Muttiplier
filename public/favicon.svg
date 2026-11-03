@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <!-- Lucide "dog", the Muttiplier mark in the sidebar, in the app's primary amber -->
+  <!-- Lucide "dog", the Top Dog Kit mark in the sidebar, in the app's primary amber -->
   <style>
     g { color: #f59e0b; }
     @media (prefers-color-scheme: dark) { g { color: #fbbf24; } }

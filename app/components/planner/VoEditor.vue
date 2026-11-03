@@ -6,18 +6,13 @@ import type { Json } from '#shared/types/database.types'
 // Slide-over editor for a VO, inside a shoot: VOs are only written here. Every VO is for the
 // shoot's product, about one of its core features or the product as a whole, and is written by
 // the signed-in user's person on the cast: only they perform it, and only they (or an admin) can
-// edit it. It can be linked to some of the shoot's hooks and/or CTAs: then it only goes with
-// those (they still go with other VOs). Open it with `edit(row)`, or `edit({ format_id })` to
-// start a new VO in a format. Saving emits the saved VO; the shoot puts it on the plan.
-export interface LinkOption { template_id: string, code: string, script: string }
+// edit it. Open it with `edit(row)`, or `edit({ format_id })` to start a new VO in a format.
+// Saving emits the saved VO; the shoot puts it on the plan.
 const props = defineProps<{
   shootId: string
   productId: string
   /** the people on the shoot: a VO's writer has to be one of them */
   people: { id: string, name: string }[]
-  /** the shoot's hooks and CTAs, to link to */
-  hooks: LinkOption[]
-  ctas: LinkOption[]
   /** the shoot's channels and who on the shoot films each: a VO is cast on people who share one with its writer */
   channels: { id: string, name: string }[]
   channelPeople: Record<string, string[]>
@@ -117,7 +112,6 @@ const features = computed(() => [
   { label: `${product.value?.name ?? 'The product'} as a whole`, value: GENERAL },
   ...featureOptions(props.productId)
 ])
-const linkItems = (options: LinkOption[]) => options.map(option => ({ label: `${option.code} · ${option.script}`, value: option.template_id }))
 
 const open = ref(false)
 const saving = ref(false)
@@ -126,8 +120,6 @@ const form = reactive({
   format_id: undefined as string | undefined,
   person_id: undefined as string | undefined,
   feature: GENERAL as string,
-  hooks: [] as string[],
-  ctas: [] as string[],
   /** the channel it's cast on: its cast are all on it, and perform it there only */
   cast_channel: undefined as string | undefined,
   cast: [] as string[],
@@ -137,22 +129,18 @@ const form = reactive({
   source_url: ''
 })
 const requestOpen = useGuardedClose(open, form)
-/** the links when it was opened, so saving only changes what changed */
-const savedLinks = { hooks: [] as string[], ctas: [] as string[], cast: [] as string[] }
+/** the cast when it was opened, so saving only changes what changed */
+const savedLinks = { cast: [] as string[] }
 
 async function edit(row?: Partial<Row<'body_templates'>>) {
-  let hooks: string[] = []
-  let ctas: string[] = []
   let cast: string[] = []
   if (row?.id) {
     const ok = await run(async () => {
-      hooks = must(await db.from('vo_hook_links').select('hook_template_id').eq('body_template_id', row.id!)).map(link => link.hook_template_id)
-      ctas = must(await db.from('vo_cta_links').select('cta_template_id').eq('body_template_id', row.id!)).map(link => link.cta_template_id)
       cast = must(await db.from('vo_cast').select('person_id').eq('body_template_id', row.id!)).map(member => member.person_id)
     })
     if (!ok) return
   }
-  Object.assign(savedLinks, { hooks, ctas, cast })
+  Object.assign(savedLinks, { cast })
   Object.assign(form, {
     id: row?.id ?? '',
     format_id: row?.format_id ?? formatOptions.value[0]?.value,
@@ -161,9 +149,6 @@ async function edit(row?: Partial<Row<'body_templates'>>) {
       ? row.person_id ?? undefined
       : props.people.some(person => person.id === me.value?.id) ? me.value?.id : undefined,
     feature: row?.feature_id ?? GENERAL,
-    // only links to hooks / CTAs on this shoot can be changed here; others are kept
-    hooks: hooks.filter(id => props.hooks.some(hook => hook.template_id === id)),
-    ctas: ctas.filter(id => props.ctas.some(cta => cta.template_id === id)),
     cast_channel: row?.cast_channel_id ?? undefined,
     // only people on this shoot can be cast or uncast here; others are kept
     cast: cast.filter(id => props.people.some(person => person.id === id)),
@@ -269,13 +254,12 @@ const cleanBeat = (beat: Beat): Beat => {
   }
 }
 
-/** Make a link table match the picks, for the links this editor can see (ones on this shoot). */
-async function syncLinks(table: 'vo_hook_links' | 'vo_cta_links' | 'vo_cast', voId: string, before: string[], after: string[], onShoot: string[]) {
-  const column = table === 'vo_hook_links' ? 'hook_template_id' : table === 'vo_cta_links' ? 'cta_template_id' : 'person_id'
+/** Make the cast match the picks, for the people this editor can see (ones on this shoot). */
+async function syncCast(voId: string, before: string[], after: string[], onShoot: string[]) {
   const removed = before.filter(id => !after.includes(id) && onShoot.includes(id))
   const added = after.filter(id => !before.includes(id))
-  if (removed.length) must(await db.from(table).delete().eq('body_template_id', voId).in(column, removed))
-  if (added.length) must(await db.from(table).insert(added.map(id => ({ body_template_id: voId, [column]: id }) as never)))
+  if (removed.length) must(await db.from('vo_cast').delete().eq('body_template_id', voId).in('person_id', removed))
+  if (added.length) must(await db.from('vo_cast').insert(added.map(person_id => ({ body_template_id: voId, person_id }))))
 }
 
 async function save() {
@@ -298,9 +282,7 @@ async function save() {
     saved = form.id
       ? mustOne(await db.from('body_templates').update(fields).eq('id', form.id).select('*').single())
       : mustOne(await db.from('body_templates').insert({ ...fields, person_id: form.person_id!, shoot_id: props.shootId }).select('*').single())
-    await syncLinks('vo_hook_links', saved.id, savedLinks.hooks, form.hooks, props.hooks.map(hook => hook.template_id))
-    await syncLinks('vo_cta_links', saved.id, savedLinks.ctas, form.ctas, props.ctas.map(cta => cta.template_id))
-    await syncLinks('vo_cast', saved.id, savedLinks.cast, form.cast, props.people.map(person => person.id))
+    await syncCast(saved.id, savedLinks.cast, form.cast, props.people.map(person => person.id))
   }, 'VO saved')
   saving.value = false
   if (ok && saved) {
@@ -363,28 +345,6 @@ async function save() {
                 :placeholder="form.cast_channel ? (castOptions.length ? 'Just the writer' : 'Nobody else is on it') : 'Pick a channel first'"
                 class="w-full"
                 :disabled="readonly || !form.cast_channel || !castOptions.length"
-              />
-            </UFormField>
-            <UFormField label="Only with hooks" help="Empty = any hook">
-              <USelectMenu
-                v-model="form.hooks"
-                :items="linkItems(props.hooks)"
-                value-key="value"
-                multiple
-                :placeholder="props.hooks.length ? 'Any hook' : 'No hooks on the shoot yet'"
-                class="w-full"
-                :disabled="readonly || !props.hooks.length"
-              />
-            </UFormField>
-            <UFormField label="Only with CTAs" help="Empty = any CTA">
-              <USelectMenu
-                v-model="form.ctas"
-                :items="linkItems(props.ctas)"
-                value-key="value"
-                multiple
-                :placeholder="props.ctas.length ? 'Any CTA' : 'No CTAs on the shoot yet'"
-                class="w-full"
-                :disabled="readonly || !props.ctas.length"
               />
             </UFormField>
           </div>

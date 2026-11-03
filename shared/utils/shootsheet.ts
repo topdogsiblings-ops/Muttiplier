@@ -407,7 +407,7 @@ export const KIND_FOLDER: Record<ItemKind, string> = { hook: 'hooks', body: 'vo'
 
 /**
  * Everything from a shoot lives in its shoot folder. `raw/` and `edited/` have the same tree:
- * Muttiplier uploads clips into raw/, and editors put each edited clip in the same place under
+ * Top Dog Kit uploads clips into raw/, and editors put each edited clip in the same place under
  * edited/ (same name; the extension can differ). Hooks, VOs and CTAs are files named by code,
  * so their paths here have no extension; captions sit next to their clip under the same name.
  * B-roll is loose footage: clips go straight into their beat folder under their own names.

@@ -34,7 +34,7 @@ async function signOut() {
       <template #header="{ collapsed }">
         <NuxtLink to="/shoots" class="flex w-full items-center justify-center gap-2 font-semibold text-highlighted">
           <UIcon name="i-lucide-dog" class="size-6 text-primary" />
-          <span v-if="!collapsed">Muttiplier</span>
+          <span v-if="!collapsed">Top Dog Kit</span>
         </NuxtLink>
       </template>
 

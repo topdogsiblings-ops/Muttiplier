@@ -347,7 +347,18 @@ async function updateItem(item: BundleItem, patch: { channel_id?: string | null,
   })
 }
 
+const KIND_NOUNS: Record<string, string> = { hook: 'hook', body: 'VO', cta: 'CTA' }
+
 async function removeGroup(group: ShotGroup) {
+  const noun = KIND_NOUNS[group.kind] ?? 'item'
+  const people = group.items.length
+  if (!(await confirmDialog({
+    title: `Remove ${noun} ${group.code} from this shoot?`,
+    description: `It comes off for ${people === 1 ? 'the 1 person' : `all ${people} people`} filming it, along with any per-person wording and ticks.`
+      + ' If it was written here and no other shoot uses it, it\'s deleted.',
+    confirmLabel: 'Remove',
+    danger: true
+  }))) return
   await run(async () => {
     must(await db.from('shoot_items').delete().in('id', group.items.map(item => item.id)))
     await deleteUnused(group.kind, [group.template_id])
@@ -379,8 +390,7 @@ async function deleteUnused(kind: string, templateIds: string[]) {
 // VOs are only written in a shoot: for its product (one feature, or the product as a whole), by
 // the signed-in user's person on the cast, who alone performs it (and, with admins, edits it).
 // Saving puts it on the plan for its writer on each of their channels; editing it keeps this
-// shoot's lines in step. A VO can be linked to some of the shoot's hooks / CTAs: it only goes with
-// those.
+// shoot's lines in step.
 const voEditor = useTemplateRef<{ edit: (row?: Partial<Row<'body_templates'>>) => void }>('voEditor')
 const writeVo = (format?: BrollFormat) => voEditor.value?.edit(format ? { format_id: format.id } : undefined)
 async function editVo(group: ShotGroup) {
@@ -411,12 +421,6 @@ async function onVoSaved(vo: Row<'body_templates'>) {
     await refresh()
   })
 }
-/** the shoot's hooks and CTAs, for the VO editor to link to */
-const linkOptions = (kind: 'hook' | 'cta') => groupsOf(kind).map(group => ({
-  template_id: group.template_id,
-  code: group.code,
-  script: typeof group.items[0]?.script_snapshot === 'string' ? group.items[0].script_snapshot : ''
-}))
 const voPickerOpen = ref(false)
 
 async function renumber() {
@@ -1468,8 +1472,6 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
         :shoot-id="shoot.id"
         :product-id="shoot.product_id"
         :people="bundle.people"
-        :hooks="linkOptions('hook')"
-        :ctas="linkOptions('cta')"
         :channels="bundle.channels"
         :channel-people="bundle.channelPeople ?? {}"
         @saved="onVoSaved"
