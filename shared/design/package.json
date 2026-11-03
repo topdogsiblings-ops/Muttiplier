@@ -1,0 +1,10 @@
+{
+  "name": "@topdogs/design-tokens",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./tokens.ts"
+  },
+  "types": "./tokens.ts"
+}
