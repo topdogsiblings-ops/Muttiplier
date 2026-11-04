@@ -3,8 +3,8 @@ import type { KeyObject } from 'node:crypto'
 import type { H3Event } from 'h3'
 import { serverSupabaseUser } from '#supabase/server'
 
-// UGC Klip's license (Phase 5). Klip connects with a code (/api/license/device/*: a member
-// approves it in Kit, so Klip never signs in to Supabase), gets a token, and checks it offline with
+// Klip's license (Phase 5). Klip connects with a code (/api/license/device/*: a member
+// approves it in Kreate, so Klip never signs in to Supabase), gets a token, and checks it offline with
 // the public key (Ed25519), so no secret lives in the app. It refreshes with /api/license/refresh
 // while online; a token lasts 72 hours offline, or until a trial's end when Klip comes from the
 // trial. Using Klip needs both subscriptionState 'active' and klipPurchased.
@@ -18,7 +18,7 @@ export interface License {
   v: 1
   orgId: string
   userId: string
-  /** the org's Kit: trialing, active and past due (Stripe still retrying) and billing-exempt are all 'active' */
+  /** the org's Kreate: trialing, active and past due (Stripe still retrying) and billing-exempt are all 'active' */
   subscriptionState: 'active' | 'lapsed'
   /** the org has Klip: bought, billing-exempt or trialing */
   klipPurchased: boolean
@@ -97,7 +97,7 @@ export function readLicense(event: H3Event, token: string): License | null {
 
 export const refreshable = (license: License) => Date.now() - license.issuedAt <= REFRESH_WINDOW
 
-/** Who's asking: the member signed in to Kit. */
+/** Who's asking: the member signed in to Kreate. */
 export async function licenseUser(event: H3Event) {
   const claims = await serverSupabaseUser(event).catch(() => null)
   if (claims?.sub) return claims.sub

@@ -3,8 +3,8 @@ import type { Row } from '#shared/types/models'
 let loading: Promise<void> | null = null
 
 /**
- * Resolves `created_by` user ids to a name: their display name in the org, else the Google
- * profile name, else the email. Loaded once per session.
+ * Resolves `created_by` user ids to a name: their display name in the org, else their profile
+ * name (from Google), else the email. Loaded once per session.
  */
 export const useUsers = () => {
   const db = useDb()

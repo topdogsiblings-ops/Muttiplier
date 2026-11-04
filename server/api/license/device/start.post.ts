@@ -1,5 +1,5 @@
 // Klip asks to connect: a secret device code it keeps (to check back with) and a short code the
-// person approves in Kit, at verificationUriComplete (the code filled in) or verificationUri.
+// person approves in Kreate, at verificationUriComplete (the code filled in) or verificationUri.
 export default defineEventHandler(async (event) => {
   const db = serviceDb(event)
   const origin = getRequestURL(event, { xForwardedHost: true, xForwardedProto: true }).origin

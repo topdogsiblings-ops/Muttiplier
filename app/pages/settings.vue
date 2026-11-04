@@ -151,8 +151,8 @@ async function saveChannel() {
 }
 
 // --- members -----------------------------------------------------------------
-// Admins invite by email; members don't pay. An invite becomes a membership when that Google
-// account signs in (straight away if it already has).
+// Admins invite by email; members don't pay. An invite becomes a membership when someone signs
+// in with that email, by Google or a confirmed email account (straight away if they already have).
 const userOpen = ref(false)
 const member = reactive({ user_id: '', invited: false, email: '', role: 'member', display_name: '' })
 const requestUserOpen = useGuardedClose(userOpen, member)
@@ -358,7 +358,7 @@ async function saveDefaults() {
               <UFormField label="Your name" required help="How you appear on shot lists and to the team here">
                 <UInput v-model="profile.my_name" class="w-full" />
               </UFormField>
-              <UFormField label="Google account" help="You sign in with it">
+              <UFormField label="Email" help="You sign in with it">
                 <UInput :model-value="me.profile?.email ?? ''" class="w-full" disabled />
               </UFormField>
             </div>
@@ -411,7 +411,7 @@ async function saveDefaults() {
         <template v-else-if="tab === 'members'">
           <div class="flex items-center justify-between">
             <p class="text-sm text-muted">
-              Only these Google accounts can use this organisation. Members don't pay.
+              Only these people can use this organisation. Members don't pay.
             </p>
             <UButton icon="i-lucide-plus" label="Invite" @click="editMember()" />
           </div>
@@ -441,7 +441,7 @@ async function saveDefaults() {
                   {{ row.email }}
                 </p>
                 <p class="text-sm text-muted">
-                  Invited: joins when they sign in with Google
+                  Invited: joins when they first sign in
                 </p>
               </button>
               <UBadge :label="row.role" :color="row.role === 'admin' ? 'primary' : 'neutral'" variant="subtle" class="capitalize" />
@@ -561,7 +561,7 @@ async function saveDefaults() {
       <UModal :open="userOpen" @update:open="requestUserOpen" :title="member.user_id || member.invited ? 'Edit access' : 'Invite someone'">
         <template #body>
           <div class="space-y-4">
-            <UFormField label="Google account email" required>
+            <UFormField label="Email" help="They sign in with Google or an email and password, using this address." required>
               <UInput v-model="member.email" type="email" class="w-full" :disabled="!!member.user_id || member.invited" />
             </UFormField>
             <UFormField label="Display name">

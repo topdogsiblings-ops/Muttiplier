@@ -1,4 +1,4 @@
-# UGC Kit
+# Kreate
 
 Script **Library** and shoot **Planner** for the topdogugc UGC agency. The full spec is in [docs/spec.md](docs/spec.md).
 

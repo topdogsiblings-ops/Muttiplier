@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Connecting UGC Klip: it shows a code and opens this page (the code filled in). The member
+// Connecting Klip: it shows a code and opens this page (the code filled in). The member
 // checks it matches, picks the org Klip is for, and approves; Klip then gets its license. Signing in
 // first comes back here.
 definePageMeta({ layout: 'plain' })
@@ -51,25 +51,25 @@ const orgName = computed(() => orgs.value.find(org => org.id === orgId.value)?.n
       <div class="text-center">
         <UIcon name="i-lucide-scissors" class="size-10 text-primary" />
         <h1 class="mt-2 text-xl font-semibold text-highlighted">
-          Connect UGC Klip
+          Connect Klip
         </h1>
       </div>
 
       <template v-if="done === 'approved'">
         <p class="text-center text-sm text-muted">
-          UGC Klip is connected to {{ orgName }}. You can close this tab and go back to it.
+          Klip is connected to {{ orgName }}. You can close this tab and go back to it.
         </p>
       </template>
       <template v-else-if="done === 'denied'">
         <p class="text-center text-sm text-muted">
-          Cancelled: UGC Klip wasn't connected. You can close this tab.
+          Cancelled: Klip wasn't connected. You can close this tab.
         </p>
       </template>
       <template v-else>
         <p class="text-center text-sm text-muted">
-          Check this matches the code UGC Klip is showing. Only approve a code you started yourself.
+          Check this matches the code Klip is showing. Only approve a code you started yourself.
         </p>
-        <UFormField label="Code" :error="valid === false ? 'That code has expired or was already used. Start again in UGC Klip.' : false">
+        <UFormField label="Code" :error="valid === false ? 'That code has expired or was already used. Start again in Klip.' : false">
           <UInput v-model="code" class="w-full" size="xl" :ui="{ base: 'text-center font-mono tracking-widest' }" placeholder="XXXX-XXXX" autofocus />
         </UFormField>
         <UFormField v-if="orgs.length > 1" label="Organisation">

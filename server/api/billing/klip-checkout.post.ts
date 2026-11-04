@@ -1,5 +1,5 @@
-// Buy UGC Klip for the admin's org: a one-time payment through Stripe-hosted Checkout with
-// Managed Payments, on the org's Stripe customer. It needs a live Kit (a trial counts, so a
+// Buy Klip for the admin's org: a one-time payment through Stripe-hosted Checkout with
+// Managed Payments, on the org's Stripe customer. It needs a live Kreate (a trial counts, so a
 // trialing org can keep Klip after the trial). The org has Klip once the webhook has recorded it.
 export default defineEventHandler(async (event) => {
   const { orgId } = await requireOrgAdmin(event)
@@ -13,10 +13,10 @@ export default defineEventHandler(async (event) => {
     db.from('orgs').select('billing_exempt, klip_purchased_at').eq('id', orgId).single()
   ])
   if (org?.klip_purchased_at || org?.billing_exempt) {
-    throw createError({ statusCode: 409, statusMessage: 'This organisation already has UGC Klip.' })
+    throw createError({ statusCode: 409, statusMessage: 'This organisation already has Klip.' })
   }
   if (!subscription || !isEntitled(subscription.status)) {
-    throw createError({ statusCode: 409, statusMessage: 'UGC Klip needs a UGC Kit subscription: start that first.' })
+    throw createError({ statusCode: 409, statusMessage: 'Klip needs a Kreate subscription: start that first.' })
   }
 
   const prices = await stripe.prices.list({ lookup_keys: [config.stripeKlipPriceLookupKey], active: true, limit: 1 })

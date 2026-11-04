@@ -359,7 +359,7 @@ export interface ExistingBrand {
 export interface ImportPlan {
   /** new prospects, with a slug that's free */
   creates: (ImportedBrand & { slug: string })[]
-  /** brands already in UGC Kit: Trybe fields are refreshed, name/status/notes are kept */
+  /** brands already in Kreate: Trybe fields are refreshed, name/status/notes are kept */
   updates: { id: string, existingName: string, brand: ImportedBrand }[]
 }
 

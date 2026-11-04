@@ -8,13 +8,13 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-      title: 'UGC Kit',
+      title: 'Kreate | by UGC Company',
       meta: [
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         // Saved to the home screen, open as a standalone app rather than in Safari.
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
         { name: 'mobile-web-app-capable', content: 'yes' },
-        { name: 'apple-mobile-web-app-title', content: 'UGC Kit' },
+        { name: 'apple-mobile-web-app-title', content: 'Kreate' },
         { name: 'apple-mobile-web-app-status-bar-style', content: 'default' },
         // The status bar follows the app's background in light and dark mode.
         { name: 'theme-color', content: '#ffffff', media: '(prefers-color-scheme: light)' },
@@ -55,7 +55,8 @@ export default defineNuxtConfig({
     redirectOptions: {
       login: '/login',
       callback: '/confirm',
-      exclude: [],
+      // a password reset link signs them in on the page itself
+      exclude: ['/reset-password'],
       // signing in returns to the page that asked for it (e.g. Klip's activation link)
       saveRedirectToCookie: true
     }

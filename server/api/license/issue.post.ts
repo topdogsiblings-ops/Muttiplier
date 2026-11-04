@@ -1,4 +1,4 @@
-// A UGC Klip license token for the member signed in to Kit: their current org's, or { orgId } to
+// A Klip license token for the member signed in to Kreate: their current org's, or { orgId } to
 // pick one they're in. Always issued to a member; whether Klip opens is in the token
 // (subscriptionState, klipPurchased). Klip itself connects with a code (./device/*).
 export default defineEventHandler(async (event) => {

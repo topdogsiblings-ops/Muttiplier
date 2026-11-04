@@ -3,7 +3,7 @@ import type { H3Event } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import type { Database } from '#shared/types/database.types'
 
-// Billing (Phase 4): one UGC Kit subscription per org, through Stripe Checkout with Managed
+// Billing (Phase 4): one Kreate subscription per org, through Stripe Checkout with Managed
 // Payments (Stripe is the merchant of record: tax, fraud, disputes). Stripe is the source of truth:
 // every webhook re-reads the subscription from Stripe, so events arriving out of order can't leave
 // org_subscriptions stale. Only the server writes billing rows, with the service role.
@@ -76,7 +76,7 @@ export async function requireOrgAdmin(event: H3Event) {
 }
 
 /**
- * Record a UGC Klip purchase from its Checkout Session, re-read from Stripe: the org has Klip
+ * Record a Klip purchase from its Checkout Session, re-read from Stripe: the org has Klip
  * once it's paid, unless it's since been refunded in full (so a replayed event can't hand it back).
  */
 export async function syncKlipPurchase(event: H3Event, sessionId: string) {

@@ -1,6 +1,6 @@
 import { serverSupabaseUser } from '#supabase/server'
 
-// Start a UGC Kit subscription for the admin's org: Stripe-hosted Checkout with Managed Payments,
+// Start a Kreate subscription for the admin's org: Stripe-hosted Checkout with Managed Payments,
 // a 30-day trial the first time (card on file), and the org on the subscription's metadata so the
 // webhook knows whose it is. The org is entitled only once the webhook has synced it.
 export default defineEventHandler(async (event) => {

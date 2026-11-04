@@ -115,7 +115,7 @@ const facts = computed(() => {
         </p>
       </div>
 
-      <!-- columns from a Scrybe export this version of UGC Kit doesn't know yet -->
+      <!-- columns from a Scrybe export this version of Kreate doesn't know yet -->
       <dl v-if="data.extra && Object.keys(data.extra).length" class="grid grid-cols-2 gap-x-4 gap-y-2 border-t border-default pt-3">
         <div v-for="(value, label) in data.extra" :key="label">
           <dt class="text-xs text-muted">

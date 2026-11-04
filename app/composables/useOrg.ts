@@ -8,7 +8,7 @@ export interface MyOrg {
   has_chosen: boolean
   /** its subscription (or trial) is live, or it's billing-exempt */
   entitled: boolean
-  /** how it has UGC Klip: bought, billing-exempt, for the length of its trial, or not at all */
+  /** how it has Klip: bought, billing-exempt, for the length of its trial, or not at all */
   klip_access: 'purchased' | 'exempt' | 'trial' | 'none'
 }
 

@@ -2,7 +2,7 @@ import type Stripe from 'stripe'
 
 // Stripe's webhook (Dashboard > Developers > Webhooks: <origin>/api/billing/webhook). Verified by
 // signature; every subscription event re-reads the subscription from Stripe, so it doesn't matter
-// what order events arrive in. UGC Klip purchases come through checkout.session.* (re-read the
+// what order events arrive in. Klip purchases come through checkout.session.* (re-read the
 // same way) and full refunds through charge.refunded. An error answers 500 so Stripe retries.
 export default defineEventHandler(async (event) => {
   const secret = useRuntimeConfig(event).stripeWebhookSecret
@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
   return { received: true }
 })
 
-/** A finished checkout for UGC Klip (a one-time payment, not a subscription). */
+/** A finished checkout for Klip (a one-time payment, not a subscription). */
 function isKlipCheckout(stripeEvent: Stripe.Event): stripeEvent is Stripe.CheckoutSessionCompletedEvent | Stripe.CheckoutSessionAsyncPaymentSucceededEvent {
   return (stripeEvent.type === 'checkout.session.completed' || stripeEvent.type === 'checkout.session.async_payment_succeeded')
     && stripeEvent.data.object.mode === 'payment' && stripeEvent.data.object.metadata?.purchase === 'klip'

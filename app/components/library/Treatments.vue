@@ -4,7 +4,7 @@ import type { Json } from '#shared/types/database.types'
 
 // Treatments: ways a finished recipe is presented. Every active treatment applies to every recipe
 // that has what it needs, and each treated version is its own recipe, alongside the untreated
-// one. UGC Kit decides where they apply, Pawcessor makes a treated copy of each clip they apply to, and
+// one. Kreate decides where they apply, Pawcessor makes a treated copy of each clip they apply to, and
 // Showdog draws them from each recipe's spec. Built-in ones (face to camera, over b-roll) are
 // always on: they can't be switched off, archived or deleted.
 const db = useDb()

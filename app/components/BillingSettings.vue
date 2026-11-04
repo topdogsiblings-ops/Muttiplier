@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { Row } from '#shared/types/models'
 
-// Billing, in Settings → Profile (members see it at /billing): the org's UGC Kit subscription,
-// and UGC Klip. Admins subscribe (a 30-day free trial the first time) and manage it in Stripe's
+// Billing, in Settings → Profile (members see it at /billing): the org's Kreate subscription,
+// and Klip. Admins subscribe (a 30-day free trial the first time) and manage it in Stripe's
 // portal, and buy Klip once (a trial includes it until the trial ends); everyone else can see where
 // things stand. Stripe tells the app through its webhook, so after checkout this waits for that to land.
 const db = useDb()
@@ -57,7 +57,7 @@ onMounted(async () => {
     await load()
   }
   waitingKlip.value = false
-  if (klipOwned.value) toast.add({ title: 'UGC Klip is yours', color: 'success' })
+  if (klipOwned.value) toast.add({ title: 'Klip is yours', color: 'success' })
   else toast.add({ title: 'Still waiting for Stripe', description: 'Your payment went through. Refresh this page in a minute.', color: 'warning' })
 })
 
@@ -79,7 +79,7 @@ async function go(path: '/api/billing/checkout' | '/api/billing/portal' | '/api/
     <UCard :ui="{ body: 'space-y-4' }">
       <div class="flex flex-wrap items-center gap-2">
         <h2 class="font-semibold text-highlighted">
-          UGC Kit
+          Kreate
         </h2>
         <UBadge v-if="currentOrg?.entitled && !subscription?.status" label="Included" color="success" variant="subtle" />
         <UBadge v-else-if="subscription?.status" :label="STATUS[subscription.status]?.label ?? subscription.status" :color="STATUS[subscription.status]?.color ?? 'neutral'" variant="subtle" />
@@ -92,7 +92,7 @@ async function go(path: '/api/billing/checkout' | '/api/billing/portal' | '/api/
       </p>
       <template v-else-if="currentOrg?.entitled && !subscription?.status">
         <p class="text-sm text-muted">
-          {{ currentOrg.name }} uses UGC Kit without a subscription.
+          {{ currentOrg.name }} uses Kreate without a subscription.
         </p>
       </template>
       <template v-else-if="live">
@@ -140,7 +140,7 @@ async function go(path: '/api/billing/checkout' | '/api/billing/portal' | '/api/
     <UCard :ui="{ body: 'space-y-4' }">
       <div class="flex flex-wrap items-center gap-2">
         <h2 class="font-semibold text-highlighted">
-          UGC Klip
+          Klip
         </h2>
         <UBadge v-if="klipOwned" label="Owned" color="success" variant="subtle" />
         <UBadge v-else-if="currentOrg?.klip_access === 'exempt'" label="Included" color="success" variant="subtle" />
@@ -155,7 +155,7 @@ async function go(path: '/api/billing/checkout' | '/api/billing/portal' | '/api/
       <p v-else class="text-sm text-muted">
         The desktop editor for your shoots' clips: trims, captions and treatments.
         <template v-if="klipOwned">
-          {{ currentOrg?.name }} owns it, and can use it while UGC Kit is live.
+          {{ currentOrg?.name }} owns it, and can use it while Kreate is live.
         </template>
         <template v-else-if="currentOrg?.klip_access === 'exempt'">
           {{ currentOrg?.name }} uses it without buying it.
@@ -164,20 +164,20 @@ async function go(path: '/api/billing/checkout' | '/api/billing/portal' | '/api/
           Your free trial includes it until {{ date(subscription?.trial_end) ?? 'the trial ends' }}. To keep it after that, buy it once for $189.99.
         </template>
         <template v-else>
-          $189.99 once for your organisation, used alongside a UGC Kit subscription.
+          $189.99 once for your organisation, used alongside a Kreate subscription.
         </template>
       </p>
 
       <div v-if="isAdmin && !waitingKlip && !klipOwned && currentOrg?.klip_access !== 'exempt'">
         <UButton
           v-if="live"
-          label="Buy UGC Klip"
+          label="Buy Klip"
           icon="i-lucide-scissors"
           :loading="going"
           @click="go('/api/billing/klip-checkout')"
         />
         <p v-else class="text-sm text-muted">
-          Start UGC Kit first: Klip works alongside it.
+          Start Kreate first: Klip works alongside it.
         </p>
       </div>
     </UCard>

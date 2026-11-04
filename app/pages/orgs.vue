@@ -17,7 +17,7 @@ async function choose(id: string) {
   <div class="flex min-h-dvh items-center justify-center p-4">
     <UCard class="w-full max-w-sm" :ui="{ body: 'space-y-4' }">
       <div class="text-center">
-        <UIcon name="i-lucide-dog" class="size-10 text-primary" />
+        <AppLogo class="mx-auto size-12 text-highlighted" />
         <h1 class="mt-2 text-xl font-semibold text-highlighted">
           Choose an organisation
         </h1>
