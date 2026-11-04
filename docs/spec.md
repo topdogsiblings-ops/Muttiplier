@@ -1,6 +1,6 @@
 # Kreate — Project Spec
 
-Internal web app for the topdogugc UGC agency. It holds the script **Library** (hooks, CTAs, formats, hook types), the **Brands** pipeline from Trybe, and the **Planner** that turns library items into a shoot day: one shared shot list, a recipe/submission calculator, an on-set checklist, and exports that feed the later processing pipeline.
+Kreate, by UGC Kompany: a web app for UGC teams and agencies, built first for the topdogugc agency. It holds the script **Library** (hooks, CTAs, formats, hook types), the **Brands** pipeline from Trybe, and the **Planner** that turns library items into a shoot day: one shared shot list, a recipe/submission calculator, an on-set checklist, and exports that feed the later processing pipeline.
 
 **Names:** the apps call themselves **Kreate** (this app) and **Klip** (the desktop editor, Pawcessor). They're marketed as **UGC Kreate** and **UGC Klip**, each on a subdomain of the ugckompany site, and those are the names on Stripe's products, checkout and receipts. Code, packages and repos keep `muttiplier` and `pawcessor`. Both share the italic "k" logo (`public/logo.svg`).
 
@@ -12,7 +12,7 @@ This spec covers the Library, Brands and Planner. Ingest, rendering and submissi
 
 ## 1. Context
 
-- topdogugc is a UGC agency producing ads for brands on Trybe.
+- Kreate is built by UGC Kompany. Its first organisation, topdogugc, is a UGC agency producing ads for brands on Trybe, and the examples below are its own.
 - Three creator channels sit under the agency, one per dog combo:
   - `topdognix` (Nix, Doberman)
   - `topdogwhiskey` (Whiskey, Vizsla)

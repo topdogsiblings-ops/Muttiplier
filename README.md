@@ -1,6 +1,6 @@
 # Kreate
 
-Script **Library** and shoot **Planner** for the topdogugc UGC agency. The full spec is in [docs/spec.md](docs/spec.md).
+Script **Library** and shoot **Planner** for UGC teams, by UGC Kompany (marketed as UGC Kreate). The full spec is in [docs/spec.md](docs/spec.md).
 
 Nuxt 4 + Nuxt UI + Supabase (Postgres, Auth, RLS). Deployed on Vercel.
 
