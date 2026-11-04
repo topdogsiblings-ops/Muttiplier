@@ -1,11 +1,20 @@
-// UGC Kit's look, as plain values with no framework attached, so other tools can match it.
+// Kreate's look, as plain values with no framework attached, so other tools can match it.
 // app.config.ts reads the colours from here. main.css holds the chart colours and surfaces as CSS
 // (tests/tokens.test.ts keeps them in step).
 
-/** Nuxt UI colour names */
+/** Nuxt UI colour names. The primary's shades (tints like bg-primary/10) are the neutral greys. */
 export const colors = {
-  primary: 'amber',
+  primary: 'stone',
   neutral: 'stone'
+} as const
+
+/**
+ * The primary colour itself: white, on a dark page; black on a light one, where white wouldn't
+ * show. Set as --ui-primary in main.css (Nuxt UI has no white scale for app.config).
+ */
+export const primary = {
+  light: '#0c0a09',
+  dark: '#ffffff'
 } as const
 
 /** page backgrounds */
