@@ -21,7 +21,7 @@ function bundle(): ShootBundle {
     brand: { name: 'PawCo', slug: 'pawco' },
     product: { name: 'Calming Chews', slug: 'calming-chews' },
     people: [{ id: 'p1', slug: 'joe', name: 'Joe' }],
-    channels: [{ id: 'c1', name: 'topdognix', slug: 'topdognix', folder_slug: 'nix', dogs: ['nix'], dog_phrase: 'my Doberman' }],
+    channels: [{ id: 'c1', name: 'topdognix', slug: 'topdognix', folder_slug: 'nix', dogs: ['nix'], slot_values: { dog: 'my Doberman' } }],
     items: [item('h', 'H01', 'hook', 'c1'), item('v', 'V01', 'body', 'c1'), item('c', 'C01', 'cta', 'c1'), item('s', 'H02', 'hook', 'c1', { status: 'skipped' })],
     broll: [{ id: 'b1', channel_id: null, format_id: 'f1', beat: 'problem', description: 'pacing', status: 'filmed' }],
     channelPeople: { c1: ['p1'] }

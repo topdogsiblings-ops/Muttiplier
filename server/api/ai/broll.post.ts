@@ -24,9 +24,12 @@ export interface DraftBrollShot {
   description: string
 }
 
-const SYSTEM = `You plan b-roll for short-form UGC ads for topdogugc, an agency whose creators film ads for dog products with their own dogs. Each video is Hook (on camera) → Body (a voiceover over b-roll, split into beats) → CTA. B-roll is filmed once per shoot and cut under the voiceover beat by beat, on every channel.
+/** The org's preamble (Settings → Scripts), then how b-roll is planned. */
+const systemPrompt = (preamble: string) => `${preamble}
 
-Write each shot as a short, concrete instruction a creator can film at home with their own dog in one take: what's in frame, what happens, and the framing when it matters. Plain phone footage, natural light, real homes. No stock-footage ideas, no actors, no text overlays, no props the creator wouldn't have.
+You're planning b-roll for those ads. Each video is Hook (on camera) → Body (a voiceover over b-roll, split into beats) → CTA. B-roll is filmed once per shoot and cut under the voiceover beat by beat, on every channel.
+
+Write each shot as a short, concrete instruction a creator can film themselves in one take: what's in frame, what happens, and the framing when it matters. Plain phone footage, natural light, real places. No stock-footage ideas, no actors, no text overlays, no props the creator wouldn't have.
 
 Only show the product doing what the brief says it does. Never imply health outcomes, results or claims that aren't in the brief, and respect any forbidden claims.`
 
@@ -56,7 +59,11 @@ export default defineEventHandler(async (event): Promise<{ shots: DraftBrollShot
 
   const parsed = requestSchema.safeParse(await readBody(event))
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid request' })
-  const bundle = await loadShootBundle(db, parsed.data.shootCode)
+  const [bundle, { data: settings }, { data: org }] = await Promise.all([
+    loadShootBundle(db, parsed.data.shootCode),
+    db.from('settings').select('ai_preamble, org_profile').limit(1).maybeSingle(),
+    db.from('orgs').select('name').eq('id', orgId).maybeSingle()
+  ])
   if (!bundle) throw createError({ statusCode: 404, statusMessage: 'Shoot not found' })
 
   // Formats used by the shoot's VOs, with the VO scripts written for each one.
@@ -97,7 +104,10 @@ export default defineEventHandler(async (event): Promise<{ shots: DraftBrollShot
     bundle.product.notes ? `Notes on the product:\n${clip(bundle.product.notes, 1500)}` : '',
     bundle.product.claims_allowed ? `Claims the brand allows:\n${clip(bundle.product.claims_allowed, 800)}` : '',
     bundle.product.claims_forbidden ? `Forbidden claims. Do not show or imply any of these:\n${clip(bundle.product.claims_forbidden, 800)}` : '',
-    `Dogs on this shoot: ${bundle.channels.map(channel => `${channel.dog_phrase || channel.name}`).join(', ')}`,
+    `Channels on this shoot: ${bundle.channels.map((channel) => {
+      const values = Object.entries(parseSlotValues(channel.slot_values)).map(([name, value]) => `${name}: ${value}`)
+      return values.length ? `${channel.name} (${values.join('; ')})` : channel.name
+    }).join(', ')}`,
     bundle.shoot.location_notes ? `Location: ${bundle.shoot.location_notes}` : ''
   ].filter(Boolean).join('\n\n')
 
@@ -125,7 +135,7 @@ export default defineEventHandler(async (event): Promise<{ shots: DraftBrollShot
     const response = await client.messages.parse({
       model: config.anthropicModel,
       max_tokens: 16000,
-      system: SYSTEM,
+      system: systemPrompt(aiPreamble(org?.name ?? '', settings)),
       messages: [{ role: 'user', content: `${brief}\n\n${sections}\n\n${task}` }],
       output_config: { effort: 'medium', format: zodOutputFormat(outputSchema) }
     })

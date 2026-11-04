@@ -1,6 +1,7 @@
 // Slot templating (spec §5). Pure: shared by the editor previews, the shoot builder and the exports.
 
-export const BUILT_IN_SLOTS = ['brand', 'product', 'dog'] as const
+/** Filled from the product. Each org adds its own channel slots (filled per channel) and custom ones (per shoot). */
+export const BUILT_IN_SLOTS = ['brand', 'product'] as const
 
 const SLOT_PATTERN = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g
 
@@ -63,13 +64,14 @@ export function extractSlots(text: string): string[] {
 }
 
 /**
- * Values available to a script. `brand` and `product` come from the product, `dog` from the
- * channel, everything else from the shoot's slot_values. Built-ins win over custom slots.
+ * Values available to a script. `brand` and `product` come from the product, channel slots from
+ * the channel, everything else from the shoot's slot_values. Built-ins win, then channel slots.
  */
 export function buildSlotContext(source: {
   brand?: string | null
   product?: string | null
-  dogPhrase?: string | null
+  /** the channel's value for each channel slot (null: not filled in) */
+  channelValues?: Record<string, string | null | undefined>
   slotValues?: unknown
 }): SlotContext {
   const context: SlotContext = {}
@@ -78,9 +80,9 @@ export function buildSlotContext(source: {
       if (typeof value === 'string' || typeof value === 'number') context[key.toLowerCase()] = String(value)
     }
   }
+  for (const [key, value] of Object.entries(source.channelValues ?? {})) context[key.toLowerCase()] = value
   context.brand = source.brand
   context.product = source.product
-  context.dog = source.dogPhrase
   return context
 }
 
@@ -166,8 +168,14 @@ export function joinBeats(beats: Beat[]): string {
   return beats.map(beat => `[${beat.beat}] ${beat.script}`).join(' ')
 }
 
-export function bodyUsesDog(beats: Beat[]): boolean {
-  return beats.some(beat => beatWordings(beat).some(wording => extractSlots(wording.script).includes('dog')))
+/** The channel slots a script uses: a line that uses one is filmed once per channel. */
+export function channelSlotsIn(text: string, channelSlots: readonly string[]): string[] {
+  return extractSlots(text).filter(name => channelSlots.includes(name))
+}
+
+/** The channel slots any wording of a VO uses. */
+export function channelSlotsInBeats(beats: Beat[], channelSlots: readonly string[]): string[] {
+  return [...new Set(beats.flatMap(beat => beatWordings(beat).flatMap(wording => channelSlotsIn(wording.script, channelSlots))))]
 }
 
 /** Typical speaking pace: about 150 words a minute. Configurable in Settings → Defaults. */

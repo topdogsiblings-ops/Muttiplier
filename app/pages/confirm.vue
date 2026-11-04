@@ -2,10 +2,14 @@
 definePageMeta({ layout: 'plain' })
 
 const user = useSupabaseUser()
+const redirect = useSupabaseCookieRedirect()
 
-// The org check runs in the global middleware on the way to the app.
+// The org check runs in the global middleware on the way to the app. Back to the page that sent
+// them to sign in, if any (only paths in this app).
 watch(user, () => {
-  if (user.value) return navigateTo('/shoots')
+  if (!user.value) return
+  const path = redirect.pluck()
+  return navigateTo(path?.startsWith('/') && !path.startsWith('//') ? path : '/shoots')
 }, { immediate: true })
 </script>
 

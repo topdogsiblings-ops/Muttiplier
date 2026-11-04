@@ -151,16 +151,16 @@ async function save() {
           <UFormField
             label="Script"
             required
-            help="On camera, sync audio. Use {{brand}}, {{product}}, {{dog}} or any custom slot. A line that says {{dog}} is filmed once per channel; one that doesn't is filmed once and used on every channel."
+            help="On camera, sync audio. Use {{brand}}, {{product}}, a channel slot or any custom slot. A line that uses a channel slot is filmed once per channel; one that doesn't is filmed once and used on every channel."
           >
             <ScriptEditor v-model="form.script" placeholder="Nobody told me {{product}} could do this…" />
           </UFormField>
 
           <UFormField label="Suggested caption" help="The post caption to go with this hook. Slots work here too.">
-            <ScriptEditor v-model="form.caption" placeholder="{{dog}} went from chaos to calm in a week 🐾 #dogsoftiktok" />
+            <ScriptEditor v-model="form.caption" placeholder="I tried {{product}} for a week. Here's what happened ✨" />
           </UFormField>
 
-          <UFormField label="How to film it" help="Shown on the shot sheet: framing, action, props, delivery, e.g. “Close-up, start mid-sentence, dog enters frame on ‘this’”">
+          <UFormField label="How to film it" help="Shown on the shot sheet: framing, action, props, delivery, e.g. “Close-up, start mid-sentence, product enters frame on ‘this’”">
             <UTextarea v-model="form.filming_notes" autoresize :rows="2" class="w-full" />
           </UFormField>
 

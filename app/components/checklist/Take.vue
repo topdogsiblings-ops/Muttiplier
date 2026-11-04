@@ -3,7 +3,7 @@ import type { BundleItem, Recording } from '#shared/utils/shootsheet'
 import type { LoadedShoot } from '#shared/utils/loadShoot'
 
 // One take on the checklist (a hook, a CTA or one VO beat, by one person): the add-clip
-// button and its clip. A line that doesn't name the dog is one take for all of the person's
+// button and its clip. A line that uses no channel slot is one take for all of the person's
 // channels, so the clip is saved once and fills each channel's spot (`also`).
 const props = withDefaults(defineProps<{
   recording: Recording

@@ -16,6 +16,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo('/login?denied=1')
   }
 
+  // connecting Top Dog Cut picks its own org, and works whatever the subscription (the license says)
+  if (to.path === '/cut/activate') return
   if (needsPicker.value && to.path !== '/orgs') return navigateTo('/orgs')
   // no live subscription: only billing (and switching org) are open
   const { currentOrg } = useOrg()

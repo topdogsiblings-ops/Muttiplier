@@ -27,7 +27,7 @@ export interface CalcItem {
   label?: string
   status?: string
   /**
-   * Items with the same key are one recording: a script that doesn't name the dog is filmed once
+   * Items with the same key are one recording: a script that uses no channel slot is filmed once
    * and used on each of the person's channels (see recordingKey). Defaults to one per item.
    */
   recordingKey?: string
@@ -136,7 +136,7 @@ export const DEFAULT_CALC_SETTINGS: CalcSettings = {
  * up to `voVariations` mixes there (beats from different people), each with anyone's hooks and
  * CTAs on the channel. Every hook + VO + CTA makes up to `brollVariations` recipes (different
  * b-roll): an upper bound, as the footage may not stretch to that many different selections. Time counts each recording once: a
- * script that doesn't name the dog is filmed once and used on every channel.
+ * script that uses no channel slot is filmed once and used on every channel.
  */
 export function calculate(input: CalcInput): CalcResult {
   const { people, channels, settings } = input

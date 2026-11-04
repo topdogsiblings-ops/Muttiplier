@@ -13,7 +13,7 @@ export const usePreviewContext = () => {
     return buildSlotContext({
       brand: product?.brand.name,
       product: product?.name,
-      dogPhrase: channel?.dog_phrase
+      channelValues: parseSlotValues(channel?.slot_values)
     })
   })
 

@@ -4,8 +4,8 @@ import type { LoadedShoot } from '#shared/utils/loadShoot'
 
 // Fill in the slots the shoot's scripts use but nothing fills yet, right in the planner. Custom
 // slots ({{benefit}}, {{offer}}…) are saved on this shoot only, so every shoot starts blank;
-// {{dog}} is each channel's dog phrase (Settings → Channels, admins only). Marking the shoot as
-// planned freezes the filled scripts, so this only shows on drafts.
+// channel slots ({{pet}}…, Settings → Scripts) are each channel's own words, saved to the channel
+// (admins only). Marking the shoot as planned freezes the filled scripts, so this only shows on drafts.
 const props = defineProps<{ bundle: LoadedShoot }>()
 const emit = defineEmits<{ changed: [] }>()
 
@@ -15,7 +15,7 @@ const { isAdmin } = useAccess()
 
 const KIND_ORDER = { hook: 0, cta: 1, body: 2 } as const
 
-/** The words around a slot in a line, with the slot as a blank: "…keeps your dog ___ all day…". */
+/** The words around a slot in a line, with the slot as a blank: "…keeps your skin ___ all day…". */
 function excerpt(line: string, slot: string, reach = 40) {
   const token = `{{${slot}}}`
   const at = line.indexOf(token)
@@ -53,18 +53,21 @@ const slots = computed(() => {
       rank: entry.rank,
       example: entry.example
     }))
-    .sort((a, b) => (a.name === 'dog' ? -1 : b.name === 'dog' ? 1 : a.rank - b.rank || a.name.localeCompare(b.name)))
+    // channel slots first: they're filled once for good, not per shoot
+    .sort((a, b) => Number(isChannelSlot(b.name)) - Number(isChannelSlot(a.name)) || a.rank - b.rank || a.name.localeCompare(b.name))
 })
 
-/** Channels on the shoot with no dog phrase: what leaves {{dog}} unfilled. */
-const channelsWithoutPhrase = computed(() => props.bundle.channels.filter(channel => !channel.dog_phrase?.trim()))
+const channelSlots = computed(() => props.bundle.channelSlots ?? [])
+const isChannelSlot = (name: string) => channelSlots.value.includes(name)
+/** The shoot's channels with no value for a channel slot: what leaves it unfilled. */
+const channelsMissing = (name: string) => props.bundle.channels.filter(channel => !parseSlotValues(channel.slot_values)[name])
 
-// what's typed, by slot name and by channel id
+// what's typed: custom slots by name, channel slots by "slot|channel id"
 const values = reactive<Record<string, string>>({})
-const phrases = reactive<Record<string, string>>({})
+const channelValues = reactive<Record<string, string>>({})
 const typed = computed(() =>
-  slots.value.some(slot => slot.name !== 'dog' && values[slot.name]?.trim())
-  || channelsWithoutPhrase.value.some(channel => phrases[channel.id]?.trim()))
+  slots.value.some(slot => !isChannelSlot(slot.name) && values[slot.name]?.trim())
+  || Object.values(channelValues).some(value => value.trim()))
 
 /** collapsed until opened: the blocker list above already says slots need filling */
 const open = ref(false)
@@ -74,23 +77,26 @@ async function save() {
   saving.value = true
   const ok = await run(async () => {
     const filled = Object.fromEntries(slots.value
-      .filter(slot => slot.name !== 'dog' && values[slot.name]?.trim())
+      .filter(slot => !isChannelSlot(slot.name) && values[slot.name]?.trim())
       .map(slot => [slot.name, values[slot.name]!.trim()]))
     if (Object.keys(filled).length) {
       const current = (props.bundle.shoot.slot_values ?? {}) as Record<string, Json>
       must(await db.from('shoots').update({ slot_values: { ...current, ...filled } }).eq('id', props.bundle.shoot.id))
     }
     if (isAdmin.value) {
-      for (const channel of channelsWithoutPhrase.value) {
-        const phrase = phrases[channel.id]?.trim()
-        if (phrase) must(await db.from('channels').update({ dog_phrase: phrase }).eq('id', channel.id))
+      for (const channel of props.bundle.channels) {
+        const added = Object.fromEntries(channelSlots.value
+          .map(name => [name, channelValues[`${name}|${channel.id}`]?.trim() ?? ''])
+          .filter(([, value]) => value))
+        if (!Object.keys(added).length) continue
+        must(await db.from('channels').update({ slot_values: { ...parseSlotValues(channel.slot_values), ...added } }).eq('id', channel.id))
       }
     }
   }, 'Slots filled')
   saving.value = false
   if (!ok) return
   for (const key of Object.keys(values)) delete values[key]
-  for (const key of Object.keys(phrases)) delete phrases[key]
+  for (const key of Object.keys(channelValues)) delete channelValues[key]
   emit('changed')
 }
 </script>
@@ -122,20 +128,20 @@ async function save() {
         "{{ slot.example }}"
       </p>
 
-      <!-- {{dog}}: each channel's own phrase -->
-      <template v-if="slot.name === 'dog'">
+      <!-- a channel slot: each channel's own words, saved to the channel -->
+      <template v-if="isChannelSlot(slot.name)">
         <template v-if="isAdmin">
           <UFormField
-            v-for="channel in channelsWithoutPhrase"
+            v-for="channel in channelsMissing(slot.name)"
             :key="channel.id"
             :label="channel.name"
-            :help="`How ${channel.name}'s dog is said in a script, e.g. &quot;my Doberman&quot; or &quot;my two dogs&quot;. Saved to the channel.`"
+            :help="`${channel.name}'s own words for it. Saved to the channel, for every shoot.`"
           >
-            <UInput v-model="phrases[channel.id]" :placeholder="slot.example ? `Fills the blank: ${slot.example}` : 'my Doberman'" class="w-full" />
+            <UInput v-model="channelValues[`${slot.name}|${channel.id}`]" :placeholder="slot.example ? `Fills the blank: ${slot.example}` : ''" class="w-full" />
           </UFormField>
         </template>
         <p v-else class="text-sm text-muted">
-          {{ channelsWithoutPhrase.map(channel => channel.name).join(', ') }} {{ channelsWithoutPhrase.length === 1 ? 'has' : 'have' }} no dog phrase yet.
+          {{ channelsMissing(slot.name).map(channel => channel.name).join(', ') }} {{ channelsMissing(slot.name).length === 1 ? 'has' : 'have' }} no value for it yet.
           An admin can add it in Settings → Channels.
         </p>
       </template>

@@ -39,7 +39,11 @@ export default defineNuxtConfig({
     // Billing (Stripe, Managed Payments); the webhook is <origin>/api/billing/webhook
     stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? '',
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
-    stripePriceLookupKey: process.env.STRIPE_PRICE_LOOKUP_KEY ?? 'top_dog_kit_monthly'
+    stripePriceLookupKey: process.env.STRIPE_PRICE_LOOKUP_KEY ?? 'top_dog_kit_monthly',
+    stripeCutPriceLookupKey: process.env.STRIPE_CUT_PRICE_LOOKUP_KEY ?? 'top_dog_cut',
+    // Cut's license tokens (Phase 5): an Ed25519 private key, PKCS#8 DER in base64. Pawcessor
+    // holds the public key and checks tokens offline.
+    licensePrivateKey: process.env.LICENSE_PRIVATE_KEY ?? ''
   },
 
   compatibilityDate: '2026-10-01',
@@ -51,7 +55,9 @@ export default defineNuxtConfig({
     redirectOptions: {
       login: '/login',
       callback: '/confirm',
-      exclude: []
+      exclude: [],
+      // signing in returns to the page that asked for it (e.g. Cut's activation link)
+      saveRedirectToCookie: true
     }
   }
 })

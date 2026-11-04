@@ -10,7 +10,7 @@ const tabs = [
     label: 'Hooks',
     value: 'hooks',
     icon: 'i-lucide-anchor',
-    help: 'The opening line that stops the scroll, said on camera with sync audio. A line that says {{dog}} is filmed once per channel; one that doesn\'t is filmed once and used on every channel. Types are the kind of opening each hook uses (Confession, Curiosity, Newness…).'
+    help: 'The opening line that stops the scroll, said on camera with sync audio. A line that uses a channel slot is filmed once per channel; one that doesn\'t is filmed once and used on every channel. Types are the kind of opening each hook uses (Confession, Curiosity, Newness…).'
   },
   {
     label: 'CTAs',

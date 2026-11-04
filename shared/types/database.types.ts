@@ -365,6 +365,7 @@ export type Database = {
           folder_slug: string
           id: string
           name: string
+          slot_values: Json
           slug: string
           updated_at: string
         }
@@ -378,6 +379,7 @@ export type Database = {
           folder_slug: string
           id?: string
           name: string
+          slot_values?: Json
           slug: string
           updated_at?: string
         }
@@ -391,6 +393,7 @@ export type Database = {
           folder_slug?: string
           id?: string
           name?: string
+          slot_values?: Json
           slug?: string
           updated_at?: string
         }
@@ -568,7 +571,6 @@ export type Database = {
           est_seconds: number | null
           filming_notes: string | null
           id: string
-          is_universal: boolean
           notes: string | null
           product_id: string | null
           script: string
@@ -587,7 +589,6 @@ export type Database = {
           est_seconds?: number | null
           filming_notes?: string | null
           id?: string
-          is_universal?: boolean
           notes?: string | null
           product_id?: string | null
           script: string
@@ -606,7 +607,6 @@ export type Database = {
           est_seconds?: number | null
           filming_notes?: string | null
           id?: string
-          is_universal?: boolean
           notes?: string | null
           product_id?: string | null
           script?: string
@@ -813,11 +813,52 @@ export type Database = {
           },
         ]
       }
+      license_device_codes: {
+        Row: {
+          approved_at: string | null
+          created_at: string
+          device_code_hash: string
+          expires_at: string
+          id: string
+          last_polled_at: string | null
+          org_id: string | null
+          status: string
+          user_code: string
+          user_id: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          created_at?: string
+          device_code_hash: string
+          expires_at?: string
+          id?: string
+          last_polled_at?: string | null
+          org_id?: string | null
+          status?: string
+          user_code: string
+          user_id?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          created_at?: string
+          device_code_hash?: string
+          expires_at?: string
+          id?: string
+          last_polled_at?: string | null
+          org_id?: string | null
+          status?: string
+          user_code?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       orgs: {
         Row: {
           billing_exempt: boolean
           created_at: string
           created_by: string | null
+          cut_payment_intent_id: string | null
+          cut_purchased_at: string | null
           id: string
           name: string
           next_shoot_number: number
@@ -828,6 +869,8 @@ export type Database = {
           billing_exempt?: boolean
           created_at?: string
           created_by?: string | null
+          cut_payment_intent_id?: string | null
+          cut_purchased_at?: string | null
           id?: string
           name: string
           next_shoot_number?: number
@@ -838,6 +881,8 @@ export type Database = {
           billing_exempt?: boolean
           created_at?: string
           created_by?: string | null
+          cut_payment_intent_id?: string | null
+          cut_purchased_at?: string | null
           id?: string
           name?: string
           next_shoot_number?: number
@@ -1061,6 +1106,10 @@ export type Database = {
           created_by: string | null
           default_submission_rate: number
           general_broll: Json
+          ai_preamble: string | null
+          channel_slots: Json
+          org_profile: Json
+          script_rules: Json
           id: string
           minutes_per_cta_sync: number
           minutes_per_cta_vo: number
@@ -1084,6 +1133,10 @@ export type Database = {
           created_by?: string | null
           default_submission_rate?: number
           general_broll?: Json
+          ai_preamble?: string | null
+          channel_slots?: Json
+          org_profile?: Json
+          script_rules?: Json
           id?: string
           minutes_per_cta_sync?: number
           minutes_per_cta_vo?: number
@@ -1107,6 +1160,10 @@ export type Database = {
           created_by?: string | null
           default_submission_rate?: number
           general_broll?: Json
+          ai_preamble?: string | null
+          channel_slots?: Json
+          org_profile?: Json
+          script_rules?: Json
           id?: string
           minutes_per_cta_sync?: number
           minutes_per_cta_vo?: number
@@ -1881,10 +1938,11 @@ export type Database = {
       }
     }
     Functions: {
-      create_org: { Args: { p_name: string; p_slug: string }; Returns: string }
+      create_org: { Args: { p_name: string; p_profile?: Json; p_slug: string }; Returns: string }
       my_orgs: {
         Args: never
         Returns: {
+          cut_access: string
           display_name: string | null
           has_chosen: boolean
           id: string
@@ -1893,6 +1951,15 @@ export type Database = {
           name: string
           role: string
           slug: string
+        }[]
+      }
+      org_license_state: {
+        Args: { p_org_id: string }
+        Returns: {
+          can_use_cut: boolean
+          cut_access: string
+          entitled: boolean
+          trial_end: string | null
         }[]
       }
       org_signup_open: { Args: never; Returns: boolean }

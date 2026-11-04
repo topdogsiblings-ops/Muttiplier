@@ -1406,7 +1406,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
       >
         <template #body>
           <div class="space-y-4">
-            <UFormField label="Script" required help="On camera, sync audio. Slots work: {{brand}}, {{product}}, {{dog}} or your own, filled in on this shoot.">
+            <UFormField label="Script" required help="On camera, sync audio. Slots work: {{brand}}, {{product}}, your channel slots, or your own, filled in on this shoot.">
               <ScriptEditor v-model="newHook.script" placeholder="Nobody told me {{product}} could do this…" />
             </UFormField>
             <UFormField label="Suggested caption" help="Optional post caption for this hook">
@@ -1434,7 +1434,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
       >
         <template #body>
           <div class="space-y-4">
-            <UFormField label="Script" required help="Slots work: {{brand}}, {{product}}, {{dog}} or your own, filled in on this shoot.">
+            <UFormField label="Script" required help="Slots work: {{brand}}, {{product}}, your channel slots, or your own, filled in on this shoot.">
               <ScriptEditor v-model="newCta.script" placeholder="Tap the link and try {{product}} today" />
             </UFormField>
             <UFormField label="Mode" help="Sync is said on camera; VO is recorded as voiceover over b-roll.">

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Tags with autocomplete from every tag already used in the Library (most used first).
-// New tags are normalised ("Dog Walks" -> "dog-walks") and fold into an existing tag
+// New tags are normalised ("Morning Routine" -> "morning-routine") and fold into an existing tag
 // when they match one, so the same idea doesn't end up as several groups.
 const model = defineModel<string[]>({ default: () => [] })
 

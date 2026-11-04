@@ -1,7 +1,8 @@
 // Shoot codes, folder paths and the export builders (spec §10). Pure: shared by the
 // builder, the shot sheet and the Nitro export routes.
 import type { Beat, SlotContext } from './slots'
-import { beatWordings, buildSlotContext, joinBeats, parseBeats, parseTakeKey, renderBeats, renderScript, slugify, takeKey } from './slots'
+import { beatWordings, buildSlotContext, channelSlotsIn, joinBeats, parseBeats, parseTakeKey, renderBeats, renderScript, slugify, takeKey } from './slots'
+import { parseSlotValues } from './orgProfile'
 import type { ItemKind } from './calculator'
 
 /**
@@ -27,8 +28,10 @@ export interface BundleChannel {
   name: string
   slug: string
   folder_slug: string
-  dogs: string[]
-  dog_phrase: string
+  /** what's on the channel (still sent in the manifest) */
+  dogs?: string[]
+  /** the channel's value for each channel slot */
+  slot_values: unknown
 }
 
 export interface BundleItem {
@@ -193,6 +196,8 @@ export interface ShootBundle {
   treatments?: BundleTreatment[]
   /** shoot people linked to each channel; on those channels recipes mix people */
   channelPeople?: Record<string, string[]>
+  /** the org's channel slots (Settings → Scripts): a line that uses one is filmed per channel */
+  channelSlots?: string[]
 }
 
 // --- codes -----------------------------------------------------------------
@@ -228,14 +233,14 @@ export function nextItemCodes(existingCodes: string[], prefix: string, count: nu
 }
 
 /**
- * Every item is filmed per person per channel, but a script that doesn't name the dog reads the
+ * Every item is filmed per person per channel, but a script that uses no channel slot reads the
  * same on every channel, so the person records it once and that one take fills each channel's
- * spot. Items with the same key are one recording. A draft's script still says {{dog}}, so it's
- * per channel; a planned shoot's has the dog phrase filled in, so it differs per channel anyway.
+ * spot. Items with the same key are one recording. A draft's script still says {{pet}} (say), so
+ * it's per channel; a planned shoot's has each channel's value filled in, so it differs anyway.
  */
-export function recordingKey(item: Pick<BundleItem, 'person_id' | 'channel_id' | 'code' | 'script_snapshot' | 'script_override'>): string {
+export function recordingKey(item: Pick<BundleItem, 'person_id' | 'channel_id' | 'code' | 'script_snapshot' | 'script_override'>, channelSlots: readonly string[] = []): string {
   const script = JSON.stringify(item.script_override ?? item.script_snapshot ?? '')
-  const perChannel = script.includes('{{dog}}')
+  const perChannel = channelSlotsIn(script, channelSlots).length > 0
   return `${item.person_id}|${item.code}|${perChannel ? item.channel_id : '*'}|${script}`
 }
 
@@ -246,43 +251,46 @@ export function channelsFor(bundle: Pick<ShootBundle, 'channels' | 'channelPeopl
 
 // --- scripts ---------------------------------------------------------------
 
-/**
- * `{{dog}}` comes from the channel. An item used for every channel is filled as long as every
- * channel on the shoot has a dog phrase: it shows each one ("my Doberman / my Vizsla") so the
- * person filming can see the options. It's only unfilled when a channel has no phrase.
- */
-export function dogPhraseFor(channelId: string | null, channels: BundleChannel[]): string | null {
-  if (channelId) return channels.find(channel => channel.id === channelId)?.dog_phrase?.trim() || null
-  const phrases = channels.map(channel => channel.dog_phrase?.trim() ?? '')
-  if (!phrases.length || phrases.some(phrase => !phrase)) return null
-  return [...new Set(phrases)].join(' / ')
+/** Every channel slot the shoot knows of: the org's, and any a channel on it has a value for. */
+function channelSlotNames(bundle: Pick<ShootBundle, 'channels' | 'channelSlots'>): string[] {
+  return [...new Set([...(bundle.channelSlots ?? []), ...bundle.channels.flatMap(channel => Object.keys(parseSlotValues(channel.slot_values)))])]
 }
 
-export function itemSlotContext(bundle: Pick<ShootBundle, 'shoot' | 'brand' | 'product' | 'channels'>, channelId: string | null): SlotContext {
+/**
+ * Channel slots come from the channel. For several channels at once (an item used for every
+ * channel, or one line filmed for each), a slot is filled as long as every one of them has a
+ * value: it shows each ("my Doberman / my Vizsla") so the person filming can see the options.
+ * It's only unfilled when one of them has no value.
+ */
+export function channelValuesFor(bundle: Pick<ShootBundle, 'channels' | 'channelSlots'>, channelIds: (string | null)[]): Record<string, string | null> {
+  const ids = [...new Set(channelIds)]
+  const channels = ids.includes(null) ? bundle.channels : bundle.channels.filter(channel => ids.includes(channel.id))
+  const values = channels.map(channel => parseSlotValues(channel.slot_values))
+  return Object.fromEntries(channelSlotNames(bundle).map((name) => {
+    const filled = values.map(value => value[name] ?? '')
+    return [name, filled.length && filled.every(Boolean) ? [...new Set(filled)].join(' / ') : null]
+  }))
+}
+
+export function itemSlotContext(bundle: Pick<ShootBundle, 'shoot' | 'brand' | 'product' | 'channels' | 'channelSlots'>, channelId: string | null): SlotContext {
+  return groupSlotContext(bundle, [channelId])
+}
+
+/**
+ * A slot context for several channels at once: a channel slot reads as every channel's value
+ * joined with " / " ("my Vizsla / our two dogs"), for showing one line filmed for each of them.
+ */
+export function groupSlotContext(bundle: Pick<ShootBundle, 'shoot' | 'brand' | 'product' | 'channels' | 'channelSlots'>, channelIds: (string | null)[]): SlotContext {
   return buildSlotContext({
     brand: bundle.brand.name,
     product: bundle.product.name,
     slotValues: bundle.shoot.slot_values,
-    dogPhrase: dogPhraseFor(channelId, bundle.channels)
+    channelValues: channelValuesFor(bundle, channelIds)
   })
 }
 
 /**
- * A slot context for several channels at once: `{{dog}}` reads as every channel's phrase joined
- * with " / " ("my Vizsla / our two dogs"), for showing one line that's filmed for each of them.
- */
-export function groupSlotContext(bundle: Pick<ShootBundle, 'shoot' | 'brand' | 'product' | 'channels'>, channelIds: (string | null)[]): SlotContext {
-  const phrases = [...new Set(channelIds)].map(id => dogPhraseFor(id, bundle.channels))
-  return buildSlotContext({
-    brand: bundle.brand.name,
-    product: bundle.product.name,
-    slotValues: bundle.shoot.slot_values,
-    dogPhrase: phrases.length && phrases.every(Boolean) ? [...new Set(phrases)].join(' / ') : null
-  })
-}
-
-/**
- * One line from several channels' versions of it: where they differ (usually the dog), the
+ * One line from several channels' versions of it: where they differ (usually a channel slot), the
  * variants are joined with " / ", whole words only. "Watch my Vizsla try it" + "Watch our two
  * dogs try it" -> "Watch my Vizsla / our two dogs try it".
  */
@@ -492,7 +500,7 @@ export function takeLabel(key: string): string {
 
 /**
  * One take to film or record: a hook, a CTA or one VO beat, by one person. A script that
- * doesn't name the dog is one take for all of the person's channels (`items` holds one item per
+ * uses no channel slot is one take for all of the person's channels (`items` holds one item per
  * channel it fills); one that does is a take per channel.
  */
 export interface Recording {
@@ -504,11 +512,11 @@ export interface Recording {
   items: BundleItem[]
 }
 
-export function recordingsOf(items: BundleItem[]): Recording[] {
+export function recordingsOf(items: BundleItem[], channelSlots: readonly string[] = []): Recording[] {
   const byKey = new Map<string, Recording>()
   for (const item of items) {
     for (const beat of itemBeats(item)) {
-      const key = `${recordingKey(item)}|${beat ?? ''}`
+      const key = `${recordingKey(item, channelSlots)}|${beat ?? ''}`
       let recording = byKey.get(key)
       if (!recording) {
         recording = { key, kind: item.kind, code: item.code, person_id: item.person_id, beat, items: [] }
@@ -572,7 +580,7 @@ export function buildShootsheet(bundle: ShootBundle) {
       // channels this person is linked to; recipes on a channel can mix its linked people
       channels: bundle.channels.filter(channel => bundle.channelPeople?.[channel.id]?.includes(person.id)).map(channel => channel.slug)
     })),
-    channels: bundle.channels.map(channel => ({ slug: channel.slug, folder_slug: channel.folder_slug, dogs: channel.dogs })),
+    channels: bundle.channels.map(channel => ({ slug: channel.slug, folder_slug: channel.folder_slug, dogs: channel.dogs ?? [] })),
     formats: [...formats.values()]
       .sort((a, b) => a.code.localeCompare(b.code))
       .map(format => ({

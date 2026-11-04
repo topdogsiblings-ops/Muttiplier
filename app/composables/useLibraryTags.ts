@@ -1,4 +1,4 @@
-/** Normalise a tag so variants group together: "Dog Walks " -> "dog-walks". */
+/** Normalise a tag so variants group together: "Morning Routine " -> "morning-routine". */
 export function normalizeTag(value: string): string {
   return value.trim().toLowerCase().replace(/[\s_]+/g, '-').replace(/[^a-z0-9&+-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '')
 }

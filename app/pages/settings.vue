@@ -7,15 +7,18 @@ const run = useAction()
 const { confirmDialog } = useConfirm()
 const { people, channels, settings, load } = useRefData()
 const { access } = useAccess()
+const { currentOrg, load: loadOrgs } = useOrg()
 
 const tabs = [
+  { label: 'Profile', value: 'profile', icon: 'i-lucide-building-2' },
   { label: 'Channels', value: 'channels', icon: 'i-lucide-tv' },
+  { label: 'Scripts', value: 'scripts', icon: 'i-lucide-pen-line' },
   { label: 'Members', value: 'members', icon: 'i-lucide-shield-check' },
   { label: 'Defaults', value: 'defaults', icon: 'i-lucide-timer' },
   { label: 'Dropbox', value: 'dropbox', icon: 'i-simple-icons-dropbox' }
 ]
 const route = useRoute()
-const tab = ref(tabs.some(t => t.value === route.query.tab) ? String(route.query.tab) : 'channels')
+const tab = ref(tabs.some(t => t.value === route.query.tab) ? String(route.query.tab) : 'profile')
 
 // the org's members, and the emails invited who haven't signed in yet
 const members = ref<(Row<'org_members'> & { profile: { email: string | null, full_name: string | null } | null })[]>([])
@@ -35,13 +38,55 @@ async function loadPersonChannels() {
   personChannels.value = must(await db.from('person_channels').select('person_id, channel_id'))
 }
 
-await Promise.all([load(true), loadMembers(), loadPersonChannels()])
+await Promise.all([load(true), loadMembers(), loadPersonChannels(), loadOrgs()])
 
 const saving = ref(false)
 
+// --- profile -----------------------------------------------------------------
+// The organisation's name (its slug never changes), and the admin's own name in it.
+const me = computed(() => members.value.find(row => row.user_id === access.value?.id) ?? null)
+const profile = reactive({ org_name: '', my_name: '' })
+watch([currentOrg, me], () => {
+  profile.org_name = currentOrg.value?.name ?? ''
+  profile.my_name = me.value?.display_name ?? me.value?.profile?.full_name ?? ''
+}, { immediate: true })
+
+async function saveOrg() {
+  const name = profile.org_name.trim()
+  if (!currentOrg.value || !name) return
+  saving.value = true
+  await run(async () => {
+    must(await db.from('orgs').update({ name }).eq('id', currentOrg.value!.id))
+    await loadOrgs()
+  }, 'Organisation renamed')
+  saving.value = false
+}
+
+async function saveMyName() {
+  const name = profile.my_name.trim()
+  if (!me.value || !name) return
+  saving.value = true
+  await run(async () => {
+    must(await db.from('org_members').update({ display_name: name }).eq('user_id', me.value!.user_id))
+    // how they read on shot lists (their folder slug never changes)
+    must(await db.from('people').update({ name }).eq('user_id', me.value!.user_id))
+    await Promise.all([load(true), loadMembers(), loadOrgs()])
+  }, 'Name saved')
+  saving.value = false
+}
+
 // --- channels --------------------------------------------------------------
 const channelOpen = ref(false)
-const channel = reactive({ id: '', name: '', slug: '', dogs: [] as string[], dog_phrase: '', folder_slug: '', active: true, members: [] as string[] })
+const channel = reactive({ id: '', name: '', slug: '', slot_values: {} as Record<string, string>, folder_slug: '', active: true, members: [] as string[] })
+/** the org's channel slots (Settings → Scripts), each filled in on every channel */
+const channelSlots = computed(() => parseChannelSlots(settings.value?.channel_slots))
+/** `{{name}}`, built in script because braces can't be written inside a template interpolation */
+const token = (name: string) => `{{${name}}}`
+/** a channel's values for the org's channel slots, in order, as "{{pet}} my Doberman" */
+const slotSummary = (row: Row<'channels'>) => {
+  const values = parseSlotValues(row.slot_values)
+  return channelSlots.value.map(slot => ({ name: slot.name, value: values[slot.name] ?? '' }))
+}
 const requestChannelOpen = useGuardedClose(channelOpen, channel)
 
 // A channel's members: signed-in members (user:<id>), and invited emails (invite:<email>) who join it
@@ -65,8 +110,7 @@ function editChannel(row?: Row<'channels'>) {
     id: row?.id ?? '',
     name: row?.name ?? '',
     slug: row?.slug ?? '',
-    dogs: [...(row?.dogs ?? [])],
-    dog_phrase: row?.dog_phrase ?? '',
+    slot_values: { ...parseSlotValues(row?.slot_values) },
     folder_slug: row?.folder_slug ?? '',
     active: row?.active ?? true,
     members: row ? membersOf(row.id).map(entry => entry.value) : []
@@ -82,8 +126,8 @@ async function saveChannel() {
   const ok = await run(async () => {
     const fields = {
       name: channel.name.trim(),
-      dogs: channel.dogs.map(dog => dog.trim().toLowerCase()).filter(Boolean),
-      dog_phrase: channel.dog_phrase.trim(),
+      // values for slots that aren't defined any more are kept, in case they come back
+      slot_values: Object.fromEntries(Object.entries(channel.slot_values).map(([name, value]) => [name, value.trim()]).filter(([, value]) => value)),
       active: channel.active
     }
     const id = channel.id
@@ -278,11 +322,76 @@ async function saveDefaults() {
 
     <template #body>
       <div class="mx-auto w-full max-w-3xl space-y-4">
+        <!-- Profile -->
+        <template v-if="tab === 'profile'">
+          <UCard>
+            <template #header>
+              <h3 class="font-semibold text-highlighted">
+                Organisation
+              </h3>
+            </template>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <UFormField label="Name" required help="Shown in the organisation switcher and to everyone in it">
+                <UInput v-model="profile.org_name" class="w-full" />
+              </UFormField>
+              <UFormField label="Slug" help="Its short ID. It doesn't change.">
+                <UInput :model-value="currentOrg?.slug" class="w-full" disabled />
+              </UFormField>
+            </div>
+            <template #footer>
+              <UButton
+                label="Save name"
+                :loading="saving"
+                :disabled="!profile.org_name.trim() || profile.org_name.trim() === currentOrg?.name"
+                @click="saveOrg"
+              />
+            </template>
+          </UCard>
+
+          <UCard v-if="me">
+            <template #header>
+              <h3 class="font-semibold text-highlighted">
+                You
+              </h3>
+            </template>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <UFormField label="Your name" required help="How you appear on shot lists and to the team here">
+                <UInput v-model="profile.my_name" class="w-full" />
+              </UFormField>
+              <UFormField label="Google account" help="You sign in with it">
+                <UInput :model-value="me.profile?.email ?? ''" class="w-full" disabled />
+              </UFormField>
+            </div>
+            <template #footer>
+              <UButton
+                label="Save your name"
+                :loading="saving"
+                :disabled="!profile.my_name.trim() || profile.my_name.trim() === (me.display_name ?? me.profile?.full_name ?? '')"
+                @click="saveMyName"
+              />
+            </template>
+          </UCard>
+
+          <UCard>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 class="font-semibold text-highlighted">
+                  Plan and billing
+                </h3>
+                <p class="text-sm text-muted">
+                  The subscription, payment method and invoices.
+                </p>
+              </div>
+              <UButton label="Billing" icon="i-lucide-credit-card" color="neutral" variant="subtle" to="/billing" />
+            </div>
+          </UCard>
+        </template>
+
         <!-- Channels -->
-        <template v-if="tab === 'channels'">
+        <template v-else-if="tab === 'channels'">
           <div class="flex items-center justify-between">
             <p class="text-sm text-muted">
-              Creator channels and who's on them. The dog phrase fills <code v-pre>{{dog}}</code>.
+              Creator channels and who's on them. Each fills the channel slots set up in the Scripts tab with its own words.
             </p>
             <UButton icon="i-lucide-plus" label="Add channel" @click="editChannel()" />
           </div>
@@ -295,8 +404,11 @@ async function saveDefaults() {
               @click="editChannel(row)"
             >
               <span class="font-medium text-highlighted">{{ row.name }}</span>
-              <UBadge v-for="dog in row.dogs" :key="dog" :label="dog" color="neutral" variant="subtle" />
-              <span class="text-sm text-muted">“{{ row.dog_phrase }}”</span>
+              <span v-for="entry in slotSummary(row)" :key="entry.name" class="text-sm text-muted">
+                <code class="text-xs" v-text="token(entry.name)" />
+                <template v-if="entry.value"> “{{ entry.value }}”</template>
+                <span v-else class="text-warning"> not set</span>
+              </span>
               <code class="ml-auto text-xs text-muted">b-roll/{{ row.folder_slug }}</code>
               <UBadge v-if="!row.active" label="Inactive" color="neutral" variant="subtle" />
               <span class="flex w-full flex-wrap items-center gap-1.5">
@@ -351,6 +463,7 @@ async function saveDefaults() {
         </template>
 
         <!-- Defaults -->
+        <ScriptSettings v-else-if="tab === 'scripts'" />
         <DropboxSettings v-else-if="tab === 'dropbox'" />
 
         <template v-else>
@@ -416,21 +529,23 @@ async function saveDefaults() {
         <template #body>
           <div class="space-y-4">
             <UFormField label="Name" required>
-              <UInput v-model="channel.name" class="w-full" placeholder="topdognix" />
+              <UInput v-model="channel.name" class="w-full" placeholder="@yourchannel" />
             </UFormField>
             <div class="grid gap-4 sm:grid-cols-2">
               <UFormField label="Slug">
                 <UInput v-model="channel.slug" class="w-full" :disabled="!!channel.id" />
               </UFormField>
-              <UFormField label="Folder slug" help="b-roll folder, e.g. nix / whiskey / both">
+              <UFormField label="Folder slug" help="Its b-roll folder name, e.g. main">
                 <UInput v-model="channel.folder_slug" class="w-full" :disabled="!!channel.id" />
               </UFormField>
             </div>
-            <UFormField label="Dogs" help="Press Enter after each dog">
-              <UInputTags v-model="channel.dogs" class="w-full" placeholder="nix" />
-            </UFormField>
-            <UFormField label="Dog phrase" help="Fills {{dog}}, e.g. “my Doberman”">
-              <UInput v-model="channel.dog_phrase" class="w-full" />
+            <UFormField
+              v-for="slot in channelSlots"
+              :key="slot.name"
+              :label="token(slot.name)"
+              :help="slot.description || undefined"
+            >
+              <UInput v-model="channel.slot_values[slot.name]" class="w-full" :placeholder="slot.example" />
             </UFormField>
             <UFormField label="Members" help="Who films for this channel. On a shoot they film every hook, VO and CTA for it. Invite someone in the Members tab to add them here.">
               <USelectMenu

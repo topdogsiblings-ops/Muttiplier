@@ -51,6 +51,8 @@ Top Dog Kit is **$54.99 USD a month per org**, the whole team included, with a *
 - **Entitlement**: an org can use the app while its subscription is trialing, active or past due (Stripe is retrying), or when it's billing-exempt (`orgs.billing_exempt`: topdogugc). Otherwise every page but Billing redirects there, and AI drafting refuses. A new org goes to Billing first.
 - **AI usage**: each drafting request's tokens are added to `org_ai_usage` (per org per month). The monthly limit isn't set yet.
 - The price is found by lookup key (`top_dog_kit_monthly`), so the app holds no price ID. Env: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY` (and optionally `STRIPE_PRICE_LOOKUP_KEY`).
+- **Top Dog Cut** (Pawcessor) is **$189.99 USD once per org** (lookup key `top_dog_cut`), bought on the Billing page (`/api/billing/cut-checkout`: one-time Checkout, Managed Payments, needs a live Kit). The webhook sets `orgs.cut_purchased_at` on `checkout.session.completed` / `async_payment_succeeded` (re-reading the session) and clears it on a full refund (`charge.refunded`). **Cut access** (`private.org_cut_access`): `purchased`, `exempt` (billing-exempt org), `trial` (Kit trialing: ends with the trial) or `none`; `private.org_can_use_cut` = a live Kit and access.
+- **Cut licenses**: Cut connects with a code, like PyCharm or the GitHub CLI, and never signs in to Supabase. It calls `/api/license/device/start` (returns `deviceCode`, a short `userCode` like `KQ7X-M2PD`, `verificationUriComplete` = `/cut/activate?code=…`, `expiresIn` 600, `interval` 5), opens the activation page, and polls `/api/license/device/poll` (`{ deviceCode }`) every `interval` seconds: `pending`, `slow_down`, `denied`, `expired`, or `approved` with `{ token, license }`, handed over once. On `/cut/activate` a signed-in member checks the code, picks the org and approves (`/api/license/device/approve`). Codes (`license_device_codes`, server only) last 10 minutes and are used once; only a hash of the device code is stored. Cut refreshes with `/api/license/refresh` (`{ token }`, up to 30 days after issue, membership re-checked); past that it connects again. `/api/license/issue` gives the signed-in Kit member a token directly. The token is `<payload>.<signature>` (base64url), signed Ed25519; Pawcessor checks it offline with the public key (`/api/license/public-key`). Payload: `v`, `orgId`, `userId`, `subscriptionState` (`active`|`lapsed`), `cutPurchased` (has Cut access), `cutAccess`, `trialEndsAt`, `issuedAt`, `expiresAt` (ms since epoch; 72 hours offline, capped at the trial's end when Cut comes from the trial). Cut opens only when `subscriptionState` is `active` and `cutPurchased`. Env: `LICENSE_PRIVATE_KEY` (PKCS#8 DER, base64).
 
 ### Design tokens
 
@@ -99,19 +101,20 @@ UI conventions: every destructive or state-changing action asks in an in-app con
 
 ### Slot syntax
 
-Scripts use double-brace slots: `{{brand}}`, `{{product}}`, `{{dog}}`, plus any custom slot.
+Scripts use double-brace slots: `{{brand}}`, `{{product}}`, the org's channel slots, plus any custom slot.
 
 - `{{brand}}` and `{{product}}` are built in and filled from the product.
-- `{{dog}}` is filled per channel from the channel's dog phrase (e.g. "my Doberman", "my Vizsla", "my two dogs"). On items shared by every channel, `{{dog}}` is filled as the channels' phrases joined with " / " (e.g. "my Doberman / my Vizsla / my two dogs"), and only counts as unfilled if a channel on the shoot has no phrase.
+- **Channel slots** are the org's own (Settings → Scripts: `settings.channel_slots`, each a name, description and example), filled per channel from that channel's value (Settings → Channels: `channels.slot_values`), e.g. topdogugc's `{{dog}}` is "my Doberman" on one channel and "my two dogs" on another. On items shared by every channel, a channel slot is filled as the channels' values joined with " / " ("my Doberman / my Vizsla"), and only counts as unfilled if a channel on the shoot has no value.
 - Custom slots (e.g. `{{benefit}}`, `{{price}}`, `{{offer}}`) are any other `{{name}}`. They aren't defined anywhere first: each shoot fills its own (`shoots.slot_values`), so every shoot starts blank.
 - The script editor lists the available slots, and highlights recognised vs unrecognised slots as you type.
 - Unfilled slots are flagged in previews and block "Mark as planned".
-- On a draft shoot, a **Fill in slots** section in the planner lists every unfilled slot with the codes that use it (hooks and CTAs first). Custom slots are typed in there and saved on that shoot only (`shoots.slot_values`); `{{dog}}` asks for the dog phrase of each channel on the shoot that has none (admins, saved to the channel). A line can still be overridden instead.
+- On a draft shoot, a **Fill in slots** section in the planner lists every unfilled slot with the codes that use it (hooks and CTAs first). Custom slots are typed in there and saved on that shoot only (`shoots.slot_values`); a channel slot asks for the value of each channel on the shoot that has none (admins, saved to the channel). A line can still be overridden instead.
 
 ### Rules
 
-- **Per channel:** every hook, VO and CTA is filmed per person per channel. A script that says `{{dog}}` needs a separate take for each channel (each says that channel's dog); one that doesn't is recorded once and that take fills each of the person's channels. There are no universal hooks: hooks never cross shoots.
-- VOs should be written dog-neutral by default ("my dog", "my pup") so all channels can share them. Not enforced; soft warning if a VO uses `{{dog}}`.
+- **Per channel:** every hook, VO and CTA is filmed per person per channel. A script that uses a channel slot needs a separate take for each channel (each says that channel's value); one that doesn't is recorded once and that take fills each of the person's channels. There are no universal hooks: hooks never cross shoots.
+- VOs should be written to suit every channel by default so all channels can share them. Not enforced; soft warning if a VO uses a channel slot.
+- **Script rules** (Settings → Scripts: `settings.script_rules`): words or phrases the org doesn't want in scripts, each with the warning to show and optionally what to say instead. Matching ignores case, hyphens and plurals. Every script editor underlines them with the warning, and AI drafting is told to avoid them. (topdogugc's: "owner" → "dog parent".)
 - Editor UI: highlight slots, show a live preview against a chosen product + channel.
 
 ---
@@ -150,7 +153,7 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 **person_channels** — `person_id`, `channel_id`, pk on both. People linked to a channel; recipes on that channel can mix their parts (§9).
 
 **channels**
-- `name text` (e.g. `topdognix`), `slug text unique`, `dogs text[]`, `dog_phrase text` (fills `{{dog}}`), `folder_slug text` (e.g. `nix`, `whiskey`, `both`), `active boolean`
+- `name text` (e.g. `topdognix`), `slug text unique`, `slot_values jsonb` (its value for each channel slot, §5), `folder_slug text` (e.g. `nix`, `whiskey`, `both`), `active boolean`. `dogs text[]` is still sent in the manifest; `dog_phrase` is deprecated (copied into `slot_values.dog`) and will be dropped.
 
 **angles** — **hook types** (the table keeps its old name; editable, title case): the kind of opening a hook uses
 - `name text unique`, `description text`. Seed: Curiosity, Problem, Testimonial, POV, Skeptic, Contrarian, Demo, plus Confession, Newness, Price anchor and Offer (the strongest types in the 2025–26 creative benchmarks) and Sign (the hook delivered on a handwritten sign held to camera), each with a description. Set on hooks only (`hook_templates.angle_id`); formats are the *structure* of the video.
@@ -531,6 +534,7 @@ Server routes calling the Anthropic API (`ANTHROPIC_MODEL`, default `claude-opus
 - **Per-person rewording:** in the planner, reword a hook, VO or CTA for each person (saved as `script_override`), so cast members don't say identical lines.
 - **B-roll generation:** in the planner, suggest shots for every planned format's beats and the general product section, using the brand, product, format and beat descriptions, with the format's own suggestions as examples.
 - Respect the product's `claims_forbidden` when generating with a product selected.
+- **AI context** (Settings → Scripts): every request starts with the org's **preamble**, its channel slots and its script rules. The preamble is the org's own wording (`settings.ai_preamble`) or, when that's empty, the recommended one written from its **profile** (`settings.org_profile`: what it does, what the ads sell, who films them, who they're for, how they should sound, spelling). The profile is asked for when the org is started (`create_org(p_name, p_slug, p_profile)`).
 
 ---
 
@@ -663,6 +667,20 @@ Motion's pet data gives **Text message** the highest spend use ratio of any form
 - No hard deletes on library or shoot data; archive instead. (Removing items from a draft shoot is allowed.)
 
 ## 15. Out of scope (later projects)
+
+- **Subscription tiers** (planned MVP improvement, not built). Organisations stay the billing unit; limits are per organisation:
+
+  | | Creator | Team | Agency |
+  |---|---|---|---|
+  | Brands | 5 | 10 | Unlimited |
+  | People | 2 | Unlimited | Unlimited |
+  | Shoots per month | tbd | tbd | Unlimited |
+  | AI credits per month | tbd | tbd | tbd |
+  | Insights and diversity settings | ✓ | ✓ | ✓ |
+  | Treatments | Basic | Moderate | Advanced |
+  | Top Dog Cut | Buy | Buy | Included |
+
+  Shoots per month and AI credits are to be set from what a shoot actually uses in AI drafting (`org_ai_usage`). It needs a plan on `org_subscriptions` (from its price), a limits table, the checks, and upgrades through the Customer Portal. With it: **deleting a brand**, which deletes its products and all their past shoots, so the brand count can be managed. One free trial per person, not just per org, so a new org isn't a new trial.
 
 - Local worker (Windows now, VPS later): ingest, auto-tagging, conformance checks, caption alignment, recipe generation, selection, rendering.
 - Submission queue and form-filling Chrome extension (linked to Dropbox).

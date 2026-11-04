@@ -3,7 +3,7 @@
 // deliverable off. Saved clips live in IndexedDB, so they survive reloads, closing the app
 // and a flat battery; each one is deleted from the phone once its upload is confirmed.
 //
-// One take can fill several spots: a line that doesn't name the dog is recorded once and used
+// One take can fill several spots: a line that uses no channel slot is recorded once and used
 // on each of the person's channels, so the clip is saved once under its first spot (`target`)
 // with the others in `also`, uploaded once and copied in Dropbox to the other channels' folders.
 

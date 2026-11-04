@@ -8,6 +8,8 @@ export interface MyOrg {
   has_chosen: boolean
   /** its subscription (or trial) is live, or it's billing-exempt */
   entitled: boolean
+  /** how it has Top Dog Cut: bought, billing-exempt, for the length of its trial, or not at all */
+  cut_access: 'purchased' | 'exempt' | 'trial' | 'none'
 }
 
 /**
@@ -26,7 +28,7 @@ export const useOrg = () => {
   async function load() {
     const { data, error } = await db.rpc('my_orgs')
     if (error) throw error
-    orgs.value = data ?? []
+    orgs.value = (data ?? []) as MyOrg[]
     return orgs.value
   }
 
@@ -42,8 +44,9 @@ export const useOrg = () => {
     await enter()
   }
 
-  async function createOrg(name: string, slug: string) {
-    const { error } = await db.rpc('create_org', { p_name: name, p_slug: slug })
+  /** Start an org; its profile (what AI drafting is told about it) is saved with it. */
+  async function createOrg(name: string, slug: string, profile?: OrgProfile) {
+    const { error } = await db.rpc('create_org', { p_name: name, p_slug: slug, p_profile: profile ? { ...profile } : {} })
     if (error) throw error
     // a new org starts by subscribing (with its free trial)
     await enter('/billing')

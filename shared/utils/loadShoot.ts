@@ -7,6 +7,7 @@ import type { BundleItem, BundleTreatment, ShootBundle } from './shootsheet'
 import type { CalcInput, CalcSettings, CalcTreatment, ItemKind } from './calculator'
 import { beatShow, isFilmed, isStandalone, recordingKey } from './shootsheet'
 import { beatWordings, parseBeats } from './slots'
+import { parseChannelSlots } from './orgProfile'
 
 export interface LoadedShoot extends ShootBundle {
   shoot: Row<'shoots'>
@@ -111,14 +112,15 @@ export async function loadShootBundle(db: SupabaseClient<Database>, code: string
   const { product: productWithBrand, ...shoot } = found
   const { brand, ...product } = productWithBrand
 
-  const [people, channels, items, broll, links, planned, treatments] = await Promise.all([
+  const [people, channels, items, broll, links, planned, treatments, settings] = await Promise.all([
     db.from('shoot_people').select('person:people(*)').eq('shoot_id', shoot.id),
     db.from('shoot_channels').select('channel:channels(*)').eq('shoot_id', shoot.id),
     db.from('shoot_items').select(ITEM_SELECT).eq('shoot_id', shoot.id).order('sort_order').order('created_at'),
     db.from('broll_shots').select('*, feature:product_features(slug, name)').eq('shoot_id', shoot.id).order('sort_order').order('created_at'),
     db.from('person_channels').select('person_id, channel_id'),
     db.from('shoot_formats').select('format:formats(id, code, name, description, beats, beat_descriptions, beat_examples, beat_broll, kind, beat_display, source_url)').eq('shoot_id', shoot.id),
-    loadTreatments(db)
+    loadTreatments(db),
+    db.from('settings').select('channel_slots').limit(1).maybeSingle()
   ])
 
   const peopleRows = unwrap(people).map(row => row.person as Row<'people'>).sort((a, b) => a.name.localeCompare(b.name))
@@ -134,7 +136,8 @@ export async function loadShootBundle(db: SupabaseClient<Database>, code: string
     broll: unwrap(broll) as BrollShot[],
     channelPeople: channelPeopleFor(peopleRows, channelRows, unwrap(links)),
     plannedFormats: unwrap(planned).map(row => row.format as unknown as PlannedFormat).filter(Boolean),
-    treatments
+    treatments,
+    channelSlots: parseChannelSlots(unwrap(settings)?.channel_slots).map(slot => slot.name)
   }
 }
 
@@ -175,7 +178,7 @@ export async function loadTreatments(db: SupabaseClient<Database>): Promise<Bund
  * estimates always match (variations, cast and wording mixes, standalone VOs, links, treatments).
  */
 export function bundleToCalcInput(
-  bundle: Pick<ShootBundle, 'shoot' | 'items' | 'broll' | 'treatments'> & { people: { id: string, name: string }[], channels: { id: string, name: string }[] },
+  bundle: Pick<ShootBundle, 'shoot' | 'items' | 'broll' | 'treatments' | 'channelSlots'> & { people: { id: string, name: string }[], channels: { id: string, name: string }[] },
   settings: CalcSettings
 ): CalcInput {
   return {
@@ -197,7 +200,7 @@ export function bundleToCalcInput(
       ctaMode: item.cta_mode,
       label: item.code,
       status: item.status,
-      recordingKey: recordingKey(item)
+      recordingKey: recordingKey(item, bundle.channelSlots)
     })),
     brollShots: bundle.broll.map(shot => ({ channelId: shot.channel_id, status: shot.status })),
     submissionRate: Number(bundle.shoot.submission_rate),

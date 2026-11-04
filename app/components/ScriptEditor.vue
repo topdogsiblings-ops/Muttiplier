@@ -1,9 +1,10 @@
 <script setup lang="ts">
 // A textarea with `{{slot}}` highlighting: a styled copy of the text sits behind a
 // transparent textarea, both in the same grid cell so they wrap and grow together.
-// Slots are highlighted as soon as the closing braces are typed: built-ins in one colour,
-// custom slots (filled in on each shoot) in another. While the editor has focus, a palette of
-// the built-in slots is shown and clicking one inserts it at the cursor.
+// Slots are highlighted as soon as the closing braces are typed: ones that fill themselves
+// (built-ins and the org's channel slots) in one colour, custom slots (filled in on each shoot) in
+// another. While the editor has focus, a palette of those slots is shown and clicking one inserts
+// it at the cursor. The org's script rules (Settings → Scripts) are underlined, with their warnings.
 const props = withDefaults(defineProps<{
   placeholder?: string
   disabled?: boolean
@@ -16,11 +17,21 @@ const props = withDefaults(defineProps<{
 const model = defineModel<string>({ default: '' })
 
 const { slots, isBuiltIn } = useSlotNames()
+const { settings } = useRefData()
 const segments = computed(() => renderSegments(model.value))
 const custom = computed(() => extractSlots(model.value).filter(name => !isBuiltIn(name)))
-// "owner" is too cold: flagged in the text and suggested away (shared/utils/wording.ts)
-const flagged = computed(() => flaggedWords(model.value))
-const suggestions = computed(() => [...new Map(flagged.value.map(word => [word.text.toLowerCase(), word])).values()])
+const rules = computed(() => parseScriptRules(settings.value?.script_rules))
+const flagged = computed(() => flaggedWords(model.value, rules.value))
+/** each broken rule once, with the words that broke it */
+const warnings = computed(() => {
+  const byRule = new Map<ScriptRule, string[]>()
+  for (const word of flagged.value) {
+    const words = byRule.get(word.rule) ?? []
+    if (!words.some(text => text.toLowerCase() === word.text.toLowerCase())) words.push(word.text)
+    byRule.set(word.rule, words)
+  }
+  return [...byRule].map(([rule, words]) => ({ rule, words }))
+})
 
 function slotClass(name: string) {
   if (props.invalidSlots?.includes(name)) return 'bg-error/20 text-error'
@@ -57,7 +68,7 @@ function insert(name: string) {
         <template v-for="(segment, index) in segments" :key="index">
           <template v-if="segment.type === 'text'">
             <span
-              v-for="(run, at) in splitFlagged(segment.text)"
+              v-for="(run, at) in splitFlagged(segment.text, rules)"
               :key="at"
               :class="{ 'underline decoration-warning decoration-wavy underline-offset-2': run.flagged }"
             >{{ run.text }}</span>
@@ -81,11 +92,11 @@ function insert(name: string) {
       Custom {{ custom.length === 1 ? 'slot' : 'slots' }} {{ custom.map(token).join(', ') }}: filled in on each shoot.
     </p>
 
-    <p v-if="flagged.length" class="flex items-start gap-1 text-xs text-warning">
-      <UIcon name="i-lucide-heart" class="mt-0.5 shrink-0" />
+    <p v-for="(warning, index) in warnings" :key="index" class="flex items-start gap-1 text-xs text-warning">
+      <UIcon name="i-lucide-triangle-alert" class="mt-0.5 shrink-0" />
       <span>
-        We don't call people "owners": it's too cold.
-        Try {{ suggestions.map(word => `“${word.suggestion}” for “${word.text}”`).join(', ') }}, or just talk to them as “you”.
+        {{ warning.rule.message || `Avoid ${warning.words.map(text => `“${text}”`).join(', ')}.` }}
+        <template v-if="warning.rule.suggestion">Try “{{ warning.rule.suggestion }}” for {{ warning.words.map(text => `“${text}”`).join(', ') }}.</template>
       </span>
     </p>
 

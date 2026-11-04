@@ -25,9 +25,10 @@ function bundle(): ShootBundle {
     brand: { name: 'PawCo', slug: 'pawco' },
     product: { name: 'Calming Chews', slug: 'calming-chews' },
     people: [{ id: 'p1', slug: 'joe', name: 'Joe' }],
+    channelSlots: ['dog'],
     channels: [
-      { id: 'c1', name: 'topdognix', slug: 'topdognix', folder_slug: 'nix', dogs: ['nix'], dog_phrase: 'my Doberman' },
-      { id: 'c2', name: 'topdogwhiskey', slug: 'topdogwhiskey', folder_slug: 'whiskey', dogs: ['whiskey'], dog_phrase: 'my Vizsla' }
+      { id: 'c1', name: 'topdognix', slug: 'topdognix', folder_slug: 'nix', dogs: ['nix'], slot_values: { dog: 'my Doberman' } },
+      { id: 'c2', name: 'topdogwhiskey', slug: 'topdogwhiskey', folder_slug: 'whiskey', dogs: ['whiskey'], slot_values: { dog: 'my Vizsla' } }
     ],
     items: [
       {
@@ -84,7 +85,7 @@ describe('shared shot list', () => {
 
   it('reports an unfilled code once, not once per person', () => {
     const b = twoPeople()
-    b.channels[0]!.dog_phrase = ''
+    b.channels[0]!.slot_values = {}
     expect(unfilledItems(b)).toEqual([{ code: 'H01', slots: ['dog'] }])
   })
 
@@ -120,17 +121,17 @@ describe('resolveItemScript', () => {
     expect(resolveItemScript(b, b.items[3]!)).toMatchObject({ text: 'Grab Calming Chews, "today"', overridden: true })
   })
 
-  it('fills {{dog}} on an item used for every channel when every channel has a dog phrase', () => {
+  it('fills {{dog}} on an item used for every channel when every channel has a value', () => {
     const b = bundle()
     b.items[0]!.channel_id = null
     expect(unfilledItems(b)).toEqual([])
     expect(resolveItemScript(b, b.items[0]!).text).toBe('Nobody told me Calming Chews could do this for my Doberman / my Vizsla')
   })
 
-  it('flags {{dog}} only when a channel on the shoot has no dog phrase', () => {
+  it('flags {{dog}} only when a channel on the shoot has no value', () => {
     const b = bundle()
     b.items[0]!.channel_id = null
-    b.channels[0]!.dog_phrase = ''
+    b.channels[0]!.slot_values = {}
     expect(unfilledItems(b)).toEqual([{ code: 'H01', slots: ['dog'] }])
   })
 })

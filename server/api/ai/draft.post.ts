@@ -54,16 +54,25 @@ export interface AiDraft {
   beats?: { beat: string, script: string }[]
 }
 
-const SYSTEM = `You write short-form UGC ad scripts for topdogugc, an agency whose creators film ads for dog products with their own dogs. Every video is Hook (on camera) → Body (a voiceover over b-roll, split into beats) → CTA.
-
-Scripts are reusable templates, so they use double-brace slots instead of real names:
-- {{brand}} and {{product}} are filled from the product.
-- {{dog}} is filled per channel with a phrase like "my Doberman" or "my two dogs", so it must read naturally as a noun phrase.
-- Other slots such as {{benefit}}, {{offer}} or {{price}} are filled from the product's own values. Only use custom slots you are told exist.
-
-Write the way a real dog parent talks to camera: first person, plain spoken words, contractions, no hashtags, no emojis, no stage directions. Lines are read aloud, so keep them easy to say in one breath. Never invent facts, statistics, medical or veterinary claims, or guarantees about results.
-
-Never call people dog "owners" or "pet owners" (or talk about "ownership"): it's too cold. Say "dog parents", "dog mums and dads", or just talk to the viewer as "you".`
+/**
+ * What the model is told before every request: the org's preamble (Settings → Scripts: its own,
+ * or the recommended one from its profile), how scripts work, its channel slots and its script rules.
+ */
+function systemPrompt(orgName: string, settings: { ai_preamble?: string | null, org_profile?: unknown, channel_slots?: unknown, script_rules?: unknown } | null) {
+  const channelSlots = parseChannelSlots(settings?.channel_slots)
+  return [
+    aiPreamble(orgName, settings),
+    'Every video is Hook (on camera) → Body (a voiceover over b-roll, split into beats) → CTA.',
+    [
+      'Scripts are reusable templates, so they use double-brace slots instead of real names:',
+      '- {{brand}} and {{product}} are filled from the product.',
+      ...channelSlots.map(slot => `- {{${slot.name}}} is filled per channel${slot.description ? ` (${slot.description})` : ''}${slot.example ? ` with words like "${slot.example}"` : ''}, so it must read naturally in place of those words.`),
+      '- Other slots such as {{benefit}}, {{offer}} or {{price}} are filled in on each shoot. Only use custom slots you are told exist.'
+    ].join('\n'),
+    'Write in the first person, in plain spoken words, with contractions: no hashtags, no emojis, no stage directions. Lines are read aloud, so keep them easy to say in one breath. Never invent facts, statistics, medical or professional claims, or guarantees about results.',
+    scriptRulesForAi(parseScriptRules(settings?.script_rules))
+  ].filter(Boolean).join('\n\n')
+}
 
 export default defineEventHandler(async (event): Promise<{ drafts: AiDraft[] }> => {
   const config = useRuntimeConfig(event)
@@ -80,8 +89,14 @@ export default defineEventHandler(async (event): Promise<{ drafts: AiDraft[] }> 
   if (!parsed.success) throw createError({ statusCode: 400, statusMessage: 'Invalid drafting request' })
   const input = parsed.data
 
+  const [{ data: settings }, { data: org }] = await Promise.all([
+    db.from('settings').select('ai_preamble, org_profile, channel_slots, script_rules').limit(1).maybeSingle(),
+    db.from('orgs').select('name').eq('id', orgId).maybeSingle()
+  ])
+  const channelSlots = parseChannelSlots(settings?.channel_slots).map(slot => `{{${slot.name}}}`)
+
   // Product context: the claims the brand allows or forbids. Custom slots are filled in per shoot.
-  let productNotes = 'No product is selected. Keep the script brand-agnostic and use only {{brand}}, {{product}} and {{dog}}.'
+  let productNotes = `No product is selected. Keep the script brand-agnostic and use only ${['{{brand}}', '{{product}}', ...channelSlots].join(', ')}.`
   if (input.productId) {
     const { data: product } = await db
       .from('products')
@@ -140,7 +155,7 @@ export default defineEventHandler(async (event): Promise<{ drafts: AiDraft[] }> 
         ? 'This format is standalone: the video has no separate hook or CTA. The "hook" beat is the video\'s opening line and must stop the scroll on its own; the "cta" beat closes the video and tells the viewer what to do.'
         : '',
       format.target_seconds ? `Aim for about ${format.target_seconds} seconds read aloud in total.` : '',
-      'The same voiceover is used on every channel, so stay dog-neutral: say "my dog" or "my pup" and do not use {{dog}}.',
+      channelSlots.length ? `The same voiceover is used on every channel, so write it to suit them all and do not use ${channelSlots.join(' or ')}.` : '',
       input.brief ? `Notes from the team: ${input.brief}` : '',
       'Give each script a short working title.'
     ].filter(Boolean).join('\n')
@@ -165,7 +180,7 @@ export default defineEventHandler(async (event): Promise<{ drafts: AiDraft[] }> 
     const response = await client.messages.parse({
       model: config.anthropicModel,
       max_tokens: 16000,
-      system: SYSTEM,
+      system: systemPrompt(org?.name ?? '', settings),
       messages: [{ role: 'user', content: `${task}\n\n${productNotes}` }],
       output_config: {
         effort: 'medium',

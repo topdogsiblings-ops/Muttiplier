@@ -29,7 +29,7 @@ const props = withDefaults(defineProps<{
   size?: 'xs' | 'sm' | 'md'
   /** a label always shown on the button (e.g. a person's name): + before a clip, ✓ after */
   buttonLabel?: string
-  /** other spots the same take fills (a line that doesn't name the dog, on the person's other channels) */
+  /** other spots the same take fills (a line that uses no channel slot, on the person's other channels) */
   also?: { target: string, path: string }[]
   /** what's said in the clip, for its captions */
   script?: string | null

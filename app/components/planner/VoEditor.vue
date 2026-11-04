@@ -228,7 +228,9 @@ async function draftBeats() {
   drafting.value = false
 }
 
-const usesDog = computed(() => bodyUsesDog(form.beats))
+const channelSlotNames = computed(() => parseChannelSlots(settings.value?.channel_slots).map(slot => slot.name))
+/** the channel slots it uses: each one makes it a recording per channel */
+const usedChannelSlots = computed(() => channelSlotsInBeats(form.beats, channelSlotNames.value).map(name => `{{${name}}}`))
 
 // Length is worked out from the script at the speech pace in Settings → Defaults.
 const pace = computed(() => Number(settings.value?.words_per_second) || DEFAULT_WORDS_PER_SECOND)
@@ -447,12 +449,12 @@ async function save() {
           />
 
           <UAlert
-            v-if="usesDog"
+            v-if="usedChannelSlots.length"
             color="warning"
             variant="subtle"
-            icon="i-lucide-dog"
-            title="This VO uses {{dog}}"
-            description="A VO is recorded for each channel its writer is on, so write it dog-neutral (“my dog”, “my pup”). With more than one channel, {{dog}} shows each channel's phrase."
+            icon="i-lucide-tv"
+            :title="`This VO uses the channel ${usedChannelSlots.length === 1 ? 'slot' : 'slots'} ${usedChannelSlots.join(', ')}`"
+            description="So it's recorded once for each channel its writer is on, instead of once for all of them. To film it once, write it the same for every channel."
           />
 
           <div class="grid gap-4 sm:grid-cols-2">

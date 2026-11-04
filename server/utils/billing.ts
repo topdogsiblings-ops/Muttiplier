@@ -74,3 +74,28 @@ export async function requireOrgAdmin(event: H3Event) {
   if (!access.admin) throw createError({ statusCode: 403, statusMessage: 'Only an admin can manage billing' })
   return access
 }
+
+/**
+ * Record a Top Dog Cut purchase from its Checkout Session, re-read from Stripe: the org has Cut
+ * once it's paid, unless it's since been refunded in full (so a replayed event can't hand it back).
+ */
+export async function syncCutPurchase(event: H3Event, sessionId: string) {
+  const session = await stripeClient(event).checkout.sessions.retrieve(sessionId, { expand: ['payment_intent.latest_charge'] })
+  const orgId = session.metadata?.org_id
+  const intent = session.payment_intent as Stripe.PaymentIntent | null
+  if (session.metadata?.purchase !== 'cut' || !orgId || !intent || session.payment_status !== 'paid') return
+  const charge = intent.latest_charge as Stripe.Charge | null
+  if (charge?.refunded) return
+  const { error } = await serviceDb(event).from('orgs')
+    .update({ cut_purchased_at: new Date(session.created * 1000).toISOString(), cut_payment_intent_id: intent.id })
+    .eq('id', orgId)
+  if (error) throw error
+}
+
+/** A full refund of the Cut purchase takes Cut away again. */
+export async function refundCutPurchase(event: H3Event, charge: Stripe.Charge) {
+  const intent = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id
+  if (!charge.refunded || !intent) return
+  const { error } = await serviceDb(event).from('orgs').update({ cut_purchased_at: null }).eq('cut_payment_intent_id', intent)
+  if (error) throw error
+}

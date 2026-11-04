@@ -3,8 +3,9 @@ import {
   alignBeats,
   beatWordings,
   beatsMatchFormat,
-  bodyUsesDog,
   buildSlotContext,
+  channelSlotsIn,
+  channelSlotsInBeats,
   countWords,
   estimateSeconds,
   extractSlots,
@@ -21,7 +22,7 @@ import {
 const context = buildSlotContext({
   brand: 'PawCo',
   product: 'Calming Chews',
-  dogPhrase: 'my Doberman',
+  channelValues: { dog: 'my Doberman' },
   slotValues: { benefit: 'calmer walks', offer: '', brand: 'ignored' }
 })
 
@@ -92,9 +93,10 @@ describe('beats', () => {
     expect(joinBeats([{ beat: 'problem', script: 'A' }, { beat: 'product', script: 'B' }])).toBe('[problem] A [product] B')
   })
 
-  it('detects {{dog}} in a body', () => {
-    expect(bodyUsesDog([{ beat: 'problem', script: '{{dog}} pulls' }])).toBe(true)
-    expect(bodyUsesDog([{ beat: 'problem', script: 'my dog pulls' }])).toBe(false)
+  it('finds the channel slots a script uses', () => {
+    expect(channelSlotsIn('{{dog}} loves {{product}} and {{benefit}}', ['dog'])).toEqual(['dog'])
+    expect(channelSlotsInBeats([{ beat: 'problem', script: '{{dog}} pulls' }], ['dog'])).toEqual(['dog'])
+    expect(channelSlotsInBeats([{ beat: 'problem', script: 'my dog pulls {{benefit}}' }], ['dog'])).toEqual([])
   })
 })
 
@@ -143,7 +145,7 @@ describe('beat wordings', () => {
     expect(parseTakeKey('problem')).toEqual({ beat: 'problem', option: 1 })
   })
 
-  it('checks every wording for {{dog}}', () => {
-    expect(bodyUsesDog([{ beat: 'hook', script: 'my dog', alternates: [{ script: '{{dog}} again' }] }])).toBe(true)
+  it('checks every wording for channel slots', () => {
+    expect(channelSlotsInBeats([{ beat: 'hook', script: 'my dog', alternates: [{ script: '{{dog}} again' }] }], ['dog'])).toEqual(['dog'])
   })
 })

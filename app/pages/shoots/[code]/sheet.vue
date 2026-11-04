@@ -110,8 +110,7 @@ const sections = computed(() => {
     },
     {
       title: 'VOs',
-      // every VO take can be used face to camera (a treatment), so it should look like a real moment
-      hint: 'Film each beat with your dog, doing something real: it can play face to camera',
+      hint: '',
       views: show.value === 'hook' || show.value === 'cta'
         ? []
         : shotList.value.filter(group => group.kind === 'body')
@@ -162,7 +161,7 @@ const progress = computed(() => {
 /** Lines where someone has their own wording, for the everyone view. */
 const ownVersions = (group: ShotGroup) => group.items.filter(item => item.script_override !== null && item.script_override !== undefined)
 const script = (item: BundleItem) => resolveItemScript(bundle.value, item)
-/** A shot-list entry's line across every channel it's filmed for: the dog reads "my Vizsla / our two dogs". */
+/** A shot-list entry's line across every channel it's filmed for: a channel slot reads "my Vizsla / our two dogs". */
 const groupScript = (group: ShotGroup, part: GroupPart = 'all') => {
   const versions = group.items.map(item => script({ ...item, script_override: null }))
   if (group.kind !== 'body') return { text: mergeVariants(versions.map(version => version.text ?? '')), beats: null }
@@ -216,7 +215,7 @@ async function saveStatus(item: BundleItem, next: string) {
 }
 
 // --- takes ------------------------------------------------------------------------
-// Each person films an item once per channel they're on; a line that doesn't name the dog is
+// Each person films an item once per channel they're on; a line that uses no channel slot is
 // one take for all of them, and a VO is recorded beat by beat. Only saved clips tick an item
 // off (once every spot it has, every beat of a VO, has one); by hand you can only skip.
 
@@ -226,7 +225,7 @@ const peopleRows = (group: ShotGroup, part: GroupPart = 'all') => {
   return ids.map((personId) => {
     const items = group.items.filter(item => item.person_id === personId)
     const beatOrder = (beat: string | null) => (items[0] && beat ? itemBeats(items[0]).indexOf(beat) : 0)
-    const takes = recordingsOf(items).filter(take => part === 'all' || partOfBeat(take.beat) === part).sort((a, b) =>
+    const takes = recordingsOf(items, bundle.value.channelSlots).filter(take => part === 'all' || partOfBeat(take.beat) === part).sort((a, b) =>
       (a.items[0]?.channel_id ?? '').localeCompare(b.items[0]?.channel_id ?? '') || beatOrder(a.beat) - beatOrder(b.beat))
     return {
       person: personId,
@@ -611,7 +610,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
           </p>
 
           <!-- each person: their takes (one per channel, or one for all of them when the line
-               doesn't name the dog; a VO beat by beat), each ticked by its clip -->
+               uses no channel slot; a VO beat by beat), each ticked by its clip -->
           <div v-for="row in peopleRows(group, part)" :key="row.person" class="space-y-2 border-t border-default pt-2">
             <div class="flex flex-wrap items-center gap-2">
               <UIcon
@@ -659,7 +658,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
     </section>
 
     <p v-if="!person && sections.length" class="mt-3 text-xs text-muted">
-      Each take is ticked once its clip is saved. A line that doesn't say <code v-pre>{{dog}}</code> is filmed once and used on all of a person's channels.
+      Each take is ticked once its clip is saved. A line that uses no channel slot is filmed once and used on all of a person's channels.
     </p>
     <section v-if="showBroll && brollGroups.length" class="mt-8">
       <h2 class="mb-2 text-sm font-semibold text-highlighted uppercase">

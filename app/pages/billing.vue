@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { Row } from '#shared/types/models'
 
-// Billing: the org's Top Dog Kit subscription. Admins subscribe (a 30-day free trial the first
-// time) and manage it in Stripe's portal; everyone else can see whether it's live. Stripe tells
-// the app through its webhook, so after checkout this page waits for that to land.
+// Billing: the org's Top Dog Kit subscription, and Top Dog Cut. Admins subscribe (a 30-day free
+// trial the first time) and manage it in Stripe's portal, and buy Cut once (a trial includes it
+// until the trial ends); everyone else can see where things stand. Stripe tells the app through
+// its webhook, so after checkout this page waits for that to land.
 const db = useDb()
 const route = useRoute()
 const toast = useToast()
@@ -45,8 +46,23 @@ onMounted(async () => {
   else toast.add({ title: 'Still waiting for Stripe', description: 'Your payment details went through. Refresh this page in a minute.', color: 'warning' })
 })
 
+// after buying Cut: the same wait, for the purchase
+const cutOwned = computed(() => currentOrg.value?.cut_access === 'purchased')
+const waitingCut = ref(false)
+onMounted(async () => {
+  if (route.query.cut !== 'success' || cutOwned.value) return
+  waitingCut.value = true
+  for (let i = 0; i < 15 && !cutOwned.value; i++) {
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    await load()
+  }
+  waitingCut.value = false
+  if (cutOwned.value) toast.add({ title: 'Top Dog Cut is yours', color: 'success' })
+  else toast.add({ title: 'Still waiting for Stripe', description: 'Your payment went through. Refresh this page in a minute.', color: 'warning' })
+})
+
 const going = ref(false)
-async function go(path: '/api/billing/checkout' | '/api/billing/portal') {
+async function go(path: '/api/billing/checkout' | '/api/billing/portal' | '/api/billing/cut-checkout') {
   going.value = true
   try {
     const { url } = await $fetch<{ url: string | null }>(path, { method: 'POST' })
@@ -126,6 +142,50 @@ async function go(path: '/api/billing/checkout' | '/api/billing/portal') {
           <p v-else-if="!isAdmin && !currentOrg?.entitled" class="text-sm text-muted">
             Ask an admin of {{ currentOrg?.name }} to start the subscription.
           </p>
+        </UCard>
+        <UCard :ui="{ body: 'space-y-4' }">
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="font-semibold text-highlighted">
+              Top Dog Cut
+            </h2>
+            <UBadge v-if="cutOwned" label="Owned" color="success" variant="subtle" />
+            <UBadge v-else-if="currentOrg?.cut_access === 'exempt'" label="Included" color="success" variant="subtle" />
+            <UBadge v-else-if="currentOrg?.cut_access === 'trial'" label="In your trial" color="info" variant="subtle" />
+            <UBadge v-else label="Not bought" color="neutral" variant="subtle" />
+          </div>
+
+          <p v-if="waitingCut" class="flex items-center gap-2 text-sm text-muted">
+            <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" />
+            Confirming your purchase with Stripe…
+          </p>
+          <p v-else class="text-sm text-muted">
+            The desktop editor for your shoots' clips: trims, captions and treatments.
+            <template v-if="cutOwned">
+              {{ currentOrg?.name }} owns it, and can use it while Top Dog Kit is live.
+            </template>
+            <template v-else-if="currentOrg?.cut_access === 'exempt'">
+              {{ currentOrg?.name }} uses it without buying it.
+            </template>
+            <template v-else-if="currentOrg?.cut_access === 'trial'">
+              Your free trial includes it until {{ date(subscription?.trial_end) ?? 'the trial ends' }}. To keep it after that, buy it once for $189.99.
+            </template>
+            <template v-else>
+              $189.99 once for your organisation, used alongside a Top Dog Kit subscription.
+            </template>
+          </p>
+
+          <div v-if="isAdmin && !waitingCut && !cutOwned && currentOrg?.cut_access !== 'exempt'">
+            <UButton
+              v-if="live"
+              label="Buy Top Dog Cut"
+              icon="i-lucide-scissors"
+              :loading="going"
+              @click="go('/api/billing/cut-checkout')"
+            />
+            <p v-else class="text-sm text-muted">
+              Start Top Dog Kit first: Cut works alongside it.
+            </p>
+          </div>
         </UCard>
         <p class="text-xs text-dimmed">
           Payments are handled by Stripe, which also handles sales tax and receipts.

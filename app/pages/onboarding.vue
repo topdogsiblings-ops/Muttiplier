@@ -1,20 +1,31 @@
 <script setup lang="ts">
-// Starting a new org, for someone who isn't in one. The access gate only sends people here while
-// new orgs are open (they're closed until billing exists); members join through an admin's invite.
+// Starting a new org: for someone who isn't in one (the access gate sends them here while new orgs
+// are open), or from the organisation menu. Members join through an admin's invite. What it does
+// becomes its profile, which AI drafting is told (changeable later in Settings → Scripts).
 definePageMeta({ layout: 'plain' })
 
-const { createOrg } = useOrg()
+const { orgs, createOrg } = useOrg()
 const { reset } = useAccess()
 const supabase = useSupabaseClient()
 const run = useAction()
 
 const name = ref('')
 const slug = computed(() => slugify(name.value))
+const profile = reactive<OrgProfile>({ ...EMPTY_PROFILE, language: defaultLanguage() })
 const saving = ref(false)
+
+/** The spelling the browser's locale suggests. */
+function defaultLanguage() {
+  const locale = import.meta.client ? navigator.language : ''
+  return { 'en-AU': 'Australian English', 'en-GB': 'British English', 'en-US': 'American English', 'en-CA': 'Canadian English', 'en-NZ': 'New Zealand English' }[locale] ?? ''
+}
+
+const ready = computed(() => !!slug.value && !!profile.about.trim() && !!profile.products.trim() && !!profile.creators.trim() && !!profile.audience.trim())
+const preview = computed(() => recommendedPreamble(name.value, parseOrgProfile(profile)))
 
 async function create() {
   saving.value = true
-  const ok = await run(() => createOrg(name.value.trim(), slug.value))
+  const ok = await run(() => createOrg(name.value.trim(), slug.value, parseOrgProfile(profile)))
   if (!ok) saving.value = false
 }
 
@@ -27,7 +38,7 @@ async function signOut() {
 
 <template>
   <div class="flex min-h-dvh items-center justify-center p-4">
-    <UCard class="w-full max-w-sm" :ui="{ body: 'space-y-4' }">
+    <UCard class="w-full max-w-lg" :ui="{ body: 'space-y-4' }">
       <div class="text-center">
         <UIcon name="i-lucide-dog" class="size-10 text-primary" />
         <h1 class="mt-2 text-xl font-semibold text-highlighted">
@@ -40,8 +51,36 @@ async function signOut() {
       <UFormField label="Organisation name" required>
         <UInput v-model="name" class="w-full" autofocus />
       </UFormField>
-      <UButton block size="lg" label="Create" :loading="saving" :disabled="!slug" @click="create" />
-      <UButton block color="neutral" variant="ghost" label="Sign out" @click="signOut" />
+
+      <USeparator label="About your ads" />
+      <p class="text-sm text-muted">
+        AI drafting writes scripts in your voice from this. You can change it any time in Settings → Scripts.
+      </p>
+      <UFormField label="What does your organisation do?" required>
+        <UInput v-model="profile.about" class="w-full" placeholder="a UGC agency making ads for beauty brands" />
+      </UFormField>
+      <UFormField label="What do the ads sell?" required>
+        <UInput v-model="profile.products" class="w-full" placeholder="skincare and haircare" />
+      </UFormField>
+      <UFormField label="Who films them?" required>
+        <UInput v-model="profile.creators" class="w-full" placeholder="creators filming their routines at home" />
+      </UFormField>
+      <UFormField label="Who are they for?" required>
+        <UInput v-model="profile.audience" class="w-full" placeholder="women in their 20s and 30s who love skincare" />
+      </UFormField>
+      <UFormField label="How should scripts sound?" hint="Optional">
+        <UInput v-model="profile.voice" class="w-full" placeholder="warm, funny, never salesy" />
+      </UFormField>
+      <UFormField label="Spelling" hint="Optional">
+        <USelect v-model="profile.language" :items="LANGUAGES" class="w-full" placeholder="Any" />
+      </UFormField>
+      <p v-if="ready" class="rounded-md bg-elevated p-3 text-xs text-muted">
+        <span class="font-medium text-default">AI will be told:</span> {{ preview }}
+      </p>
+
+      <UButton block size="lg" label="Create" :loading="saving" :disabled="!ready" @click="create" />
+      <UButton v-if="orgs.length" block color="neutral" variant="ghost" label="Back" to="/shoots" />
+      <UButton v-else block color="neutral" variant="ghost" label="Sign out" @click="signOut" />
     </UCard>
   </div>
 </template>

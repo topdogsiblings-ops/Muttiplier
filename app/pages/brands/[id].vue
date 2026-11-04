@@ -216,7 +216,7 @@ async function saveProduct() {
                 :key="channel.id"
                 :model-value="assigned.includes(channel.id)"
                 :label="channel.name"
-                :description="`${channel.dogs.join(' + ')} · “${channel.dog_phrase}”`"
+                :description="Object.values(parseSlotValues(channel.slot_values)).map(value => `“${value}”`).join(' · ') || undefined"
                 @update:model-value="toggleChannel(channel.id, $event)"
               />
             </div>

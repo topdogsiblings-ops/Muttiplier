@@ -2,15 +2,27 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 
 const { access, isAdmin, reset } = useAccess()
-const { orgs, currentOrg, switchOrg } = useOrg()
+const { orgs, currentOrg, switchOrg, signupOpen } = useOrg()
 const run = useAction()
-const orgItems = computed(() => orgs.value.map(org => ({
-  label: org.name,
-  icon: org.is_current ? 'i-lucide-check' : undefined,
-  onSelect: () => {
-    if (!org.is_current) run(() => switchOrg(org.id))
-  }
-})))
+// The organisation menu in the sidebar header (Nuxt UI's dashboard "teams menu"): your orgs to
+// switch between, and (while new orgs are open) starting another.
+const canCreateOrg = ref(false)
+onMounted(async () => {
+  canCreateOrg.value = await signupOpen()
+})
+const orgItems = computed(() => [
+  orgs.value.map(org => ({
+    label: org.name,
+    avatar: { alt: org.name },
+    type: 'checkbox' as const,
+    checked: org.is_current,
+    onSelect: (event: Event) => {
+      event.preventDefault()
+      if (!org.is_current) run(() => switchOrg(org.id))
+    }
+  })),
+  ...(canCreateOrg.value ? [[{ label: 'New organisation', icon: 'i-lucide-plus', to: '/onboarding' }]] : [])
+])
 const supabase = useSupabaseClient()
 const route = useRoute()
 
@@ -32,10 +44,25 @@ async function signOut() {
   <UDashboardGroup>
     <UDashboardSidebar collapsible :ui="{ footer: 'border-t border-default' }">
       <template #header="{ collapsed }">
-        <NuxtLink to="/shoots" class="flex w-full items-center justify-center gap-2 font-semibold text-highlighted">
-          <UIcon name="i-lucide-dog" class="size-6 text-primary" />
-          <span v-if="!collapsed">Top Dog Kit</span>
-        </NuxtLink>
+        <UDropdownMenu
+          :items="orgItems"
+          :content="{ align: 'center', collisionPadding: 12 }"
+          :ui="{ content: collapsed ? 'w-48' : 'w-(--reka-dropdown-menu-trigger-width)' }"
+        >
+          <UButton
+            :label="collapsed ? undefined : currentOrg?.name ?? 'Top Dog Kit'"
+            :avatar="{ alt: currentOrg?.name ?? 'Top Dog Kit', size: '2xs' }"
+            :trailing-icon="collapsed ? undefined : 'i-lucide-chevrons-up-down'"
+            color="neutral"
+            variant="ghost"
+            block
+            :square="collapsed"
+            class="data-[state=open]:bg-elevated"
+            :class="[!collapsed && 'py-2']"
+            :ui="{ trailingIcon: 'text-dimmed' }"
+            aria-label="Switch organisation"
+          />
+        </UDropdownMenu>
       </template>
 
       <template #default="{ collapsed }">
@@ -48,13 +75,10 @@ async function signOut() {
             <p class="truncate text-sm font-medium text-highlighted">
               {{ access?.display_name || access?.email }}
             </p>
-            <p class="truncate text-xs text-muted">
-              {{ currentOrg?.name }} · <span class="capitalize">{{ access?.role }}</span>
+            <p class="truncate text-xs text-muted capitalize">
+              {{ access?.role }}
             </p>
           </div>
-          <UDropdownMenu v-if="orgs.length > 1" :items="orgItems">
-            <UButton icon="i-lucide-repeat" color="neutral" variant="ghost" aria-label="Switch organisation" />
-          </UDropdownMenu>
           <UButton icon="i-lucide-log-out" color="neutral" variant="ghost" aria-label="Sign out" @click="signOut" />
         </div>
       </template>

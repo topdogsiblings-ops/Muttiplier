@@ -2,7 +2,8 @@ import type Stripe from 'stripe'
 
 // Stripe's webhook (Dashboard > Developers > Webhooks: <origin>/api/billing/webhook). Verified by
 // signature; every subscription event re-reads the subscription from Stripe, so it doesn't matter
-// what order events arrive in. An error answers 500 so Stripe retries.
+// what order events arrive in. Top Dog Cut purchases come through checkout.session.* (re-read the
+// same way) and full refunds through charge.refunded. An error answers 500 so Stripe retries.
 export default defineEventHandler(async (event) => {
   const secret = useRuntimeConfig(event).stripeWebhookSecret
   if (!secret) throw createError({ statusCode: 503, statusMessage: 'Set STRIPE_WEBHOOK_SECRET' })
@@ -17,17 +18,23 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Bad signature' })
   }
 
-  const subscriptionId = subscriptionOf(stripeEvent)
-  if (subscriptionId) {
-    try {
-      await syncSubscription(event, subscriptionId)
-    } catch (error) {
-      console.error(`Stripe ${stripeEvent.type} ${stripeEvent.id}:`, error)
-      throw createError({ statusCode: 500, statusMessage: 'Couldn\'t sync the subscription' })
-    }
+  try {
+    const subscriptionId = subscriptionOf(stripeEvent)
+    if (subscriptionId) await syncSubscription(event, subscriptionId)
+    else if (isCutCheckout(stripeEvent)) await syncCutPurchase(event, stripeEvent.data.object.id)
+    else if (stripeEvent.type === 'charge.refunded') await refundCutPurchase(event, stripeEvent.data.object)
+  } catch (error) {
+    console.error(`Stripe ${stripeEvent.type} ${stripeEvent.id}:`, error)
+    throw createError({ statusCode: 500, statusMessage: 'Couldn\'t sync billing' })
   }
   return { received: true }
 })
+
+/** A finished checkout for Top Dog Cut (a one-time payment, not a subscription). */
+function isCutCheckout(stripeEvent: Stripe.Event): stripeEvent is Stripe.CheckoutSessionCompletedEvent | Stripe.CheckoutSessionAsyncPaymentSucceededEvent {
+  return (stripeEvent.type === 'checkout.session.completed' || stripeEvent.type === 'checkout.session.async_payment_succeeded')
+    && stripeEvent.data.object.mode === 'payment' && stripeEvent.data.object.metadata?.purchase === 'cut'
+}
 
 const id = (value: string | { id: string } | null | undefined) => typeof value === 'string' ? value : value?.id ?? null
 

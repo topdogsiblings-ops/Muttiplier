@@ -51,7 +51,8 @@ function estimate(shoot: ShootRow) {
     channels: shoot.shoot_channels.map(row => row.channel),
     items: itemsByShoot.value[shoot.id] ?? [],
     broll: [],
-    treatments: treatments.value
+    treatments: treatments.value,
+    channelSlots: parseChannelSlots(settings.value?.channel_slots).map(slot => slot.name)
   }, calcSettings.value)).totals
 }
 

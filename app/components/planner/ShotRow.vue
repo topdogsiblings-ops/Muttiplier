@@ -26,8 +26,8 @@ const emit = defineEmits<{
 
 const primary = computed(() => props.group.items[0]!)
 const { canEditVo } = useMe()
-// one line for every channel it's filmed for: {{dog}} reads "my Vizsla / our two dogs", and on a
-// planned shoot (dog phrases already filled in) the channels' versions are merged the same way
+// one line for every channel it's filmed for: a channel slot reads "my Vizsla / our two dogs", and on
+// a planned shoot (channel values already filled in) the channels' versions are merged the same way
 const context = computed(() => groupSlotContext(props.bundle, props.group.items.map(item => item.channel_id)))
 const beats = computed(() => {
   if (primary.value.kind !== 'body') return []

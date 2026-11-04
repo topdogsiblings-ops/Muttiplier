@@ -10,19 +10,23 @@ function item(id: string, channel: string, script: unknown, extra: Partial<Bundl
 }
 
 describe('takes', () => {
-  it('records a line that doesn\'t name the dog once for all of a person\'s channels', () => {
-    const takes = recordingsOf([item('a', 'nix', 'Grab {{product}} today'), item('b', 'whiskey', 'Grab {{product}} today')])
+  it('records a line that uses no channel slot once for all of a person\'s channels', () => {
+    const takes = recordingsOf([item('a', 'nix', 'Grab {{product}} today'), item('b', 'whiskey', 'Grab {{product}} today')], ['dog'])
     expect(takes).toHaveLength(1)
     expect(takes[0]!.items.map(i => i.channel_id)).toEqual(['nix', 'whiskey'])
   })
 
-  it('records a line that says {{dog}} once per channel', () => {
-    const takes = recordingsOf([item('a', 'nix', 'Watch {{dog}} go'), item('b', 'whiskey', 'Watch {{dog}} go')])
+  it('records a line that uses a channel slot once per channel', () => {
+    const takes = recordingsOf([item('a', 'nix', 'Watch {{dog}} go'), item('b', 'whiskey', 'Watch {{dog}} go')], ['dog'])
     expect(takes.map(take => take.items.map(i => i.channel_id))).toEqual([['nix'], ['whiskey']])
   })
 
-  it('splits a planned line by channel once the dog phrase is filled in', () => {
+  it('splits a planned line by channel once the channel slot is filled in', () => {
     expect(recordingKey(item('a', 'nix', 'Watch my Doberman go'))).not.toBe(recordingKey(item('b', 'whiskey', 'Watch my Vizsla go')))
+  })
+
+  it('treats a slot as one take for every channel unless it\'s a channel slot', () => {
+    expect(recordingsOf([item('a', 'nix', 'Watch {{dog}} go'), item('b', 'whiskey', 'Watch {{dog}} go')])).toHaveLength(1)
   })
 
   it('keeps a person\'s own wording as its own take', () => {
@@ -34,8 +38,8 @@ describe('takes', () => {
     const beats = [{ beat: 'problem', script: 'My dog pulled' }, { beat: 'product', script: '{{product}}' }]
     const vo = item('v', 'nix', beats, { kind: 'body', code: 'V01' })
     expect(itemBeats(vo)).toEqual(['problem', 'product'])
-    const takes = recordingsOf([vo, { ...vo, id: 'w', channel_id: 'whiskey' }])
-    // no {{dog}}: each beat is one take for both channels
+    const takes = recordingsOf([vo, { ...vo, id: 'w', channel_id: 'whiskey' }], ['dog'])
+    // no channel slot: each beat is one take for both channels
     expect(takes.map(take => [take.beat, take.items.length])).toEqual([['problem', 2], ['product', 2]])
   })
 
