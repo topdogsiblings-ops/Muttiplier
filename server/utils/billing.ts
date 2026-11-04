@@ -3,7 +3,7 @@ import type { H3Event } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import type { Database } from '#shared/types/database.types'
 
-// Billing (Phase 4): one Top Dog Kit subscription per org, through Stripe Checkout with Managed
+// Billing (Phase 4): one UGC Kit subscription per org, through Stripe Checkout with Managed
 // Payments (Stripe is the merchant of record: tax, fraud, disputes). Stripe is the source of truth:
 // every webhook re-reads the subscription from Stripe, so events arriving out of order can't leave
 // org_subscriptions stale. Only the server writes billing rows, with the service role.
@@ -76,26 +76,26 @@ export async function requireOrgAdmin(event: H3Event) {
 }
 
 /**
- * Record a Top Dog Cut purchase from its Checkout Session, re-read from Stripe: the org has Cut
+ * Record a UGC Klip purchase from its Checkout Session, re-read from Stripe: the org has Klip
  * once it's paid, unless it's since been refunded in full (so a replayed event can't hand it back).
  */
-export async function syncCutPurchase(event: H3Event, sessionId: string) {
+export async function syncKlipPurchase(event: H3Event, sessionId: string) {
   const session = await stripeClient(event).checkout.sessions.retrieve(sessionId, { expand: ['payment_intent.latest_charge'] })
   const orgId = session.metadata?.org_id
   const intent = session.payment_intent as Stripe.PaymentIntent | null
-  if (session.metadata?.purchase !== 'cut' || !orgId || !intent || session.payment_status !== 'paid') return
+  if (session.metadata?.purchase !== 'klip' || !orgId || !intent || session.payment_status !== 'paid') return
   const charge = intent.latest_charge as Stripe.Charge | null
   if (charge?.refunded) return
   const { error } = await serviceDb(event).from('orgs')
-    .update({ cut_purchased_at: new Date(session.created * 1000).toISOString(), cut_payment_intent_id: intent.id })
+    .update({ klip_purchased_at: new Date(session.created * 1000).toISOString(), klip_payment_intent_id: intent.id })
     .eq('id', orgId)
   if (error) throw error
 }
 
-/** A full refund of the Cut purchase takes Cut away again. */
-export async function refundCutPurchase(event: H3Event, charge: Stripe.Charge) {
+/** A full refund of the Klip purchase takes Klip away again. */
+export async function refundKlipPurchase(event: H3Event, charge: Stripe.Charge) {
   const intent = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id
   if (!charge.refunded || !intent) return
-  const { error } = await serviceDb(event).from('orgs').update({ cut_purchased_at: null }).eq('cut_payment_intent_id', intent)
+  const { error } = await serviceDb(event).from('orgs').update({ klip_purchased_at: null }).eq('klip_payment_intent_id', intent)
   if (error) throw error
 }

@@ -1,4 +1,4 @@
-// Cut checks back with its device code, every `interval` seconds. Answers { status }:
+// Klip checks back with its device code, every `interval` seconds. Answers { status }:
 // 'pending' (not approved yet), 'slow_down' (checking too often: wait longer), 'denied',
 // 'expired' (or already used: start again), or 'approved' with the license token, handed over once.
 export default defineEventHandler(async (event) => {

@@ -1,4 +1,4 @@
-// Cut asks to connect: a secret device code it keeps (to check back with) and a short code the
+// Klip asks to connect: a secret device code it keeps (to check back with) and a short code the
 // person approves in Kit, at verificationUriComplete (the code filled in) or verificationUri.
 export default defineEventHandler(async (event) => {
   const db = serviceDb(event)
@@ -21,8 +21,8 @@ export default defineEventHandler(async (event) => {
     return {
       deviceCode,
       userCode: formatUserCode(userCode),
-      verificationUri: `${origin}/cut/activate`,
-      verificationUriComplete: `${origin}/cut/activate?code=${formatUserCode(userCode)}`,
+      verificationUri: `${origin}/klip/activate`,
+      verificationUriComplete: `${origin}/klip/activate?code=${formatUserCode(userCode)}`,
       expiresIn: DEVICE_CODE_SECONDS,
       interval: DEVICE_POLL_SECONDS
     }

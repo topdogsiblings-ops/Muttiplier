@@ -3,13 +3,16 @@ import type { KeyObject } from 'node:crypto'
 import type { H3Event } from 'h3'
 import { serverSupabaseUser } from '#supabase/server'
 
-// Top Dog Cut's license (Phase 5). Cut connects with a code (/api/license/device/*: a member
-// approves it in Kit, so Cut never signs in to Supabase), gets a token, and checks it offline with
+// UGC Klip's license (Phase 5). Klip connects with a code (/api/license/device/*: a member
+// approves it in Kit, so Klip never signs in to Supabase), gets a token, and checks it offline with
 // the public key (Ed25519), so no secret lives in the app. It refreshes with /api/license/refresh
-// while online; a token lasts 72 hours offline, or until a trial's end when Cut comes from the
-// trial. Using Cut needs both subscriptionState 'active' and cutPurchased.
+// while online; a token lasts 72 hours offline, or until a trial's end when Klip comes from the
+// trial. Using Klip needs both subscriptionState 'active' and klipPurchased.
 //
 // A token is `<payload>.<signature>`, both base64url; the payload is the JSON below.
+
+export type KlipAccess = 'purchased' | 'trial' | 'exempt' | 'none'
+const KLIP_ACCESS: KlipAccess[] = ['purchased', 'trial', 'exempt', 'none']
 
 export interface License {
   v: 1
@@ -17,10 +20,14 @@ export interface License {
   userId: string
   /** the org's Kit: trialing, active and past due (Stripe still retrying) and billing-exempt are all 'active' */
   subscriptionState: 'active' | 'lapsed'
-  /** the org has Cut: bought, billing-exempt or trialing */
+  /** the org has Klip: bought, billing-exempt or trialing */
+  klipPurchased: boolean
+  /** how it has Klip, for showing only */
+  klipAccess: KlipAccess
+  /** @deprecated the same as klipPurchased, for Klip builds from before the rename; goes once Klip reads klipPurchased */
   cutPurchased: boolean
-  /** how it has Cut, for showing only */
-  cutAccess: 'purchased' | 'trial' | 'exempt' | 'none'
+  /** @deprecated the same as klipAccess; goes with cutPurchased */
+  cutAccess: KlipAccess
   /** when the trial ends (ms since epoch), while trialing */
   trialEndsAt: number | null
   issuedAt: number
@@ -37,7 +44,7 @@ function signingKey(event: H3Event): KeyObject {
   return createPrivateKey({ key: Buffer.from(der, 'base64'), format: 'der', type: 'pkcs8' })
 }
 
-/** The public key Pawcessor checks tokens with (SPKI DER, base64). */
+/** The public key Klip checks tokens with (SPKI DER, base64). */
 export const licensePublicKey = (event: H3Event) =>
   createPublicKey(signingKey(event)).export({ format: 'der', type: 'spki' }).toString('base64')
 
@@ -49,19 +56,22 @@ export async function issueLicense(event: H3Event, orgId: string, userId: string
   if (!state) throw createError({ statusCode: 404, statusMessage: 'No such organisation' })
 
   const issuedAt = Date.now()
-  const cutAccess = state.cut_access as License['cutAccess']
+  // anything unexpected locks Klip rather than opening it
+  const klipAccess: KlipAccess = KLIP_ACCESS.includes(state.klip_access as KlipAccess) ? state.klip_access as KlipAccess : 'none'
   const trialEndsAt = state.trial_end ? new Date(state.trial_end).getTime() : null
   let expiresAt = issuedAt + OFFLINE_GRACE
-  // Cut from the trial ends with the trial, offline or not
-  if (cutAccess === 'trial' && trialEndsAt) expiresAt = Math.min(expiresAt, trialEndsAt)
+  // Klip from the trial ends with the trial, offline or not
+  if (klipAccess === 'trial' && trialEndsAt) expiresAt = Math.min(expiresAt, trialEndsAt)
 
   const license: License = {
     v: 1,
     orgId,
     userId,
     subscriptionState: state.entitled ? 'active' : 'lapsed',
-    cutPurchased: cutAccess !== 'none',
-    cutAccess,
+    klipPurchased: klipAccess !== 'none',
+    klipAccess,
+    cutPurchased: klipAccess !== 'none',
+    cutAccess: klipAccess,
     trialEndsAt,
     issuedAt,
     expiresAt
@@ -112,9 +122,9 @@ export async function licenseOrg(event: H3Event, userId: string, asked?: string 
   throw createError({ statusCode: orgIds.length ? 409 : 403, statusMessage: orgIds.length ? 'Choose an organisation' : 'You\'re not in an organisation' })
 }
 
-// --- connecting Cut with a code --------------------------------------------------------------
+// --- connecting Klip with a code --------------------------------------------------------------
 
-/** How long a code lasts, and how often Cut may check back. */
+/** How long a code lasts, and how often Klip may check back. */
 export const DEVICE_CODE_SECONDS = 10 * 60
 export const DEVICE_POLL_SECONDS = 5
 // no 0/O, 1/I/L, 5/S, 8/B, 2/Z: easy to read back

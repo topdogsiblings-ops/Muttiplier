@@ -16,11 +16,14 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return navigateTo('/login?denied=1')
   }
 
-  // connecting Top Dog Cut picks its own org, and works whatever the subscription (the license says)
-  if (to.path === '/cut/activate') return
+  // connecting UGC Klip picks its own org, and works whatever the subscription (the license says)
+  if (to.path === '/klip/activate' || to.path === '/cut/activate') return
   if (needsPicker.value && to.path !== '/orgs') return navigateTo('/orgs')
-  // no live subscription: only billing (and switching org) are open
+  // no live subscription: only billing (in Settings for admins) and switching org are open
   const { currentOrg } = useOrg()
-  if (currentOrg.value && !currentOrg.value.entitled && !['/billing', '/orgs'].includes(to.path)) return navigateTo('/billing')
+  if (currentOrg.value && !currentOrg.value.entitled) {
+    const open = ['/billing', '/orgs', ...(isAdmin.value ? ['/settings'] : [])]
+    if (!open.includes(to.path)) return navigateTo(isAdmin.value ? '/settings?tab=profile' : '/billing')
+  }
   if (to.path.startsWith('/settings') && !isAdmin.value) return navigateTo('/')
 })

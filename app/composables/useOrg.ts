@@ -8,8 +8,8 @@ export interface MyOrg {
   has_chosen: boolean
   /** its subscription (or trial) is live, or it's billing-exempt */
   entitled: boolean
-  /** how it has Top Dog Cut: bought, billing-exempt, for the length of its trial, or not at all */
-  cut_access: 'purchased' | 'exempt' | 'trial' | 'none'
+  /** how it has UGC Klip: bought, billing-exempt, for the length of its trial, or not at all */
+  klip_access: 'purchased' | 'exempt' | 'trial' | 'none'
 }
 
 /**
@@ -48,8 +48,8 @@ export const useOrg = () => {
   async function createOrg(name: string, slug: string, profile?: OrgProfile) {
     const { error } = await db.rpc('create_org', { p_name: name, p_slug: slug, p_profile: profile ? { ...profile } : {} })
     if (error) throw error
-    // a new org starts by subscribing (with its free trial)
-    await enter('/billing')
+    // a new org starts by subscribing (with its free trial), in Settings → Profile
+    await enter('/settings?tab=profile')
   }
 
   /** whether someone can start a new org; closed until billing exists */

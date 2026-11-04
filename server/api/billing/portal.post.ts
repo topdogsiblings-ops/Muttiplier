@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
   const origin = getRequestURL(event, { xForwardedHost: true, xForwardedProto: true }).origin
   const session = await stripeClient(event).billingPortal.sessions.create({
     customer: data.stripe_customer_id,
-    return_url: `${origin}/billing`
+    return_url: `${origin}/settings?tab=profile`
   })
   return { url: session.url }
 })

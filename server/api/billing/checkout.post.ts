@@ -1,6 +1,6 @@
 import { serverSupabaseUser } from '#supabase/server'
 
-// Start a Top Dog Kit subscription for the admin's org: Stripe-hosted Checkout with Managed Payments,
+// Start a UGC Kit subscription for the admin's org: Stripe-hosted Checkout with Managed Payments,
 // a 30-day trial the first time (card on file), and the org on the subscription's metadata so the
 // webhook knows whose it is. The org is entitled only once the webhook has synced it.
 export default defineEventHandler(async (event) => {
@@ -47,8 +47,8 @@ export default defineEventHandler(async (event) => {
       ...(existing?.trial_used ? {} : { trial_period_days: 30 })
     },
     integration_identifier: 'top_dog_kit_subscribe_qmrtvwkz',
-    success_url: `${origin}/billing?checkout=success`,
-    cancel_url: `${origin}/billing`
+    success_url: `${origin}/settings?tab=profile&checkout=success`,
+    cancel_url: `${origin}/settings?tab=profile`
   })
   return { url: session.url }
 })

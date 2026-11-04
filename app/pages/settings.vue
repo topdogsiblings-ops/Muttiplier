@@ -372,19 +372,7 @@ async function saveDefaults() {
             </template>
           </UCard>
 
-          <UCard>
-            <div class="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 class="font-semibold text-highlighted">
-                  Plan and billing
-                </h3>
-                <p class="text-sm text-muted">
-                  The subscription, payment method and invoices.
-                </p>
-              </div>
-              <UButton label="Billing" icon="i-lucide-credit-card" color="neutral" variant="subtle" to="/billing" />
-            </div>
-          </UCard>
+          <BillingSettings />
         </template>
 
         <!-- Channels -->

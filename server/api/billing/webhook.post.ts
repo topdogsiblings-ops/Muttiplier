@@ -2,7 +2,7 @@ import type Stripe from 'stripe'
 
 // Stripe's webhook (Dashboard > Developers > Webhooks: <origin>/api/billing/webhook). Verified by
 // signature; every subscription event re-reads the subscription from Stripe, so it doesn't matter
-// what order events arrive in. Top Dog Cut purchases come through checkout.session.* (re-read the
+// what order events arrive in. UGC Klip purchases come through checkout.session.* (re-read the
 // same way) and full refunds through charge.refunded. An error answers 500 so Stripe retries.
 export default defineEventHandler(async (event) => {
   const secret = useRuntimeConfig(event).stripeWebhookSecret
@@ -21,8 +21,8 @@ export default defineEventHandler(async (event) => {
   try {
     const subscriptionId = subscriptionOf(stripeEvent)
     if (subscriptionId) await syncSubscription(event, subscriptionId)
-    else if (isCutCheckout(stripeEvent)) await syncCutPurchase(event, stripeEvent.data.object.id)
-    else if (stripeEvent.type === 'charge.refunded') await refundCutPurchase(event, stripeEvent.data.object)
+    else if (isKlipCheckout(stripeEvent)) await syncKlipPurchase(event, stripeEvent.data.object.id)
+    else if (stripeEvent.type === 'charge.refunded') await refundKlipPurchase(event, stripeEvent.data.object)
   } catch (error) {
     console.error(`Stripe ${stripeEvent.type} ${stripeEvent.id}:`, error)
     throw createError({ statusCode: 500, statusMessage: 'Couldn\'t sync billing' })
@@ -30,10 +30,10 @@ export default defineEventHandler(async (event) => {
   return { received: true }
 })
 
-/** A finished checkout for Top Dog Cut (a one-time payment, not a subscription). */
-function isCutCheckout(stripeEvent: Stripe.Event): stripeEvent is Stripe.CheckoutSessionCompletedEvent | Stripe.CheckoutSessionAsyncPaymentSucceededEvent {
+/** A finished checkout for UGC Klip (a one-time payment, not a subscription). */
+function isKlipCheckout(stripeEvent: Stripe.Event): stripeEvent is Stripe.CheckoutSessionCompletedEvent | Stripe.CheckoutSessionAsyncPaymentSucceededEvent {
   return (stripeEvent.type === 'checkout.session.completed' || stripeEvent.type === 'checkout.session.async_payment_succeeded')
-    && stripeEvent.data.object.mode === 'payment' && stripeEvent.data.object.metadata?.purchase === 'cut'
+    && stripeEvent.data.object.mode === 'payment' && stripeEvent.data.object.metadata?.purchase === 'klip'
 }
 
 const id = (value: string | { id: string } | null | undefined) => typeof value === 'string' ? value : value?.id ?? null

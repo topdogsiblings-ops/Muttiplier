@@ -857,8 +857,8 @@ export type Database = {
           billing_exempt: boolean
           created_at: string
           created_by: string | null
-          cut_payment_intent_id: string | null
-          cut_purchased_at: string | null
+          klip_payment_intent_id: string | null
+          klip_purchased_at: string | null
           id: string
           name: string
           next_shoot_number: number
@@ -869,8 +869,8 @@ export type Database = {
           billing_exempt?: boolean
           created_at?: string
           created_by?: string | null
-          cut_payment_intent_id?: string | null
-          cut_purchased_at?: string | null
+          klip_payment_intent_id?: string | null
+          klip_purchased_at?: string | null
           id?: string
           name: string
           next_shoot_number?: number
@@ -881,8 +881,8 @@ export type Database = {
           billing_exempt?: boolean
           created_at?: string
           created_by?: string | null
-          cut_payment_intent_id?: string | null
-          cut_purchased_at?: string | null
+          klip_payment_intent_id?: string | null
+          klip_purchased_at?: string | null
           id?: string
           name?: string
           next_shoot_number?: number
@@ -1942,7 +1942,7 @@ export type Database = {
       my_orgs: {
         Args: never
         Returns: {
-          cut_access: string
+          klip_access: string
           display_name: string | null
           has_chosen: boolean
           id: string
@@ -1956,8 +1956,8 @@ export type Database = {
       org_license_state: {
         Args: { p_org_id: string }
         Returns: {
-          can_use_cut: boolean
-          cut_access: string
+          can_use_klip: boolean
+          klip_access: string
           entitled: boolean
           trial_end: string | null
         }[]

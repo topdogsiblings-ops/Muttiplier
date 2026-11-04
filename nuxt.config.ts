@@ -8,13 +8,13 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-      title: 'Top Dog Kit',
+      title: 'UGC Kit',
       meta: [
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         // Saved to the home screen, open as a standalone app rather than in Safari.
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
         { name: 'mobile-web-app-capable', content: 'yes' },
-        { name: 'apple-mobile-web-app-title', content: 'Top Dog Kit' },
+        { name: 'apple-mobile-web-app-title', content: 'UGC Kit' },
         { name: 'apple-mobile-web-app-status-bar-style', content: 'default' },
         // The status bar follows the app's background in light and dark mode.
         { name: 'theme-color', content: '#ffffff', media: '(prefers-color-scheme: light)' },
@@ -40,8 +40,8 @@ export default defineNuxtConfig({
     stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? '',
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
     stripePriceLookupKey: process.env.STRIPE_PRICE_LOOKUP_KEY ?? 'top_dog_kit_monthly',
-    stripeCutPriceLookupKey: process.env.STRIPE_CUT_PRICE_LOOKUP_KEY ?? 'top_dog_cut',
-    // Cut's license tokens (Phase 5): an Ed25519 private key, PKCS#8 DER in base64. Pawcessor
+    stripeKlipPriceLookupKey: process.env.STRIPE_KLIP_PRICE_LOOKUP_KEY ?? 'ugc_klip',
+    // Klip's license tokens (Phase 5): an Ed25519 private key, PKCS#8 DER in base64. Pawcessor
     // holds the public key and checks tokens offline.
     licensePrivateKey: process.env.LICENSE_PRIVATE_KEY ?? ''
   },
@@ -56,7 +56,7 @@ export default defineNuxtConfig({
       login: '/login',
       callback: '/confirm',
       exclude: [],
-      // signing in returns to the page that asked for it (e.g. Cut's activation link)
+      // signing in returns to the page that asked for it (e.g. Klip's activation link)
       saveRedirectToCookie: true
     }
   }

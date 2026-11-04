@@ -30,7 +30,7 @@ const items = computed<NavigationMenuItem[]>(() => [
   { label: 'Library', icon: 'i-lucide-library', to: '/library' },
   { label: 'Planner', icon: 'i-lucide-clapperboard', to: '/shoots', active: route.path.startsWith('/shoots') },
   { label: 'Brands', icon: 'i-lucide-store', to: '/brands', active: route.path.startsWith('/brands') },
-  ...(isAdmin.value ? [{ label: 'Settings', icon: 'i-lucide-settings', to: '/settings' }, { label: 'Billing', icon: 'i-lucide-credit-card', to: '/billing' }] : [])
+  ...(isAdmin.value ? [{ label: 'Settings', icon: 'i-lucide-settings', to: '/settings' }] : [])
 ])
 
 async function signOut() {
@@ -50,8 +50,8 @@ async function signOut() {
           :ui="{ content: collapsed ? 'w-48' : 'w-(--reka-dropdown-menu-trigger-width)' }"
         >
           <UButton
-            :label="collapsed ? undefined : currentOrg?.name ?? 'Top Dog Kit'"
-            :avatar="{ alt: currentOrg?.name ?? 'Top Dog Kit', size: '2xs' }"
+            :label="collapsed ? undefined : currentOrg?.name ?? 'UGC Kit'"
+            :avatar="{ alt: currentOrg?.name ?? 'UGC Kit', size: '2xs' }"
             :trailing-icon="collapsed ? undefined : 'i-lucide-chevrons-up-down'"
             color="neutral"
             variant="ghost"

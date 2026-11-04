@@ -1,4 +1,4 @@
-# Top Dog Kit — Project Spec
+# UGC Kit — Project Spec
 
 Internal web app for the topdogugc UGC agency. It holds the script **Library** (hooks, CTAs, formats, hook types), the **Brands** pipeline from Trybe, and the **Planner** that turns library items into a shoot day: one shared shot list, a recipe/submission calculator, an on-set checklist, and exports that feed the later processing pipeline.
 
@@ -29,7 +29,7 @@ This spec covers the Library, Brands and Planner. Ingest, rendering and submissi
 2. **Planner** — build a shoot for one product, run it on set, export shot lists, `shootsheet.json` and folder skeleton. *(this project)*
 3. **Dropbox uploads** — clips land in the right shoot folders. *(built; see §12)*
 4. **Pawcessor** — edits every clip in a shoot's `raw/` into `edited/` (trims dead space, captions) and makes each treatment's treated copies (sidecars). It knows nothing about recipes. *(separate tool; see §12b)*
-5. **Recipes and batches** — Top Dog Kit builds every recipe when the shoot goes Live and picks each batch (§12b); **Showdog** stitches each recipe exactly as specified, with no rules of its own. There are no human editors.
+5. **Recipes and batches** — UGC Kit builds every recipe when the shoot goes Live and picks each batch (§12b); **Showdog** stitches each recipe exactly as specified, with no rules of its own. There are no human editors.
 6. Submission queue + form-filling Chrome extension. *(later)*
 
 ---
@@ -45,14 +45,14 @@ This spec covers the Library, Brands and Planner. Ingest, rendering and submissi
 
 ### Billing
 
-Top Dog Kit is **$54.99 USD a month per org**, the whole team included, with a **30-day free trial** the first time (card on file). Stripe Checkout with **Managed Payments**: Stripe is the merchant of record and handles sales tax, fraud, disputes and receipts.
-- **Billing page** (`/billing`, admins in the sidebar): **Start free trial** / **Subscribe** opens Checkout (`/api/billing/checkout`); **Manage billing** opens Stripe's Customer Portal (`/api/billing/portal`) for the payment method, invoices and cancelling. Members see the status.
+UGC Kit is **$54.99 USD a month per org**, the whole team included, with a **30-day free trial** the first time (card on file). Stripe Checkout with **Managed Payments**: Stripe is the merchant of record and handles sales tax, fraud, disputes and receipts.
+- **Billing** (Settings → Profile for admins; members see the status at `/billing`, which sends admins to Settings): **Start free trial** / **Subscribe** opens Checkout (`/api/billing/checkout`); **Manage billing** opens Stripe's Customer Portal (`/api/billing/portal`) for the payment method, invoices and cancelling. Members see the status.
 - **The webhook** (`/api/billing/webhook`, signed) re-reads the subscription from Stripe on every event, so events arriving out of order can't leave `org_subscriptions` stale. Only the server writes billing rows, with the service role.
-- **Entitlement**: an org can use the app while its subscription is trialing, active or past due (Stripe is retrying), or when it's billing-exempt (`orgs.billing_exempt`: topdogugc). Otherwise every page but Billing redirects there, and AI drafting refuses. A new org goes to Billing first.
+- **Entitlement**: an org can use the app while its subscription is trialing, active or past due (Stripe is retrying), or when it's billing-exempt (`orgs.billing_exempt`: topdogugc). Otherwise every page but billing redirects there (admins to Settings, members to `/billing`), and AI drafting refuses. A new org goes to billing first.
 - **AI usage**: each drafting request's tokens are added to `org_ai_usage` (per org per month). The monthly limit isn't set yet.
 - The price is found by lookup key (`top_dog_kit_monthly`), so the app holds no price ID. Env: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY` (and optionally `STRIPE_PRICE_LOOKUP_KEY`).
-- **Top Dog Cut** (Pawcessor) is **$189.99 USD once per org** (lookup key `top_dog_cut`), bought on the Billing page (`/api/billing/cut-checkout`: one-time Checkout, Managed Payments, needs a live Kit). The webhook sets `orgs.cut_purchased_at` on `checkout.session.completed` / `async_payment_succeeded` (re-reading the session) and clears it on a full refund (`charge.refunded`). **Cut access** (`private.org_cut_access`): `purchased`, `exempt` (billing-exempt org), `trial` (Kit trialing: ends with the trial) or `none`; `private.org_can_use_cut` = a live Kit and access.
-- **Cut licenses**: Cut connects with a code, like PyCharm or the GitHub CLI, and never signs in to Supabase. It calls `/api/license/device/start` (returns `deviceCode`, a short `userCode` like `KQ7X-M2PD`, `verificationUriComplete` = `/cut/activate?code=…`, `expiresIn` 600, `interval` 5), opens the activation page, and polls `/api/license/device/poll` (`{ deviceCode }`) every `interval` seconds: `pending`, `slow_down`, `denied`, `expired`, or `approved` with `{ token, license }`, handed over once. On `/cut/activate` a signed-in member checks the code, picks the org and approves (`/api/license/device/approve`). Codes (`license_device_codes`, server only) last 10 minutes and are used once; only a hash of the device code is stored. Cut refreshes with `/api/license/refresh` (`{ token }`, up to 30 days after issue, membership re-checked); past that it connects again. `/api/license/issue` gives the signed-in Kit member a token directly. The token is `<payload>.<signature>` (base64url), signed Ed25519; Pawcessor checks it offline with the public key (`/api/license/public-key`). Payload: `v`, `orgId`, `userId`, `subscriptionState` (`active`|`lapsed`), `cutPurchased` (has Cut access), `cutAccess`, `trialEndsAt`, `issuedAt`, `expiresAt` (ms since epoch; 72 hours offline, capped at the trial's end when Cut comes from the trial). Cut opens only when `subscriptionState` is `active` and `cutPurchased`. Env: `LICENSE_PRIVATE_KEY` (PKCS#8 DER, base64).
+- **UGC Klip** (Pawcessor) is **$189.99 USD once per org** (lookup key `ugc_klip`), bought in billing (`/api/billing/klip-checkout`: one-time Checkout, Managed Payments, needs a live Kit). The webhook sets `orgs.klip_purchased_at` on `checkout.session.completed` / `async_payment_succeeded` (re-reading the session) and clears it on a full refund (`charge.refunded`). **Klip access** (`private.org_klip_access`): `purchased`, `exempt` (billing-exempt org), `trial` (Kit trialing: ends with the trial) or `none`; `private.org_can_use_klip` = a live Kit and access.
+- **Klip licenses**: Klip connects with a code, like PyCharm or the GitHub CLI, and never signs in to Supabase. It calls `/api/license/device/start` (returns `deviceCode`, a short `userCode` like `KQ7X-M2PD`, `verificationUriComplete` = `/klip/activate?code=…`, `expiresIn` 600, `interval` 5), opens the activation page, and polls `/api/license/device/poll` (`{ deviceCode }`) every `interval` seconds: `pending`, `slow_down`, `denied`, `expired`, or `approved` with `{ token, license }`, handed over once. On `/klip/activate` a signed-in member checks the code, picks the org and approves (`/api/license/device/approve`). Codes (`license_device_codes`, server only) last 10 minutes and are used once; only a hash of the device code is stored. Klip refreshes with `/api/license/refresh` (`{ token }`, up to 30 days after issue, membership re-checked); past that it connects again. `/api/license/issue` gives the signed-in Kit member a token directly. The token is `<payload>.<signature>` (base64url), signed Ed25519; Pawcessor checks it offline with the public key (`/api/license/public-key`). Payload: `v`, `orgId`, `userId`, `subscriptionState` (`active`|`lapsed`), `klipPurchased` (has Klip access), `klipAccess`, `trialEndsAt`, `issuedAt`, `expiresAt` (ms since epoch; 72 hours offline, capped at the trial's end when Klip comes from the trial), plus `cutPurchased` / `cutAccess`, the same values under their old names until Klip reads the new ones. Klip opens only when `subscriptionState` is `active` and `klipPurchased`. Env: `LICENSE_PRIVATE_KEY` (PKCS#8 DER, base64).
 
 ### Design tokens
 
@@ -483,13 +483,13 @@ The contract with the future worker. Download from the shoot page. Skipped items
 }
 ```
 
-Items: `file` is the edited clip (what the worker reads) and `raw_file` where Top Dog Kit uploads it, both without extension (the extension can differ between them). B-roll: `folder` / `raw_folder`, holding loose clips under their own names; `broll` has one entry per shot per channel (a shared shot is listed for every channel), `general` marks general product shots. `people[].channels` lists the channels a person is linked to; recipes on those channels can mix their linked people's parts. `formats[].cta_modes` is legacy and can be ignored.
+Items: `file` is the edited clip (what the worker reads) and `raw_file` where UGC Kit uploads it, both without extension (the extension can differ between them). B-roll: `folder` / `raw_folder`, holding loose clips under their own names; `broll` has one entry per shot per channel (a shared shot is listed for every channel), `general` marks general product shots. `people[].channels` lists the channels a person is linked to; recipes on those channels can mix their linked people's parts. `formats[].cta_modes` is legacy and can be ignored.
 
 ### d) Folder skeleton (zip)
 
 Download a zip of empty folders (each with a `.keep` file) plus the plan's `manifest.json`, to unzip into the Dropbox `UGC/` root folder. With Dropbox connected, the same tree is created directly in Dropbox instead (§12).
 
-Everything from a shoot lives in its shoot folder, and everything a shoot produces is split by channel first: clips, recipes and renders. `raw/` and `edited/` have exactly the same tree: Top Dog Kit only uploads to `raw/`; Pawcessor edits each clip into the same place under `edited/`, with any treated copies beside it (§12b).
+Everything from a shoot lives in its shoot folder, and everything a shoot produces is split by channel first: clips, recipes and renders. `raw/` and `edited/` have exactly the same tree: UGC Kit only uploads to `raw/`; Pawcessor edits each clip into the same place under `edited/`, with any treated copies beside it (§12b).
 
 ```
 UGC/
@@ -517,7 +517,7 @@ UGC/
 ```
 
 - **Hooks, VOs and CTAs are files named by code**, keeping their own extension. Re-adding one replaces the file. Pawcessor saves the edited clip under the same name in `edited/` (the extension can differ).
-- **Captions** sit next to their clip under the same name (e.g. `H01.srt` beside `H01.mov`, `problem/V01.srt` beside `problem/V01.mov`), in `raw/` and `edited/` alike; there's no separate captions folder. Top Dog Kit writes them when each hook, CTA and VO beat uploads: the script that was read, split into short lines (sentence breaks, at most ~32 characters / 6 words) and timed across the clip's measured length in proportion to each line's length. Pawcessor polishes them into `edited/`.
+- **Captions** sit next to their clip under the same name (e.g. `H01.srt` beside `H01.mov`, `problem/V01.srt` beside `problem/V01.mov`), in `raw/` and `edited/` alike; there's no separate captions folder. UGC Kit writes them when each hook, CTA and VO beat uploads: the script that was read, split into short lines (sentence breaks, at most ~32 characters / 6 words) and timed across the clip's measured length in proportion to each line's length. Pawcessor polishes them into `edited/`.
 - **B-roll** is per shoot and loose: any clip in a beat folder can go under any VO with that beat, so clips keep their own names and a clash gets a number rather than overwriting. Beats are filed by name, so the same beat in two formats (e.g. `product`) shares a folder; general product shots go in `general/`. `shared` stands in for the channel only when a shoot has no channels.
 
 All slugs lowercase kebab-case; generate once and never change after a shoot is planned.
@@ -577,7 +577,7 @@ Once a shoot is Live its details lock (nothing in the plan's tabs can change), t
 - **How beats are shown**: a beat shown face to camera has no b-roll; one shown over b-roll is covered as below.
 - **B-roll variations**: each hook + VO + CTA gets up to `broll_variations` b-roll selections, each its own recipe (the first keeps the seed recipes always had; later ones stop when the b-roll can't give a different selection).
 - **B-roll per beat**: covered by that channel's clips filed under the beat (beats are filed by name across formats): its generic clips plus any filed for the feature the VO is about (`b-roll/<beat>/<feature>/`; other features' b-roll is never used), added clip by clip in a fixed order until their combined length covers the beat's recording; **general product shots** top a beat up only when its own clips run short. Never looped or slowed: a beat that can't be covered makes the recipe invalid. **No clip repeats** within one video. A **VO CTA** is covered the same way, product shots first.
-- **Treated versions** play the treated copies of the takes the treatment applies to (`hook.file`, each beat's `vo` and `cta.file` point at the sidecars), and aren't made when one is missing. B-roll selection is all Top Dog Kit's: exact picks per beat, deterministic.
+- **Treated versions** play the treated copies of the takes the treatment applies to (`hook.file`, each beat's `vo` and `cta.file` point at the sidecars), and aren't made when one is missing. B-roll selection is all UGC Kit's: exact picks per beat, deterministic.
 - Every clip must be in the manifest with a length. The stitcher trims (evenly, proportionally, head and tail; ~1.2 s minimum) and offsets the per-clip captions; hook, VO and CTA clips are never trimmed.
 - **Recipe IDs are deterministic**: `S001_topdognix_joe_H01_V02_C01_<hash of the b-roll picks>`, or for a mixed VO `S001_topdognix_mix_joe-H01_V02-joe.sam.joe_sam-C01_<hash>` (whose hook, whose beat in order, whose CTA). The same inputs give the same ID, which is also the render's file name.
 
@@ -602,7 +602,7 @@ Once a shoot is Live its details lock (nothing in the plan's tabs can change), t
 
 A treatment is a way a finished recipe is presented: a layout (every beat face to camera, or every beat over b-roll), an on-screen layer (search bar, retro look, unusual text placement) or footage Pawcessor prepares (greenscreen, picture-in-picture). Each tool does only its own part:
 
-- **Top Dog Kit (the Library and the rules).** The Library's **Treatments** tab: each treatment has a name, its kind, where it goes (hook, whole video or CTA), what it needs, its Showdog component and settings, a source link and an on/off switch. Built in and always on: **Face to camera** and **Over b-roll**. The plan lists the treatments that are on (`treatments`), and the recipe builder applies them:
+- **UGC Kit (the Library and the rules).** The Library's **Treatments** tab: each treatment has a name, its kind, where it goes (hook, whole video or CTA), what it needs, its Showdog component and settings, a source link and an on/off switch. Built in and always on: **Face to camera** and **Over b-roll**. The plan lists the treatments that are on (`treatments`), and the recipe builder applies them:
   - every recipe also gets **one version per treatment that applies** to it, alongside the untreated one (one treatment or curated combination per version, so they add rather than multiply). A combination's version carries its parts, each with its own spec. Each version is its own recipe: its ID is the untreated one's plus the treatment's slug (`…_<hash>_search-bar`), and `recipe.treatment` says which (null = untreated). Untreated IDs don't change;
   - a **layout** treatment re-lays the VO's beats (and a standalone VO's own hook and CTA; Library hooks and CTAs keep their own mode) and is covered again with b-roll. It's skipped where it changes nothing, or where the b-roll can't cover it;
   - any other treatment applies when the recipe has what it needs: **text** (always: Pawcessor writes it), the **speaker's video** (every take is filmed; an audio-only take doesn't qualify), the shoot's **offer** (`{{offer}}` filled in); **old footage** isn't tracked yet, so those don't apply;
@@ -672,15 +672,16 @@ Motion's pet data gives **Text message** the highest spend use ratio of any form
 
   | | Creator | Team | Agency |
   |---|---|---|---|
+  | Price (USD a month) | $34.99 | $59.99 | $149.99 |
   | Brands | 5 | 10 | Unlimited |
   | People | 2 | Unlimited | Unlimited |
   | Shoots per month | tbd | tbd | Unlimited |
   | AI credits per month | tbd | tbd | tbd |
   | Insights and diversity settings | ✓ | ✓ | ✓ |
   | Treatments | Basic | Moderate | Advanced |
-  | Top Dog Cut | Buy | Buy | Included |
+  | UGC Klip | Buy | Buy | Included |
 
-  Shoots per month and AI credits are to be set from what a shoot actually uses in AI drafting (`org_ai_usage`). It needs a plan on `org_subscriptions` (from its price), a limits table, the checks, and upgrades through the Customer Portal. With it: **deleting a brand**, which deletes its products and all their past shoots, so the brand count can be managed. One free trial per person, not just per org, so a new org isn't a new trial.
+  The free trial is on Team. Existing subscribers keep $54.99 with Team limits. Shoots per month and AI credits are to be set from what a shoot actually uses in AI drafting (`org_ai_usage`). It needs a plan on `org_subscriptions` (from its price), a limits table, the checks, and upgrades through the Customer Portal. With it: **deleting a brand**, which deletes its products and all their past shoots, so the brand count can be managed. One free trial per person, not just per org, so a new org isn't a new trial.
 
 - Local worker (Windows now, VPS later): ingest, auto-tagging, conformance checks, caption alignment, recipe generation, selection, rendering.
 - Submission queue and form-filling Chrome extension (linked to Dropbox).
