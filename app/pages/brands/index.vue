@@ -230,7 +230,7 @@ async function save() {
         </template>
       </UDashboardNavbar>
       <UDashboardToolbar>
-        <div class="flex flex-wrap items-center gap-2 py-2">
+        <div class="flex w-full flex-wrap items-center gap-2 py-2">
           <UInput v-model="search" icon="i-lucide-search" placeholder="Search brands" class="w-full sm:w-56" />
           <USelect v-if="view !== 'board'" v-model="status" :items="statusOptions" class="w-36" />
           <USelect v-model="sort" :items="sortOptions" icon="i-lucide-arrow-up-down" class="w-40" />
@@ -291,7 +291,9 @@ async function save() {
                 :aria-label="`${entry.label} view`"
                 :aria-pressed="view === entry.value"
                 color="neutral"
-                :variant="view === entry.value ? 'soft' : 'subtle'"
+                variant="subtle"
+                :class="view === entry.value ? 'bg-white text-neutral-950 hover:bg-white' : undefined"
+                :ui="view === entry.value ? { leadingIcon: 'text-neutral-950' } : undefined"
                 @click="view = entry.value"
               />
             </UTooltip>

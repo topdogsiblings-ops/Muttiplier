@@ -6,19 +6,31 @@ const db = useDb()
 const run = useAction()
 const { confirmDialog } = useConfirm()
 const { people, channels, settings, load } = useRefData()
-const { access } = useAccess()
+const { access, isAdmin } = useAccess()
 const { currentOrg, load: loadOrgs } = useOrg()
 
-const tabs = [
+// Members (not admins) see only Connect your AI: each person connects their own AI app.
+const aiTab = { label: 'Connect your AI', value: 'ai', icon: 'i-lucide-plug' }
+const adminTabs = [
   { label: 'Profile', value: 'profile', icon: 'i-lucide-building-2' },
   { label: 'Channels', value: 'channels', icon: 'i-lucide-tv' },
   { label: 'Scripts', value: 'scripts', icon: 'i-lucide-pen-line' },
   { label: 'Members', value: 'members', icon: 'i-lucide-shield-check' },
   { label: 'Defaults', value: 'defaults', icon: 'i-lucide-timer' },
-  { label: 'Dropbox', value: 'dropbox', icon: 'i-simple-icons-dropbox' }
+  { label: 'Dropbox', value: 'dropbox', icon: 'i-simple-icons-dropbox' },
+  aiTab
 ]
+const tabs = computed(() => isAdmin.value ? adminTabs : [aiTab])
 const route = useRoute()
-const tab = ref(tabs.some(t => t.value === route.query.tab) ? String(route.query.tab) : 'profile')
+const tabFrom = (value: unknown) => tabs.value.some(t => t.value === value) ? String(value) : tabs.value[0]!.value
+const tab = ref(tabFrom(route.query.tab))
+// the sidebar's Connect your AI button links here with ?tab=ai, also while Settings is already open
+watch(() => route.query.tab, value => (tab.value = tabFrom(value)))
+// and the open tab is kept in the URL, so that button (and reloads) always land on the right one
+const router = useRouter()
+watch(tab, (value) => {
+  if (route.query.tab !== value) router.replace({ query: { ...route.query, tab: value } })
+})
 
 // the org's members, and the emails invited who haven't signed in yet
 const members = ref<(Row<'org_members'> & { profile: { email: string | null, full_name: string | null } | null })[]>([])
@@ -38,7 +50,8 @@ async function loadPersonChannels() {
   personChannels.value = must(await db.from('person_channels').select('person_id, channel_id'))
 }
 
-await Promise.all([load(true), loadMembers(), loadPersonChannels(), loadOrgs()])
+// the rest is admins' only; a member here just has the AI tab
+await Promise.all(isAdmin.value ? [load(true), loadMembers(), loadPersonChannels(), loadOrgs()] : [loadOrgs()])
 
 const saving = ref(false)
 
@@ -453,6 +466,7 @@ async function saveDefaults() {
         <!-- Defaults -->
         <ScriptSettings v-else-if="tab === 'scripts'" />
         <DropboxSettings v-else-if="tab === 'dropbox'" />
+        <AiSettings v-else-if="tab === 'ai'" />
 
         <template v-else>
           <p class="text-sm text-muted">

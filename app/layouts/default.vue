@@ -78,6 +78,19 @@ async function signOut() {
         </div>
 
         <UNavigationMenu :items="items" orientation="vertical" :collapsed="collapsed" />
+
+        <!-- Connect your AI (Settings → Connect your AI, open to every member), at the foot of the pane -->
+        <UButton
+          to="/settings?tab=ai"
+          icon="i-lucide-plug"
+          :label="collapsed ? undefined : 'Connect your AI'"
+          color="neutral"
+          variant="outline"
+          block
+          :square="collapsed"
+          class="mt-auto"
+          aria-label="Connect your AI"
+        />
       </template>
 
       <template #footer="{ collapsed }">

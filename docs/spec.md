@@ -524,7 +524,7 @@ All slugs lowercase kebab-case; generate once and never change after a shoot is 
 
 ---
 
-## 11. AI connector (planned)
+## 11. AI connector
 
 Kreate has **no built-in AI**: no drafting, rewording or b-roll suggestions, and no AI keys or usage to manage. People use their own AI (Claude, ChatGPT and others) through Kreate's **AI connector**, an MCP server their AI app connects to, on **Pro** and **Studio**.
 
@@ -533,6 +533,14 @@ Kreate has **no built-in AI**: no drafting, rewording or b-roll suggestions, and
 - **What it can write:** hooks, CTAs and VOs as drafts (on a shoot or in the Library), which a person reviews and saves in Kreate. No deleting, planning or billing at first.
 - **Voice** (Settings → Scripts): the org's **preamble** is its own wording (`settings.ai_preamble`) or, when that's empty, the recommended one written from its **profile** (`settings.org_profile`: what it does, what the ads sell, who films them, who they're for, how they should sound, spelling). The profile is asked for when the org is started (`create_org(p_name, p_slug, p_profile)`). The connector hands this over with the channel slots and script rules, so the AI writes in the org's voice.
 - **Klip** keeps its own AI on the desktop (treatment text, captions), which isn't affected.
+
+**As built (first version):**
+- **Endpoint:** `/mcp` (MCP, stateless, both the 2026-07-28 protocol and 2025-era clients, via `@modelcontextprotocol/server`). Unsigned requests get `401` with `resource_metadata` → `/.well-known/oauth-protected-resource/mcp` (also at the root), which names Supabase Auth (`<supabase>/auth/v1`) as the authorization server.
+- **Sign-in:** Supabase's OAuth 2.1 server (Dashboard → Authentication → OAuth Server: on, authorization path `/oauth/consent`, dynamic client registration on). Only tokens issued through it (they carry `client_id`) are accepted; requests run as the person, under the database's rules.
+- **Consent:** `/oauth/consent` shows the app, the organisation it will work in (pick another to switch to it) and what it can do; Approve or Cancel.
+- **Tools:** `get_workspace` (voice, profile, channel slots, script rules, hook types, formats), `list_brands` (products, claims, features), `get_library` (hooks, CTAs or formats), `list_shoots`, `get_shoot` (the shot list with scripts), `add_hooks` and `add_ctas` (into the Library, tagged `ai-draft`, with hook types matched by name). Only while the organisation's subscription is live.
+- **Connect your AI** (Settings → Connect your AI, `/settings?tab=ai`; a button at the foot of the sidebar, for everyone; members see only this tab of Settings): the connector's address, the steps, and the AI apps the person has connected, each with Disconnect.
+- Not yet: writing VOs, and limiting it to Pro and Studio (tiers aren't built).
 
 ---
 
