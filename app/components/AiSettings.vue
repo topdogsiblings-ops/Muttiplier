@@ -12,10 +12,14 @@ const connectorUrl = computed(() => import.meta.client ? `${window.location.orig
 type Grant = { client: { id: string, name: string, uri: string, logo_uri: string }, granted_at: string }
 const grants = ref<Grant[]>([])
 const loading = ref(true)
+const loadError = ref('')
+/** the account the list is for: AI apps are connected per person */
+const { access } = useAccess()
 async function loadGrants() {
   loading.value = true
-  const { data } = await supabase.auth.oauth.listGrants()
-  grants.value = data ?? []
+  const { data, error } = await supabase.auth.oauth.listGrants()
+  loadError.value = error?.message ?? ''
+  grants.value = Array.isArray(data) ? data : []
   loading.value = false
 }
 onMounted(loadGrants)
@@ -79,16 +83,22 @@ const date = (value: string) => new Date(value).toLocaleDateString(undefined, { 
         <h3 class="font-semibold text-highlighted">
           Connected AI apps
         </h3>
+        <p v-if="access?.email" class="text-sm text-muted">
+          The ones connected while signed in to Kreate as {{ access.email }}.
+        </p>
       </template>
       <p v-if="loading" class="flex items-center gap-2 text-sm text-muted">
         <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" /> Loading…
+      </p>
+      <p v-else-if="loadError" class="text-sm text-error">
+        Couldn't load them: {{ loadError }}
       </p>
       <p v-else-if="!grants.length" class="text-sm text-muted">
         None yet.
       </p>
       <ul v-else class="divide-y divide-default">
         <li v-for="grant in grants" :key="grant.client.id" class="flex items-center gap-3 py-2">
-          <UAvatar :src="grant.client.logo_uri || undefined" :alt="grant.client.name" size="sm" />
+          <UAvatar v-bind="aiAppLogo(grant.client)" :alt="grant.client.name" size="sm" :ui="{ icon: 'text-highlighted' }" />
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-medium text-highlighted">
               {{ grant.client.name }}

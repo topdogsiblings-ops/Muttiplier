@@ -36,6 +36,17 @@ onMounted(async () => {
 })
 
 const orgId = ref(currentOrg.value?.id)
+
+// It connects as whoever is signed in to Kreate here. To use another Kreate account, sign out of
+// Kreate only (the AI app's own sign-in is untouched) and come back to this same request.
+const { access, reset } = useAccess()
+const redirect = useSupabaseCookieRedirect()
+async function useAnotherAccount() {
+  redirect.path.value = route.fullPath
+  await supabase.auth.signOut()
+  reset()
+  await navigateTo('/login')
+}
 const orgItems = computed(() => orgs.value.map(org => ({ label: org.name, value: org.id })))
 const orgName = computed(() => orgs.value.find(org => org.id === orgId.value)?.name ?? '')
 
@@ -76,7 +87,7 @@ async function answer(approve: boolean) {
         <AppLogo class="size-10 text-highlighted" />
         <template v-if="details">
           <UIcon name="i-lucide-arrow-left-right" class="size-5 text-muted" />
-          <UAvatar :src="details.client.logo_uri || undefined" :alt="details.client.name" size="lg" />
+          <UAvatar v-bind="aiAppLogo(details.client)" :alt="details.client.name" size="lg" :ui="{ icon: 'text-highlighted' }" />
         </template>
       </div>
 
@@ -96,6 +107,13 @@ async function answer(approve: boolean) {
             <a v-if="details.client.uri" :href="details.client.uri" target="_blank" rel="noopener" class="underline">{{ details.client.uri }}</a>
           </p>
         </div>
+
+        <p class="rounded-md bg-elevated/60 px-3 py-2 text-sm text-muted">
+          It will work as <span class="font-medium text-highlighted">{{ access?.email }}</span>.
+          <button type="button" class="underline hover:text-default" @click="useAnotherAccount">
+            Use another Kreate account
+          </button>
+        </p>
 
         <UFormField v-if="orgs.length > 1" label="Organisation" help="It works in this organisation. Choosing another switches Kreate to it too.">
           <USelect v-model="orgId" :items="orgItems" class="w-full" />
