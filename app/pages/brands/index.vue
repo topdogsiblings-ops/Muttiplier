@@ -218,7 +218,8 @@ async function save() {
 </script>
 
 <template>
-  <UDashboardPanel id="brands">
+  <!-- on the board, the page itself doesn't scroll: each column scrolls its own cards -->
+  <UDashboardPanel id="brands" :ui="{ body: view === 'board' ? 'overflow-hidden' : undefined }">
     <template #header>
       <UDashboardNavbar title="Brands">
         <template #leading>
@@ -413,20 +414,20 @@ async function save() {
       </div>
 
       <!-- Board: a column per status; drag a card (or use its menu) to move the brand along -->
-      <div v-else-if="view === 'board'" class="flex gap-3 overflow-x-auto pb-2">
+      <div v-else-if="view === 'board'" class="flex min-h-0 flex-1 gap-3 overflow-x-auto pb-2">
         <section
           v-for="column in columns"
           :key="column.status"
-          class="flex w-72 shrink-0 flex-col rounded-lg border border-default bg-elevated/30 transition"
+          class="flex min-h-0 w-72 shrink-0 flex-col rounded-lg border border-default bg-elevated/30 transition"
           :class="{ 'ring-2 ring-primary': dropTarget === column.status }"
           @dragover.prevent="dropTarget = column.status"
           @drop.prevent="onDrop(column.status)"
         >
-          <header class="flex items-center gap-2 border-b border-default px-3 py-2">
+          <header class="flex shrink-0 items-center gap-2 border-b border-default px-3 py-2">
             <UBadge :label="column.status" :color="BRAND_STATUS_COLORS[column.status]" variant="subtle" class="capitalize" />
             <span class="text-xs text-muted tabular-nums">{{ column.all.length }}</span>
           </header>
-          <div class="flex min-h-24 flex-1 flex-col gap-2 p-2">
+          <div class="flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto p-2">
             <div
               v-for="brand in column.shown"
               :key="brand.id"
