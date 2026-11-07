@@ -309,7 +309,7 @@ async function saveProduct() {
             <UFormField label="Allowed claims">
               <UTextarea v-model="product.claims_allowed" autoresize class="w-full" />
             </UFormField>
-            <UFormField label="Forbidden claims" help="AI drafting is told to avoid these">
+            <UFormField label="Forbidden claims" help="Your connected AI is told to avoid these">
               <UTextarea v-model="product.claims_forbidden" autoresize class="w-full" />
             </UFormField>
             <UFormField label="Notes">

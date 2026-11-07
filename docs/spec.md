@@ -41,8 +41,8 @@ This spec covers the Library, Brands and Planner. Ingest, rendering and submissi
 - **Frontend/app:** Nuxt 4 (SPA, `ssr: false`) + Nuxt UI v4 + Tailwind, deployed on **Vercel**.
 - **Database + auth:** **Supabase** (Postgres, Auth, Row Level Security) via `@nuxtjs/supabase`.
 - **Auth:** Supabase Auth, with Google or an email and password (Supabase's "Confirm email" must stay on); access comes from membership of an org.
-- **Server routes:** Nuxt server (Nitro) API routes for anything needing secrets (AI drafting, exports). They run as the signed-in user under RLS.
-- **AI drafting:** Anthropic API (`@anthropic-ai/sdk`) called from server routes, structured output validated with Zod. Model name in an env var.
+- **Server routes:** Nuxt server (Nitro) API routes for anything needing secrets (billing, licenses, Dropbox, exports). They run as the signed-in user under RLS.
+- **No built-in AI.** People use their own AI through Kreate's **AI connector** (§11, planned).
 - Mobile-friendly throughout. The checklist is used on phones on set.
 
 ### Billing
@@ -50,11 +50,10 @@ This spec covers the Library, Brands and Planner. Ingest, rendering and submissi
 Kreate is **$54.99 USD a month per org**, the whole team included, with a **30-day free trial** the first time (card on file). Stripe Checkout with **Managed Payments**: Stripe is the merchant of record and handles sales tax, fraud, disputes and receipts.
 - **Billing** (Settings → Profile for admins; members see the status at `/billing`, which sends admins to Settings): **Start free trial** / **Subscribe** opens Checkout (`/api/billing/checkout`); **Manage billing** opens Stripe's Customer Portal (`/api/billing/portal`) for the payment method, invoices and cancelling. Members see the status.
 - **The webhook** (`/api/billing/webhook`, signed) re-reads the subscription from Stripe on every event, so events arriving out of order can't leave `org_subscriptions` stale. Only the server writes billing rows, with the service role.
-- **Entitlement**: an org can use the app while its subscription is trialing, active or past due (Stripe is retrying), or when it's billing-exempt (`orgs.billing_exempt`: topdogugc). Otherwise every page but billing redirects there (admins to Settings, members to `/billing`), and AI drafting refuses. A new org goes to billing first.
-- **AI usage**: each drafting request's tokens are added to `org_ai_usage` (per org per month). The monthly limit isn't set yet.
+- **Entitlement**: an org can use the app while its subscription is trialing, active or past due (Stripe is retrying), or when it's billing-exempt (`orgs.billing_exempt`: topdogugc). Otherwise every page but billing redirects there (admins to Settings, members to `/billing`). A new org goes to billing first.
 - The price is found by lookup key (`top_dog_kit_monthly`), so the app holds no price ID. Env: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY` (and optionally `STRIPE_PRICE_LOOKUP_KEY`).
 - **Klip** (Pawcessor) is **$189.99 USD once per org** (lookup key `ugc_klip`), bought in billing (`/api/billing/klip-checkout`: one-time Checkout, Managed Payments, needs a live Kreate). The webhook sets `orgs.klip_purchased_at` on `checkout.session.completed` / `async_payment_succeeded` (re-reading the session) and clears it on a full refund (`charge.refunded`). **Klip access** (`private.org_klip_access`): `purchased`, `exempt` (billing-exempt org), `trial` (Kreate trialing: ends with the trial) or `none`; `private.org_can_use_klip` = a live Kreate and access.
-- **Klip licenses**: Klip connects with a code, like PyCharm or the GitHub CLI, and never signs in to Supabase. It calls `/api/license/device/start` (returns `deviceCode`, a short `userCode` like `KQ7X-M2PD`, `verificationUriComplete` = `/klip/activate?code=…`, `expiresIn` 600, `interval` 5), opens the activation page, and polls `/api/license/device/poll` (`{ deviceCode }`) every `interval` seconds: `pending`, `slow_down`, `denied`, `expired`, or `approved` with `{ token, license }`, handed over once. On `/klip/activate` a signed-in member checks the code, picks the org and approves (`/api/license/device/approve`). Codes (`license_device_codes`, server only) last 10 minutes and are used once; only a hash of the device code is stored. Klip refreshes with `/api/license/refresh` (`{ token }`, up to 30 days after issue, membership re-checked); past that it connects again. `/api/license/issue` gives the signed-in Kreate member a token directly. The token is `<payload>.<signature>` (base64url), signed Ed25519; Pawcessor checks it offline with the public key (`/api/license/public-key`). Payload: `v`, `orgId`, `userId`, `subscriptionState` (`active`|`lapsed`), `klipPurchased` (has Klip access), `klipAccess`, `trialEndsAt`, `issuedAt`, `expiresAt` (ms since epoch; 72 hours offline, capped at the trial's end when Klip comes from the trial), plus `cutPurchased` / `cutAccess`, the same values under their old names until Klip reads the new ones. Klip opens only when `subscriptionState` is `active` and `klipPurchased`. Env: `LICENSE_PRIVATE_KEY` (PKCS#8 DER, base64).
+- **Klip licenses**: Klip connects with a code, like PyCharm or the GitHub CLI, and never signs in to Supabase. It calls `/api/license/device/start` (returns `deviceCode`, a short `userCode` like `KQ7X-M2PD`, `verificationUriComplete` = `/klip/activate?code=…`, `expiresIn` 600, `interval` 5), opens the activation page, and polls `/api/license/device/poll` (`{ deviceCode }`) every `interval` seconds: `pending`, `slow_down`, `denied`, `expired`, or `approved` with `{ token, license }`, handed over once. On `/klip/activate` a signed-in member checks the code, picks the org and approves (`/api/license/device/approve`). Codes (`license_device_codes`, server only) last 10 minutes and are used once; only a hash of the device code is stored. Klip refreshes with `/api/license/refresh` (`{ token }`, up to 30 days after issue, membership re-checked); past that it connects again. `/api/license/issue` gives the signed-in Kreate member a token directly. The token is `<payload>.<signature>` (base64url), signed Ed25519; Pawcessor checks it offline with the public key (`/api/license/public-key`). Payload: `v`, `orgId`, `orgName` (display only), `userId`, `subscriptionState` (`active`|`lapsed`), `klipPurchased` (has Klip access), `klipAccess`, `trialEndsAt`, `issuedAt`, `expiresAt` (ms since epoch; 72 hours offline, capped at the trial's end when Klip comes from the trial). Klip opens only when `subscriptionState` is `active` and `klipPurchased`. Env: `LICENSE_PRIVATE_KEY` (PKCS#8 DER, base64).
 
 ### Design tokens
 
@@ -66,8 +65,6 @@ Kreate is **$54.99 USD a month per org**, the whole team included, with a **30-d
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=      # server routes only; not required today
-ANTHROPIC_API_KEY=
-ANTHROPIC_MODEL=claude-opus-5-5
 ```
 
 ---
@@ -116,7 +113,7 @@ Scripts use double-brace slots: `{{brand}}`, `{{product}}`, the org's channel sl
 
 - **Per channel:** every hook, VO and CTA is filmed per person per channel. A script that uses a channel slot needs a separate take for each channel (each says that channel's value); one that doesn't is recorded once and that take fills each of the person's channels. There are no universal hooks: hooks never cross shoots.
 - VOs should be written to suit every channel by default so all channels can share them. Not enforced; soft warning if a VO uses a channel slot.
-- **Script rules** (Settings → Scripts: `settings.script_rules`): words or phrases the org doesn't want in scripts, each with the warning to show and optionally what to say instead. Matching ignores case, hyphens and plurals. Every script editor underlines them with the warning, and AI drafting is told to avoid them. (topdogugc's: "owner" → "dog parent".)
+- **Script rules** (Settings → Scripts: `settings.script_rules`): words or phrases the org doesn't want in scripts, each with the warning to show and optionally what to say instead. Matching ignores case, hyphens and plurals. Every script editor underlines them with the warning, and a connected AI is told to avoid them. (topdogugc's: "owner" → "dog parent".)
 - Editor UI: highlight slots, show a live preview against a chosen product + channel.
 
 ---
@@ -187,8 +184,8 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 - `code text unique` (e.g. `F01`), `name text`, `description text`
 - `beats text[] default '{problem,product,result}'`
 - `kind text` — `modular` (a VO between a Library hook and CTA) or `standalone` (opens and closes itself: its first beat is always `hook` and its last `cta`, filmed as takes like any beat; never paired with Library hooks or CTAs)
-- `beat_descriptions jsonb` — beat → guidance: what to write in it (shown under the beat in the VO editor, used by AI drafting, and as `?` help in the b-roll planner)
-- `beat_examples jsonb` — beat → an example line (shown in the VO editor, used by AI drafting). Every format has them.
+- `beat_descriptions jsonb` — beat → guidance: what to write in it (shown under the beat in the VO editor, given to a connected AI, and as `?` help in the b-roll planner)
+- `beat_examples jsonb` — beat → an example line (shown in the VO editor, given to a connected AI). Every format has them.
 - `beat_display jsonb` — the **default layout**: beat → `face` (the speaker on camera), `broll` (their voice over b-roll), `screen` (a text message on a phone screen, not filmed) or `voice_note` (a filmed take played as a voice-note bubble; see Text Thread format). Missing = broll, except a standalone format's hook and cta beats (face). Face beats get no b-roll (and no b-roll section in the planner). Treatments can change how a beat is shown later. The built-in Face to camera and Over b-roll treatments make whole-video versions on top of it.
 - `source_url` — a reference video for the format, shown when writing its VOs
 - `beat_broll jsonb` — beat → suggested b-roll shots, `[{ "description" }]`; edited on the format, offered in the planner
@@ -318,7 +315,6 @@ Tabs: **Hooks** (two views: **Scripts**, the hooks themselves, and **Types**, th
 - Archive / unarchive (with confirm). No hard delete if referenced by a shoot.
 - Usage count per template ("used in 4 shoots").
 - Duplicate action.
-- **AI drafts** (§11) for hooks (with captions) and CTAs. VOs are drafted beat by beat in the shoot's VO editor.
 - Seeded starter library: 30 hooks, 15 CTAs, 10 VOs, 5 formats, with starter beat descriptions and b-roll suggestions.
 
 ---
@@ -346,11 +342,11 @@ A **summary panel** sits above the tabs and updates live: recipes, estimated sub
 1. **General:** what's left before planning, the calculator's warnings, slots to fill, batching (once filmed) and **Setup**: product (locked once the shoot has VOs, which belong to it), date, location, people (add/remove; any active person), channels (default from the brand), batch size (% of valid recipes, default 5%), runway target, **B-roll variations**, **Cast mixes** and **Wording mixes**, kit tag. Everyone must be linked to at least one of the shoot's channels (it blocks planning).
 2. **Formats:** add or remove formats on the plan. Removing a format (confirmed) also removes its VOs and its b-roll.
 3. **Hooks:** on one shared shot list that **everyone films together**: each person films every hook once per channel they're linked to (the per-person rows show person · channel). Picked from the Library (general hooks and the shoot's product's own), or **Write a hook** right here: it's this shoot's own (badged "Written here", not in the Library). If it works, **Save to [product]** in its Edit menu keeps it in the Library for that product's later shoots. Removing a hook written here deletes it unless another shoot uses it.
-4. **VOs:** written here, for the shoot's product, grouped by format (one collapsible panel per format on the plan). **Write a VO** (or **Write F01** on a format) opens the VO editor. Its writer is the signed-in user's person on the cast (someone not linked to the cast, or not on the shoot, can't write one); an admin instead picks anyone on the shoot. Only the writer or an admin can edit it. **Cast on** picks one of the writer's channels, then **Cast with** adds people on the shoot who are on it: they record the same script, perform it on that channel only, and their beats can be mixed there (Cast mixes). The editor has what it's about (one of the product's features, or the product as a whole), a format, **Only with hooks** / **Only with CTAs** (links to the shoot's hooks and CTAs: the VO only goes with those; empty = any), one block per beat, the estimated length (computed) and AI drafting of the beats. Saving puts it on the shot list for its writer on each of their channels; its format joins the plan. **The VO** in a VO's Edit menu (writer or admin only) reopens it; its beats update this shoot's copy. A linked VO's row says "Only with H01, H03". **Earlier VOs** offers the product's VOs from its other shoots (written by someone on this shoot), bringing their linked hooks / CTAs onto the shoot. Removing a VO written here deletes it unless another shoot uses it. For each beat the editor shows the format's guidance and example line, how the beat is shown (face or over b-roll) and the format's reference link; **Another wording** adds an alternate wording of the beat. In a standalone format the first block is the video's hook and the last its CTA, and each hook wording can be given a hook type. **Copy from** (top right of the editor) lists earlier VOs in the same format (the writer's own first, then everyone's, any product or feature) and copies one's beats and wordings in; the writer, product and what it's about stay as set.
+4. **VOs:** written here, for the shoot's product, grouped by format (one collapsible panel per format on the plan). **Write a VO** (or **Write F01** on a format) opens the VO editor. Its writer is the signed-in user's person on the cast (someone not linked to the cast, or not on the shoot, can't write one); an admin instead picks anyone on the shoot. Only the writer or an admin can edit it. **Cast on** picks one of the writer's channels, then **Cast with** adds people on the shoot who are on it: they record the same script, perform it on that channel only, and their beats can be mixed there (Cast mixes). The editor has what it's about (one of the product's features, or the product as a whole), a format, **Only with hooks** / **Only with CTAs** (links to the shoot's hooks and CTAs: the VO only goes with those; empty = any), one block per beat and the estimated length (computed). Saving puts it on the shot list for its writer on each of their channels; its format joins the plan. **The VO** in a VO's Edit menu (writer or admin only) reopens it; its beats update this shoot's copy. A linked VO's row says "Only with H01, H03". **Earlier VOs** offers the product's VOs from its other shoots (written by someone on this shoot), bringing their linked hooks / CTAs onto the shoot. Removing a VO written here deletes it unless another shoot uses it. For each beat the editor shows the format's guidance and example line, how the beat is shown (face or over b-roll) and the format's reference link; **Another wording** adds an alternate wording of the beat. In a standalone format the first block is the video's hook and the last its CTA, and each hook wording can be given a hook type. **Copy from** (top right of the editor) lists earlier VOs in the same format (the writer's own first, then everyone's, any product or feature) and copies one's beats and wordings in; the writer, product and what it's about stay as set.
 5. **CTAs:** like hooks: from the Library (general CTAs and the product's own), or **Write a CTA** here (script and mode), this shoot's own until **Save to [product]**.
-6. **B-roll:** one collapsible panel per planned format (name, description, shot count), a section per beat with its `?` description, plus **General product shots** (suggestions from Settings). Each beat's suggested shots are in its **Suggested** dropdown, one at a time or all at once; a whole format's can be added together ("Add all suggestions"), or shots written by hand; **Generate b-roll** asks the AI for shots for every section based on the brand, product, formats and beat descriptions. A shot is just its description (and, optionally, a product feature).
+6. **B-roll:** one collapsible panel per planned format (name, description, shot count), a section per beat with its `?` description, plus **General product shots** (suggestions from Settings). Each beat's suggested shots are in its **Suggested** dropdown, one at a time or all at once; a whole format's can be added together ("Add all suggestions"), or shots written by hand. A shot is just its description (and, optionally, a product feature).
 
-- On the Hooks, VOs and CTAs tabs, every item shows its rendered script (slots filled; `{{dog}}` per §5). One **Edit** menu per line: **For everyone** rewrites the shoot's own copy of a line (every person's snapshot) for this shoot only; the library isn't touched and per-person overrides stay on top. **Permanently** (hooks and CTAs) edits the Library template for later shoots and updates this shoot's copy to match (a planned shoot's copy with slots filled); other shoots keep their own copy, and universal hooks still only allow `{{dog}}`. **Per person** opens each person's own version. Or edit a person's line inline to create a per-person override, or use AI to reword it per person. Captions on hooks are snapshotted.
+- On the Hooks, VOs and CTAs tabs, every item shows its rendered script (slots filled; `{{dog}}` per §5). One **Edit** menu per line: **For everyone** rewrites the shoot's own copy of a line (every person's snapshot) for this shoot only; the library isn't touched and per-person overrides stay on top. **Permanently** (hooks and CTAs) edits the Library template for later shoots and updates this shoot's copy to match (a planned shoot's copy with slots filled); other shoots keep their own copy, and universal hooks still only allow `{{dog}}`. **Per person** opens each person's own version. Or edit a person's line inline to create a per-person override. Captions on hooks are snapshotted.
 
 - **Codes:** assigned automatically when items are added (H/V/C/U, sequential within the shoot, shared per template). **Re-number** closes gaps while in draft.
 - **Status:**
@@ -409,7 +405,9 @@ Route: `/shoots/[code]/sheet?person=[slug]&show=[hook|cta|body|broll]`. Both fil
 - Mobile-first, large tap targets. Updates save immediately.
 - Header: shoot, product, brand, date, elapsed time, progress for what's showing, Start / End / Resume.
 - Sections: **Hooks** (used for every channel), **CTAs**, **VOs** (recorded off set), then **B-roll** by beat.
-- Each item: code, rendered script (VOs by beat), hook type (hooks), location, and filming notes ("How to film").
+- **One item per thing to film:** each hook, each CTA, and each wording of each VO beat (`V01 problem`, `V01 problem (2)` for its second wording), so progress is tracked take by take. A standalone VO's hook and CTA beats are items in **Hooks** and **CTAs** only (badged "Opens / Closes a standalone VO"); its other beats are in **VOs**. A beat shown on screen isn't filmed, so it isn't an item.
+- **Only what recipes use:** hooks and CTAs go with modular VOs, so a hook or CTA shows only where a modular VO is filmed for its channel (`usedByRecipes`). A shoot of standalone VOs alone films none, and can be planned without them.
+- Each item: code (and beat), rendered line, hook type, location, and filming notes ("How to film"). Skipping someone on a VO beat skips their whole VO (status is per VO).
 - **Every deliverable gets its clip from the checklist** with **Add clip**, which picks a video from the phone. Every take is filmed, VOs and VO CTAs included: they're recorded on camera (selfie), so their picture is there for treatments such as greenscreen and picture-in-picture, and their sound plays over b-roll as before. A voiceover's length is checked against its script's reading time (Settings → Defaults). Clips are filmed and recorded in the phone's own apps (iOS compresses video its camera hands straight to a web page). **Takes:** each person films every item once per channel they're on; a line that doesn't say `{{dog}}` is one take for all of their channels (saved once, filling each channel's spot, uploaded once and copied in Dropbox to the other channels' folders), one that does is a take per channel. A VO is recorded **beat by beat**, one file per beat; the checklist asks for each beat to be filmed with the dog, doing something real, since any VO can play face to camera. An item is ticked off once every spot it has (every beat of a VO) has a clip; nothing can be ticked by hand. Removing a clip unticks it. Skip / unskip stays manual. Every wording of a beat is its own take (`problem/V01-2` beside `problem/V01`). A standalone VO's hook-beat takes are listed under **Hooks** and its CTA-beat takes under **CTAs**; only its other beats are under VOs.
   - **Everyone view:** each hook / CTA / VO once, with a row per person: their takes as Add clip buttons labelled by channel ("Nix + Whiskey", or a beat for a VO), Skip / Unskip for their whole entry, and their clips below. Per-person rewordings are listed under the item.
   - **Person view:** the same cards, just that person's row.
@@ -526,17 +524,15 @@ All slugs lowercase kebab-case; generate once and never change after a shoot is 
 
 ---
 
-## 11. AI drafting
+## 11. AI connector (planned)
 
-Server routes calling the Anthropic API (`ANTHROPIC_MODEL`, default `claude-opus-5-5`). Every generation produces **drafts** a person approves before saving; nothing writes to the Library automatically. Refusals and invalid output are reported, not saved.
+Kreate has **no built-in AI**: no drafting, rewording or b-roll suggestions, and no AI keys or usage to manage. People use their own AI (Claude, ChatGPT and others) through Kreate's **AI connector**, an MCP server their AI app connects to, on **Pro** and **Studio**.
 
-- **Hook drafts:** given a hook type and optional tags, generate N hooks in slot syntax, each with a suggested caption.
-- **VO drafts:** given a format (and its beat descriptions) and what it's about, generate a beat-structured VO script.
-- **CTA drafts:** given a mode (sync/vo), generate CTAs.
-- **Per-person rewording:** in the planner, reword a hook, VO or CTA for each person (saved as `script_override`), so cast members don't say identical lines.
-- **B-roll generation:** in the planner, suggest shots for every planned format's beats and the general product section, using the brand, product, format and beat descriptions, with the format's own suggestions as examples.
-- Respect the product's `claims_forbidden` when generating with a product selected.
-- **AI context** (Settings → Scripts): every request starts with the org's **preamble**, its channel slots and its script rules. The preamble is the org's own wording (`settings.ai_preamble`) or, when that's empty, the recommended one written from its **profile** (`settings.org_profile`: what it does, what the ads sell, who films them, who they're for, how they should sound, spelling). The profile is asked for when the org is started (`create_org(p_name, p_slug, p_profile)`).
+- **Signing in:** the AI app signs in to Kreate as the person (OAuth), so everything it reads or writes is scoped to their organisation by the database's own rules.
+- **What it can read:** brands, products and their allowed and forbidden claims, the Library (hooks, CTAs, formats with beat guidance and examples, hook types), a shoot's plan, and the organisation's **voice**: its preamble, channel slots and script rules.
+- **What it can write:** hooks, CTAs and VOs as drafts (on a shoot or in the Library), which a person reviews and saves in Kreate. No deleting, planning or billing at first.
+- **Voice** (Settings → Scripts): the org's **preamble** is its own wording (`settings.ai_preamble`) or, when that's empty, the recommended one written from its **profile** (`settings.org_profile`: what it does, what the ads sell, who films them, who they're for, how they should sound, spelling). The profile is asked for when the org is started (`create_org(p_name, p_slug, p_profile)`). The connector hands this over with the channel slots and script rules, so the AI writes in the org's voice.
+- **Klip** keeps its own AI on the desktop (treatment text, captions), which isn't affected.
 
 ---
 
@@ -621,7 +617,7 @@ Motion's pet data gives **Text message** the highest spend use ratio of any form
   - `screen`: the beat's text is a message bubble on a phone screen. It **isn't filmed**: no take, nothing to film in the checklist (shown there marked "On screen: not filmed"), no b-roll, no file in the plan. In the manifest it's a clip with no file (`file` ''), its text in `script` and its length its reading time (words ÷ speech pace, plus a second for the typing dots).
   - `voice_note`: a voice-note bubble on that screen, playing the take's sound. Filmed like any VO beat (length-checked against its script), no b-roll.
 - **F21 Text Thread:** `hook` (screen) → `messages` (screen, one text per line) → `voice note` (voice_note: the other person) → `reply` (voice_note: you) → `cta` (screen: the link). About 8–12 seconds. Two voice notes, so a **cast mix** is two people's voices in one thread.
-- **Writing it:** the writer types every message in the VO editor, beat by beat; alternates and hook types work as usual (the first message is the hook). AI drafting writes messages short like real texts and voice notes casual.
+- **Writing it:** the writer types every message in the VO editor, beat by beat; alternates and hook types work as usual (the first message is the hook).
 - **Recipes:** a standalone VO's hook and CTA can be screen beats (`hook.text`, `cta.text`, `cta.mode` "screen"; no file). Cast mixes only vary filmed beats (a message reads the same whoever wrote it). Layout treatments leave screen and voice-note beats alone, so they skip a text thread; overlays that need nothing (Retro look) still apply; greenscreen and picture-in-picture don't (no face or b-roll beat to show the speaker).
 - **Showdog:** a chat-screen component draws the bubbles (with typing dots between), plays each voice note's sound in a waveform bubble, and ends on the CTA message.
 
@@ -651,7 +647,7 @@ Motion's pet data gives **Text message** the highest spend use ratio of any form
 - Checklist (mobile, live ticks, filters, per-clip b-roll), CSV, `shootsheet.json`, folder skeleton zip.
 - ✅ Unzipping the skeleton gives the folder of every clip in `shootsheet.json`, under both `raw/` and `edited/`, plus the shoot's `renders/`.
 
-**Phase 6 — AI drafting** ✔ per §11.
+**Phase 6 — AI drafting** ✔, then removed: Kreate relies on people's own AI through the connector (§11).
 
 **Phase 7 — Dropbox uploads** per §12, once the open questions are answered.
 
@@ -672,18 +668,20 @@ Motion's pet data gives **Text message** the highest spend use ratio of any form
 
 - **Subscription tiers** (planned MVP improvement, not built). Organisations stay the billing unit; limits are per organisation:
 
-  | | Creator | Team | Agency |
+  | | Starter | Pro | Studio |
   |---|---|---|---|
   | Price (USD a month) | $34.99 | $59.99 | $149.99 |
   | Brands | 5 | 10 | Unlimited |
   | People | 2 | Unlimited | Unlimited |
   | Shoots per month | tbd | tbd | Unlimited |
-  | AI credits per month | tbd | tbd | tbd |
+  | AI connector (§11) | – | ✓ | ✓ |
   | Insights and diversity settings | ✓ | ✓ | ✓ |
   | Treatments | Basic | Moderate | Advanced |
   | Klip | Buy | Buy | Included |
 
-  The free trial is on Team. Existing subscribers keep $54.99 with Team limits. Shoots per month and AI credits are to be set from what a shoot actually uses in AI drafting (`org_ai_usage`). It needs a plan on `org_subscriptions` (from its price), a limits table, the checks, and upgrades through the Customer Portal. With it: **deleting a brand**, which deletes its products and all their past shoots, so the brand count can be managed. One free trial per person, not just per org, so a new org isn't a new trial.
+  The free trial is on Pro. Existing subscribers keep $54.99 with Pro limits.
+
+  Shoots per month are to be set from real use.
 
 - Local worker (Windows now, VPS later): ingest, auto-tagging, conformance checks, caption alignment, recipe generation, selection, rendering.
 - Submission queue and form-filling Chrome extension (linked to Dropbox).

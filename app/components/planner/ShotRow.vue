@@ -347,7 +347,6 @@ const editItems = computed<DropdownMenuItem[]>(() => [
         :person-name="`${personName(item.person_id)} · ${channelName(item.channel_id)}`"
         :context="itemSlotContext(bundle, item.channel_id)"
         :draft="draft"
-        :product-id="productId"
         @update="emit('updateItem', item, $event)"
       />
     </div>

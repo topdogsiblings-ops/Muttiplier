@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Starting a new org: for someone who isn't in one (the access gate sends them here while new orgs
 // are open), or from the organisation menu. Members join through an admin's invite. What it does
-// becomes its profile, which AI drafting is told (changeable later in Settings → Scripts).
+// becomes its profile: its voice, given to its own AI when connected (changeable in Settings → Scripts).
 definePageMeta({ layout: 'plain' })
 
 const { orgs, createOrg } = useOrg()
@@ -54,7 +54,7 @@ async function signOut() {
 
       <USeparator label="About your ads" />
       <p class="text-sm text-muted">
-        AI drafting writes scripts in your voice from this. You can change it any time in Settings → Scripts.
+        This is your voice: when you connect your own AI to Kreate, it writes scripts the way you describe here. You can change it any time in Settings → Scripts.
       </p>
       <UFormField label="What does your organisation do?" required>
         <UInput v-model="profile.about" class="w-full" placeholder="a UGC agency making ads for beauty brands" />
@@ -75,7 +75,7 @@ async function signOut() {
         <USelect v-model="profile.language" :items="LANGUAGES" class="w-full" placeholder="Any" />
       </UFormField>
       <p v-if="ready" class="rounded-md bg-elevated p-3 text-xs text-muted">
-        <span class="font-medium text-default">AI will be told:</span> {{ preview }}
+        <span class="font-medium text-default">Your AI will be told:</span> {{ preview }}
       </p>
 
       <UButton block size="lg" label="Create" :loading="saving" :disabled="!ready" @click="create" />

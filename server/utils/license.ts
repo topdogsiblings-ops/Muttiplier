@@ -17,6 +17,8 @@ const KLIP_ACCESS: KlipAccess[] = ['purchased', 'trial', 'exempt', 'none']
 export interface License {
   v: 1
   orgId: string
+  /** the org's display name, for showing which org Klip is licensed to (display only) */
+  orgName?: string
   userId: string
   /** the org's Kreate: trialing, active and past due (Stripe still retrying) and billing-exempt are all 'active' */
   subscriptionState: 'active' | 'lapsed'
@@ -24,10 +26,6 @@ export interface License {
   klipPurchased: boolean
   /** how it has Klip, for showing only */
   klipAccess: KlipAccess
-  /** @deprecated the same as klipPurchased, for Klip builds from before the rename; goes once Klip reads klipPurchased */
-  cutPurchased: boolean
-  /** @deprecated the same as klipAccess; goes with cutPurchased */
-  cutAccess: KlipAccess
   /** when the trial ends (ms since epoch), while trialing */
   trialEndsAt: number | null
   issuedAt: number
@@ -50,7 +48,11 @@ export const licensePublicKey = (event: H3Event) =>
 
 /** The org's license for this user, signed. */
 export async function issueLicense(event: H3Event, orgId: string, userId: string) {
-  const { data, error } = await serviceDb(event).rpc('org_license_state', { p_org_id: orgId })
+  const db = serviceDb(event)
+  const [{ data, error }, { data: org }] = await Promise.all([
+    db.rpc('org_license_state', { p_org_id: orgId }),
+    db.from('orgs').select('name').eq('id', orgId).maybeSingle()
+  ])
   if (error) throw createError({ statusCode: 500, statusMessage: error.message })
   const state = data?.[0]
   if (!state) throw createError({ statusCode: 404, statusMessage: 'No such organisation' })
@@ -66,12 +68,11 @@ export async function issueLicense(event: H3Event, orgId: string, userId: string
   const license: License = {
     v: 1,
     orgId,
+    ...(org?.name ? { orgName: org.name } : {}),
     userId,
     subscriptionState: state.entitled ? 'active' : 'lapsed',
     klipPurchased: klipAccess !== 'none',
     klipAccess,
-    cutPurchased: klipAccess !== 'none',
-    cutAccess: klipAccess,
     trialEndsAt,
     issuedAt,
     expiresAt

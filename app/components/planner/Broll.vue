@@ -183,13 +183,6 @@ async function remove(shot: Row<'broll_shots'>) {
           Each channel films as many clips of each as it likes.
         </template>
       </p>
-      <PlannerBrollGenerator
-        :shoot-id="props.shootId"
-        :shoot-code="props.shootCode"
-        :sections="sections"
-        :next-order="nextOrder()"
-        @added="emit('changed')"
-      />
     </div>
 
     <UAlert

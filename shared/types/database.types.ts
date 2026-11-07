@@ -639,47 +639,6 @@ export type Database = {
           },
         ]
       }
-      org_ai_usage: {
-        Row: {
-          cache_read_tokens: number
-          cache_write_tokens: number
-          input_tokens: number
-          month: string
-          org_id: string
-          output_tokens: number
-          requests: number
-          updated_at: string
-        }
-        Insert: {
-          cache_read_tokens?: number
-          cache_write_tokens?: number
-          input_tokens?: number
-          month: string
-          org_id: string
-          output_tokens?: number
-          requests?: number
-          updated_at?: string
-        }
-        Update: {
-          cache_read_tokens?: number
-          cache_write_tokens?: number
-          input_tokens?: number
-          month?: string
-          org_id?: string
-          output_tokens?: number
-          requests?: number
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "org_ai_usage_org_id_fkey"
-            columns: ["org_id"]
-            isOneToOne: false
-            referencedRelation: "orgs"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       org_invites: {
         Row: {
           channel_ids: string[]
@@ -1963,10 +1922,6 @@ export type Database = {
         }[]
       }
       org_signup_open: { Args: never; Returns: boolean }
-      record_ai_usage: {
-        Args: { p_cache_read: number; p_cache_write: number; p_input: number; p_org_id: string; p_output: number }
-        Returns: undefined
-      }
       set_active_org: { Args: { p_org_id: string }; Returns: undefined }
       set_channel_members: {
         Args: { p_channel_id: string; p_user_ids: string[] }

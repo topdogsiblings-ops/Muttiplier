@@ -8,7 +8,6 @@ const props = defineProps<{
   context: SlotContext
   /** shoot is a draft: structure can still change */
   draft: boolean
-  productId: string
   /** per-person line under a shot-list item: shows the person, hides what's shared by everyone */
   personName?: string
 }>()
@@ -17,7 +16,6 @@ const emit = defineEmits<{
   remove: []
 }>()
 
-const run = useAction()
 
 const overridden = computed(() => props.item.script_override !== null && props.item.script_override !== undefined)
 const source = computed(() => overridden.value ? props.item.script_override : props.item.script_snapshot)
@@ -38,7 +36,6 @@ const draftBeats = ref<Beat[]>([])
 function startEdit() {
   draftText.value = text.value
   draftBeats.value = beats.value.map(beat => ({ ...beat }))
-  variants.value = []
   editing.value = true
 }
 
@@ -54,34 +51,6 @@ function saveEdit() {
 function resetOverride() {
   emit('update', { script_override: null })
   editing.value = false
-}
-
-// --- AI renditions (spec §11): reworded variants the person approves by saving ---
-const variants = ref<{ script?: string, beats?: Beat[] }[]>([])
-const drafting = ref(false)
-
-async function reword() {
-  drafting.value = true
-  await run(async () => {
-    const response = await $fetch('/api/ai/draft', {
-      method: 'POST',
-      body: {
-        type: 'rendition',
-        kind: props.item.kind,
-        script: draftText.value,
-        beats: draftBeats.value,
-        productId: props.productId,
-        count: 3
-      }
-    })
-    variants.value = response.drafts
-  })
-  drafting.value = false
-}
-
-function useVariant(variant: { script?: string, beats?: Beat[] }) {
-  if (props.item.kind === 'body' && variant.beats) draftBeats.value = variant.beats.map(beat => ({ ...beat }))
-  else if (variant.script) draftText.value = variant.script
 }
 
 
@@ -134,33 +103,9 @@ function saveLocation() {
         </template>
         <ScriptEditor v-else v-model="draftText" />
 
-        <div v-if="variants.length" class="space-y-1">
-          <p class="text-xs text-muted">
-            Pick a variant to load it into the editor, then save.
-          </p>
-          <button
-            v-for="(variant, index) in variants"
-            :key="index"
-            type="button"
-            class="block w-full rounded-md border border-default px-2.5 py-1.5 text-left text-sm hover:bg-elevated/60"
-            @click="useVariant(variant)"
-          >
-            {{ variant.beats ? joinBeats(variant.beats) : variant.script }}
-          </button>
-        </div>
-
         <div class="flex flex-wrap gap-2">
           <UButton label="Save override" size="xs" @click="saveEdit" />
           <UButton label="Cancel" size="xs" color="neutral" variant="ghost" @click="editing = false" />
-          <UButton
-            label="Reword with AI"
-            icon="i-lucide-sparkles"
-            size="xs"
-            color="neutral"
-            variant="subtle"
-            :loading="drafting"
-            @click="reword"
-          />
           <UButton
             v-if="overridden"
             label="Reset to template"

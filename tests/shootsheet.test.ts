@@ -14,7 +14,8 @@ import {
   resolveItemScript,
   skeletonFiles,
   takeSpot,
-  unfilledItems
+  unfilledItems,
+  usedByRecipes
 } from '../shared/utils/shootsheet'
 
 const format = { code: 'F02', cta_modes: ['sync', 'vo'], beats: ['problem', 'product', 'result'] }
@@ -315,5 +316,25 @@ describe('beats shown on screen', () => {
     expect(itemBeats(vo)).toEqual(['problem', 'problem~2'])
     const sheetVo = buildShootsheet(b).items.find(item => item.kind === 'body') as { beats: { beat: string, show: string, file: string | null }[] }
     expect(sheetVo.beats.map(beat => `${beat.beat}/${beat.show}/${beat.file ? 'file' : 'none'}`)).toEqual(['hook/screen/none', 'problem/voice_note/file', 'problem/voice_note/file', 'cta/screen/none'])
+  })
+})
+
+describe('usedByRecipes', () => {
+  const modular = { kind: 'body' as const, channel_id: 'c1', format: { kind: 'modular' } }
+  const standalone = { kind: 'body' as const, channel_id: 'c1', format: { kind: 'standalone' } }
+  const hook = { kind: 'hook' as const, channel_id: 'c1' }
+
+  it('keeps hooks and CTAs that a modular VO on their channel uses', () => {
+    expect(usedByRecipes(hook, [modular])).toBe(true)
+    expect(usedByRecipes({ kind: 'cta', channel_id: 'c1' }, [modular])).toBe(true)
+  })
+
+  it('drops them when only standalone VOs are filmed, or only on other channels', () => {
+    expect(usedByRecipes(hook, [standalone])).toBe(false)
+    expect(usedByRecipes(hook, [{ ...modular, channel_id: 'c2' }])).toBe(false)
+  })
+
+  it('always keeps VOs', () => {
+    expect(usedByRecipes(standalone, [])).toBe(true)
   })
 })

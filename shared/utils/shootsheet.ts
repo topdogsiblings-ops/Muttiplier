@@ -101,6 +101,17 @@ export const STANDALONE_CTA_BEAT = 'cta'
 export const isStandalone = (item: Pick<BundleItem, 'kind' | 'format'>) => item.kind === 'body' && item.format?.kind === 'standalone'
 
 /**
+ * Whether any recipe uses an item. VOs always are; hooks and CTAs only go with modular VOs, so a
+ * hook or CTA is used only where a modular VO is filmed for its channel. On a shoot of standalone
+ * VOs alone, its hooks and CTAs aren't needed and aren't filmed.
+ */
+export function usedByRecipes(item: Pick<BundleItem, 'kind' | 'channel_id'>, items: Pick<BundleItem, 'kind' | 'format' | 'channel_id'>[]): boolean {
+  if (item.kind === 'body') return true
+  return items.some(other => other.kind === 'body' && !isStandalone(other)
+    && (!other.channel_id || !item.channel_id || other.channel_id === item.channel_id))
+}
+
+/**
  * How a VO beat is shown:
  * - face: the speaker on camera; broll: their voice over b-roll (layout treatments can switch these);
  * - screen: its text as a message bubble on a phone screen, not filmed (its length is its reading time);

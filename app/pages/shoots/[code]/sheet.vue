@@ -63,69 +63,70 @@ const personName = (id: string) => bundle.value.people.find(p => p.id === id)?.n
 const channelName = (id: string | null) => bundle.value.channels.find(c => c.id === id)?.name ?? null
 
 
-// Everyone films the same shot list: one entry per item, with each person's tick underneath.
-const personItems = computed(() => notOnShoot.value ? [] : bundle.value.items.filter(item => !person.value || item.person_id === person.value.id))
+// Everyone films the same shot list: one entry per thing to film (a hook, a CTA, or one wording of
+// one VO beat), with each person's takes underneath. Hooks and CTAs only show where a recipe uses
+// them: they go with modular VOs, so a shoot of standalone VOs alone films none.
+const personItems = computed(() => notOnShoot.value
+  ? []
+  : bundle.value.items
+      .filter(item => !person.value || item.person_id === person.value.id)
+      .filter(item => usedByRecipes(item, bundle.value.items)))
 
-// A standalone VO opens and closes itself: its hook beat is filmed with the hooks and its CTA
-// beat with the CTAs, so each part of it shows in that section; its other beats stay with the VOs.
-type GroupPart = 'all' | 'hook' | 'middle' | 'cta'
-const standaloneGroup = (group: ShotGroup) => group.kind === 'body' && isStandalone(group.items[0]!)
-const partOfBeat = (beat: string | null): GroupPart => {
+// A standalone VO opens and closes itself: its hook beat is filmed with the hooks and its CTA beat
+// with the CTAs, and only there; its other beats stay with the VOs.
+type Section = 'hook' | 'cta' | 'body'
+const partOfBeat = (beat: string | null) => {
   const name = beat ? parseTakeKey(beat).beat : null
   return name === STANDALONE_HOOK_BEAT ? 'hook' : name === STANDALONE_CTA_BEAT ? 'cta' : 'middle'
 }
-/** which section an item counts in: a standalone VO's in the Hooks and CTAs too */
-const inSection = (item: BundleItem, kind: string) => item.kind === kind || (kind !== 'body' && item.kind === 'body' && isStandalone(item))
+const sectionOf = (item: BundleItem, take: string | null): Section => {
+  if (item.kind !== 'body') return item.kind as Section
+  if (!isStandalone(item)) return 'body'
+  const part = partOfBeat(take)
+  return part === 'middle' ? 'body' : part
+}
 
-/** how many hooks / CTAs / VOs this person (or everyone) has, for the filter buttons */
-const shotListFor = (kind: string) => groupShotList(personItems.value.filter(item => inSection(item, kind))).length
-const visibleItems = computed(() => {
-  if (show.value === 'broll') return []
-  return personItems.value.filter(item => show.value === 'all' || inSection(item, show.value))
-})
+/** One thing to film: a hook or CTA (`take` null), or one wording of one VO beat. */
+interface Shot { key: string, section: Section, group: ShotGroup, take: string | null }
+const allShots = computed<Shot[]>(() => groupShotList(personItems.value).flatMap(group =>
+  itemBeats(group.items[0]!)
+    // a VO with nothing filmed (every beat on screen) has nothing to shoot
+    .filter(take => take !== null || group.kind !== 'body')
+    .map(take => ({ key: `${group.key}|${take ?? ''}`, section: sectionOf(group.items[0]!, take), group, take }))))
+
+/** how many shots this person (or everyone) has in a section, for the filter buttons */
+const shotListFor = (section: Section) => allShots.value.filter(shot => shot.section === section).length
+const visibleShots = computed(() => show.value === 'broll' ? [] : allShots.value.filter(shot => show.value === 'all' || shot.section === show.value))
+/** the items behind what's showing, for the overall progress */
+const visibleItems = computed(() => [...new Set(visibleShots.value.flatMap(shot => shot.group.items))])
 const showBroll = computed(() => show.value === 'all' || show.value === 'broll')
-const shotList = computed(() => groupShotList(visibleItems.value))
-const groupChannel = (group: ShotGroup) => group.items[0]?.channel_id ?? null
 
-/**
- * Hooks, then CTAs, then VOs (recorded off set). Everything is used for every channel. Each entry
- * is a group and the part of it the section shows: all of it, or a standalone VO's hook, middle
- * or CTA beats.
- */
-const sections = computed(() => {
-  const standalones = shotList.value.filter(standaloneGroup)
-  // a standalone VO's hook or CTA shown on screen is a text message: nothing to film there
-  const filmedPart = (part: GroupPart) => (group: ShotGroup) => itemBeats(group.items[0]!).some(beat => beat && partOfBeat(beat) === part)
-  const shown = (part: GroupPart) => (group: ShotGroup) => ({ key: `${group.key}|${part}`, group, part })
-  const list = [
-    {
-      title: 'Hooks',
-      hint: 'Used for every channel',
-      views: [...shotList.value.filter(group => group.kind === 'hook').map(shown('all')), ...(show.value === 'cta' ? [] : standalones.filter(filmedPart('hook')).map(shown('hook')))]
-    },
-    {
-      title: 'CTAs',
-      hint: '',
-      views: [...shotList.value.filter(group => group.kind === 'cta').map(shown('all')), ...(show.value === 'hook' ? [] : standalones.filter(filmedPart('cta')).map(shown('cta')))]
-    },
-    {
-      title: 'VOs',
-      hint: '',
-      views: show.value === 'hook' || show.value === 'cta'
-        ? []
-        : shotList.value.filter(group => group.kind === 'body')
-          // a standalone VO with nothing between its hook and CTA has no VO part
-          .filter(group => !standaloneGroup(group) || parseBeats(group.items[0]!.script_snapshot).some(beat => partOfBeat(beat.beat) === 'middle'))
-          .map(group => shown(standaloneGroup(group) ? 'middle' : 'all')(group))
-    }
-  ]
-  return list
-    .filter(section => section.views.length)
-    .map(section => {
-      const items = section.views.flatMap(view => view.group.items)
-      return { ...section, done: items.filter(item => item.status !== 'planned').length, total: items.length }
-    })
-})
+/** A take is done once its clip is saved for every channel it fills (or the person skipped it). */
+const takeDone = (take: Recording) => take.items.every(item => item.status === 'skipped' || taken(clipTarget.item(item.id, take.beat)))
+
+/** Each person on a shot, with their takes of it (one per channel, or one for all of them). */
+const peopleRows = (shot: Shot) => {
+  const ids = [...new Set(shot.group.items.map(item => item.person_id))]
+  return ids.map((personId) => {
+    const items = shot.group.items.filter(item => item.person_id === personId)
+    const takes = recordingsOf(items, bundle.value.channelSlots)
+      .filter(take => take.beat === shot.take)
+      .sort((a, b) => (a.items[0]?.channel_id ?? '').localeCompare(b.items[0]?.channel_id ?? ''))
+    const skipped = items.every(item => item.status === 'skipped')
+    return { person: personId, items, takes, skipped, filmed: !skipped && takes.every(takeDone) }
+  })
+}
+const shotDone = (shot: Shot) => peopleRows(shot).every(row => row.skipped || row.filmed)
+
+/** Hooks, then CTAs, then VOs (recorded off set). */
+const sections = computed(() => ([
+  { section: 'hook' as const, title: 'Hooks', hint: 'Used for every channel' },
+  { section: 'cta' as const, title: 'CTAs', hint: '' },
+  { section: 'body' as const, title: 'VOs', hint: 'One beat at a time' }
+])
+  .map(entry => ({ ...entry, shots: visibleShots.value.filter(shot => shot.section === entry.section) }))
+  .filter(entry => entry.shots.length)
+  .map(entry => ({ ...entry, done: entry.shots.filter(shotDone).length, total: entry.shots.length })))
 
 /**
  * Every channel films its own clips of a b-roll shot: a shared shot (no channel) is filmed for
@@ -161,24 +162,29 @@ const progress = computed(() => {
 /** Lines where someone has their own wording, for the everyone view. */
 const ownVersions = (group: ShotGroup) => group.items.filter(item => item.script_override !== null && item.script_override !== undefined)
 const script = (item: BundleItem) => resolveItemScript(bundle.value, item)
-/** A shot-list entry's line across every channel it's filmed for: a channel slot reads "my Vizsla / our two dogs". */
-const groupScript = (group: ShotGroup, part: GroupPart = 'all') => {
-  const versions = group.items.map(item => script({ ...item, script_override: null }))
-  if (group.kind !== 'body') return { text: mergeVariants(versions.map(version => version.text ?? '')), beats: null }
-  const first = versions[0]?.beats ?? []
-  // every wording of each beat, as its own line (an alternate is its own take)
-  return {
-    text: null,
-    beats: first.flatMap((beat, index) => beatWordings(beat).map(wording => ({
-      key: takeKey(beat.beat, wording.option),
-      beat: takeLabel(takeKey(beat.beat, wording.option)),
-      // a message on screen isn't filmed; a voice note is filmed and played as audio
-      show: beatShow(group.items[0]!.format, beat.beat),
-      hook_type: wording.hook_type,
-      script: mergeVariants(versions.map(version => beatWordings(version.beats?.[index] ?? { beat: beat.beat, script: '' })[wording.option - 1]?.script ?? ''))
-    })))
-      .filter(line => part === 'all' || partOfBeat(line.key) === part)
+/** A shot's line across every channel it's filmed for: a channel slot reads "my Vizsla / our two dogs". */
+function shotLine(shot: Shot) {
+  const versions = shot.group.items.map(item => script({ ...item, script_override: null }))
+  if (shot.take === null) return { text: mergeVariants(versions.map(version => version.text ?? '')), show: null, hookType: shot.group.items[0]!.hook_type }
+  const { beat: name, option } = parseTakeKey(shot.take)
+  const wording = (beats: { beat: string, script: string }[] | null | undefined) => {
+    const beat = (beats ?? []).find(entry => entry.beat === name) as Parameters<typeof beatWordings>[0] | undefined
+    return beat ? beatWordings(beat)[option - 1] : undefined
   }
+  return {
+    text: mergeVariants(versions.map(version => wording(version.beats)?.script ?? '')),
+    // a voice note is filmed and played as audio
+    show: beatShow(shot.group.items[0]!.format, name),
+    hookType: wording(versions[0]?.beats)?.hook_type ?? null
+  }
+}
+/** Someone's own wording of a shot, if they have one. */
+function ownLine(item: BundleItem, take: string | null) {
+  const resolved = script(item)
+  if (take === null) return resolved.text ?? ''
+  const { beat: name, option } = parseTakeKey(take)
+  const beat = resolved.beats?.find(entry => entry.beat === name)
+  return beat ? beatWordings(beat)[option - 1]?.script ?? '' : ''
 }
 
 /** Everything on the shoot (all people) still to film or skip. */
@@ -219,28 +225,8 @@ async function saveStatus(item: BundleItem, next: string) {
 // one take for all of them, and a VO is recorded beat by beat. Only saved clips tick an item
 // off (once every spot it has, every beat of a VO, has one); by hand you can only skip.
 
-/** Each person on a shot-list entry, with their takes (of the part shown) and how far along they are. */
-const peopleRows = (group: ShotGroup, part: GroupPart = 'all') => {
-  const ids = [...new Set(group.items.map(item => item.person_id))]
-  return ids.map((personId) => {
-    const items = group.items.filter(item => item.person_id === personId)
-    const beatOrder = (beat: string | null) => (items[0] && beat ? itemBeats(items[0]).indexOf(beat) : 0)
-    const takes = recordingsOf(items, bundle.value.channelSlots).filter(take => part === 'all' || partOfBeat(take.beat) === part).sort((a, b) =>
-      (a.items[0]?.channel_id ?? '').localeCompare(b.items[0]?.channel_id ?? '') || beatOrder(a.beat) - beatOrder(b.beat))
-    return {
-      person: personId,
-      items,
-      takes,
-      filmed: items.every(item => item.status === 'filmed'),
-      skipped: items.every(item => item.status === 'skipped')
-    }
-  })
-}
-/** "Nix + Whiskey", or the beat for a VO take: what a take's button says. */
-const takeButtonLabel = (take: Recording) => {
-  const channels = take.items.map(item => channelName(item.channel_id)).filter(Boolean).join(' + ')
-  return take.beat ? `${takeLabel(take.beat)} · ${channels}` : channels || 'Add clip'
-}
+/** "Nix + Whiskey": the channels a take's clip fills (the shot already says what it is). */
+const takeButtonLabel = (take: Recording) => take.items.map(item => channelName(item.channel_id)).filter(Boolean).join(' + ') || 'Add clip'
 
 /** After a clip is saved or removed: tick off (or un-tick) each item the take fills. */
 function syncTake(take: Recording) {
@@ -565,53 +551,54 @@ function skipBroll(shot: Row<'broll_shots'>) {
 
       <div class="space-y-2">
         <article
-          v-for="{ key, group, part } in section.views"
-          :key="key"
+          v-for="shot in section.shots"
+          :key="shot.key"
           class="space-y-2 rounded-lg border border-default p-3"
           :class="{
-            'border-success/40 bg-success/5': group.items.every(item => item.status === 'filmed'),
-            'opacity-60': group.items.every(item => item.status === 'skipped')
+            'border-success/40 bg-success/5': shotDone(shot) && !peopleRows(shot).every(row => row.skipped),
+            'opacity-60': peopleRows(shot).every(row => row.skipped)
           }"
         >
           <div class="flex flex-wrap items-center gap-1.5">
-            <span class="font-mono text-base font-bold text-highlighted">{{ group.code }}</span>
-            <UBadge v-if="part === 'hook' || part === 'cta'" :label="part === 'hook' ? 'Opens a standalone VO' : 'Closes a standalone VO'" color="primary" variant="subtle" size="sm" />
-            <UBadge v-if="group.items[0]!.hook_type" :label="group.items[0]!.hook_type!" color="neutral" variant="subtle" size="sm" />
-            <UBadge v-if="group.items[0]!.cta_mode" :label="group.items[0]!.cta_mode!" color="info" variant="subtle" size="sm" />
-            <span v-if="group.items[0]!.location" class="flex items-center gap-0.5 text-xs text-muted">
-              <UIcon name="i-lucide-map-pin" />{{ group.items[0]!.location }}
+            <span class="font-mono text-base font-bold text-highlighted">{{ shot.group.code }}</span>
+            <!-- a VO beat: which one, and which wording when it has more than one -->
+            <span v-if="shot.take" class="text-sm font-semibold text-highlighted uppercase">{{ takeLabel(shot.take) }}</span>
+            <UBadge
+              v-if="shot.group.kind === 'body' && shot.section !== 'body'"
+              :label="shot.section === 'hook' ? 'Opens a standalone VO' : 'Closes a standalone VO'"
+              color="primary"
+              variant="subtle"
+              size="sm"
+            />
+            <UBadge v-if="shotLine(shot).hookType" :label="shotLine(shot).hookType!" color="neutral" variant="subtle" size="sm" />
+            <UBadge v-if="shot.group.items[0]!.cta_mode" :label="shot.group.items[0]!.cta_mode!" color="info" variant="subtle" size="sm" />
+            <UBadge v-if="shotLine(shot).show === 'voice_note'" label="Voice note" color="info" variant="subtle" size="sm" />
+            <span v-if="shot.group.items[0]!.location" class="flex items-center gap-0.5 text-xs text-muted">
+              <UIcon name="i-lucide-map-pin" />{{ shot.group.items[0]!.location }}
             </span>
             <span class="ml-auto text-xs text-muted tabular-nums">
-              {{ group.items.filter(item => item.status !== 'planned').length }}/{{ group.items.length }}
+              {{ peopleRows(shot).filter(row => row.filmed || row.skipped).length }}/{{ peopleRows(shot).length }}
             </span>
           </div>
 
-          <template v-if="group.kind === 'body'">
-            <p v-if="group.items[0]!.title" class="text-sm font-medium text-muted">
-              {{ group.items[0]!.title }}
-            </p>
-            <p v-for="beat in groupScript(group, part).beats" :key="beat.key" class="text-base leading-snug text-highlighted">
-              <span class="mr-1 text-xs font-semibold text-muted uppercase">{{ beat.beat }}</span>{{ beat.script }}
-              <UBadge v-if="beat.hook_type" :label="beat.hook_type" color="neutral" variant="subtle" size="sm" class="ml-1 align-middle" />
-              <UBadge v-if="beat.show === 'screen'" label="On screen: not filmed" color="neutral" variant="outline" size="sm" class="ml-1 align-middle" />
-              <UBadge v-else-if="beat.show === 'voice_note'" label="Voice note" color="info" variant="subtle" size="sm" class="ml-1 align-middle" />
-            </p>
-          </template>
-          <p v-else class="text-lg leading-snug text-highlighted">
-            {{ groupScript(group).text }}
+          <p v-if="shot.group.kind === 'body' && shot.group.items[0]!.title" class="text-xs font-medium text-muted">
+            {{ shot.group.items[0]!.title }}
           </p>
-          <p v-if="group.items[0]!.filming_notes" class="flex items-start gap-1.5 rounded-md bg-elevated/60 px-2 py-1.5 text-sm text-default">
+          <p class="text-lg leading-snug text-highlighted">
+            {{ shotLine(shot).text }}
+          </p>
+          <p v-if="shot.group.items[0]!.filming_notes" class="flex items-start gap-1.5 rounded-md bg-elevated/60 px-2 py-1.5 text-sm text-default">
             <UIcon name="i-lucide-video" class="mt-0.5 shrink-0 text-muted" />
-            <span><span class="font-medium">How to film:</span> {{ group.items[0]!.filming_notes }}</span>
+            <span><span class="font-medium">How to film:</span> {{ shot.group.items[0]!.filming_notes }}</span>
           </p>
-          <p v-for="item in person ? [] : ownVersions(group)" :key="`own-${item.id}`" class="text-sm text-muted">
+          <p v-for="item in person ? [] : ownVersions(shot.group)" :key="`own-${item.id}`" class="text-sm text-muted">
             <span class="font-medium text-default">{{ personName(item.person_id) }}'s version:</span>
-            {{ script(item).beats ? script(item).beats!.map(beat => beat.script).join(' ') : script(item).text }}
+            {{ ownLine(item, shot.take) }}
           </p>
 
-          <!-- each person: their takes (one per channel, or one for all of them when the line
-               uses no channel slot; a VO beat by beat), each ticked by its clip -->
-          <div v-for="row in peopleRows(group, part)" :key="row.person" class="space-y-2 border-t border-default pt-2">
+          <!-- each person: their takes of this shot (one per channel, or one for all of them when
+               the line uses no channel slot), each ticked by its clip -->
+          <div v-for="row in peopleRows(shot)" :key="row.person" class="space-y-2 border-t border-default pt-2">
             <div class="flex flex-wrap items-center gap-2">
               <UIcon
                 :name="row.filmed ? 'i-lucide-circle-check' : row.skipped ? 'i-lucide-skip-forward' : 'i-lucide-circle'"
@@ -621,7 +608,7 @@ function skipBroll(shot: Row<'broll_shots'>) {
               <span class="font-medium text-highlighted" :class="{ 'line-through': row.skipped }">{{ personName(row.person) }}</span>
               <UButton
                 v-if="!row.filmed"
-                :label="row.skipped ? 'Unskip' : 'Skip'"
+                :label="`${row.skipped ? 'Unskip' : 'Skip'}${shot.group.kind === 'body' ? ` ${shot.group.code}` : ''}`"
                 size="xs"
                 color="neutral"
                 :variant="row.skipped ? 'solid' : 'ghost'"

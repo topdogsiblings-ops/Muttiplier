@@ -584,9 +584,11 @@ const blockers = computed(() => {
   if (!shoot.value.shoot_date) list.push('Set a shoot date')
   if (!bundle.value.people.length) list.push('Add at least one person')
   if (!bundle.value.channels.length) list.push('Add at least one channel')
-  if (!groupsOf('hook').length) list.push('Add hooks (Hooks)')
+  // hooks and CTAs only go with modular VOs: a shoot of standalone VOs alone needs neither
+  const modular = groupsOf('body').some(group => !isStandalone(group.items[0]!))
+  if (modular && !groupsOf('hook').length) list.push('Add hooks (Hooks): your modular VOs need them')
   if (!groupsOf('body').length) list.push('Write VOs (VOs)')
-  if (!groupsOf('cta').length) list.push('Add CTAs (CTAs)')
+  if (modular && !groupsOf('cta').length) list.push('Add CTAs (CTAs): your modular VOs need them')
   const unlinked = bundle.value.people.filter(person => !channelsFor(bundle.value, person.id).length)
   const unfilmed = bundle.value.channels.filter(channel => !bundle.value.people.some(person => bundle.value.channelPeople?.[channel.id]?.includes(person.id)))
   if (unfilmed.length) {

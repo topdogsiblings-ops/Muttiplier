@@ -44,7 +44,7 @@ export const useOrg = () => {
     await enter()
   }
 
-  /** Start an org; its profile (what AI drafting is told about it) is saved with it. */
+  /** Start an org; its profile (who it is and how its scripts sound) is saved with it. */
   async function createOrg(name: string, slug: string, profile?: OrgProfile) {
     const { error } = await db.rpc('create_org', { p_name: name, p_slug: slug, p_profile: profile ? { ...profile } : {} })
     if (error) throw error

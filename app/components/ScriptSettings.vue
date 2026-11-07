@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { Database, Json } from '#shared/types/database.types'
 
-// Settings → Scripts: what the org tells AI drafting about itself (its profile, and the preamble
+// Settings → Scripts: what the org tells its own AI about itself (its profile, and the preamble
 // written from it or its own), its channel slots (filled per channel, Settings → Channels) and
-// its script rules (words flagged while writing, and avoided by AI drafting).
+// its script rules (words flagged while writing, and given to its AI to avoid). Kreate has no AI
+// of its own: people connect theirs, through Kreate's AI connector.
 const db = useDb()
 const run = useAction()
 const { settings, load } = useRefData()
@@ -56,7 +57,7 @@ async function save(patch: Database['public']['Tables']['settings']['Update'], m
 const saveAi = () => save({
   org_profile: { ...parseOrgProfile(profile) } as unknown as Json,
   ai_preamble: customPreamble.value ? preamble.value.trim() : null
-}, 'AI context saved')
+}, 'Voice saved')
 
 // --- channel slots -----------------------------------------------------------
 const slotName = (text: string) => text.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')
@@ -84,10 +85,10 @@ const saveRules = () => save({
     <UCard>
       <template #header>
         <h3 class="font-semibold text-highlighted">
-          AI context
+          Your voice
         </h3>
         <p class="text-sm text-muted">
-          What AI drafting is told about {{ currentOrg?.name ?? 'your organisation' }} before it writes anything.
+          Who {{ currentOrg?.name ?? 'your organisation' }} is and how its scripts should sound. When you connect your own AI to Kreate, it's told this before it writes anything.
         </p>
       </template>
       <div class="grid gap-4 sm:grid-cols-2">
@@ -119,7 +120,7 @@ const saveRules = () => save({
       </UFormField>
       <template #footer>
         <div class="flex flex-wrap gap-2">
-          <UButton label="Save AI context" :loading="saving" @click="saveAi" />
+          <UButton label="Save" :loading="saving" @click="saveAi" />
           <UButton v-if="customPreamble" label="Use the recommended preamble" color="neutral" variant="subtle" @click="useRecommended" />
         </div>
       </template>
@@ -172,7 +173,7 @@ const saveRules = () => save({
           Script rules
         </h3>
         <p class="text-sm text-muted">
-          Words you don't want in your scripts. They're underlined wherever a script is written, with your warning, and AI drafting avoids them. Plurals are caught too.
+          Words you don't want in your scripts. They're underlined wherever a script is written, with your warning, and your connected AI is told to avoid them. Plurals are caught too.
         </p>
       </template>
       <div class="space-y-4">

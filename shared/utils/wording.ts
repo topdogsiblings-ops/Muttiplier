@@ -1,5 +1,5 @@
 // Script rules: words an org doesn't want in its scripts (Settings → Scripts), each with the
-// warning to show and what to say instead. Flagged while writing; AI drafting is told the same.
+// warning to show and what to say instead. Flagged while writing; a connected AI is told the same.
 
 export interface ScriptRule {
   /** words or phrases to flag; case doesn't matter, and plurals ("owners") are caught too */
@@ -69,7 +69,7 @@ export function splitFlagged(text: string, rules: ScriptRule[]): { text: string,
   return runs
 }
 
-/** The rules as instructions for AI drafting. */
+/** The rules as instructions for an AI (given through Kreate's AI connector). */
 export function scriptRulesForAi(rules: ScriptRule[]): string {
   if (!rules.length) return ''
   return ['Words to avoid:', ...rules.map(rule =>

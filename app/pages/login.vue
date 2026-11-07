@@ -13,14 +13,14 @@ function switchTo(next: 'sign-in' | 'sign-up' | 'reset') {
 
 const PLANS = [
   {
-    title: 'Creator',
-    description: 'For a creator or a pair running a few brands.',
+    title: 'Starter',
+    description: 'For getting started with a few brands.',
     price: '$34.99',
     features: ['Up to 5 brands', '2 people', 'Insights and diversity settings', 'Basic treatments', 'Klip available to buy']
   },
   {
-    title: 'Team',
-    description: 'For a UGC team running shoots every week.',
+    title: 'Pro',
+    description: 'For creators and teams shooting every week.',
     price: '$59.99',
     badge: 'Most popular',
     highlight: true,
@@ -28,8 +28,8 @@ const PLANS = [
     features: ['Up to 10 brands', 'Unlimited people', 'Insights and diversity settings', 'Moderate treatments', 'Klip available to buy']
   },
   {
-    title: 'Agency',
-    description: 'For agencies running many brands at once.',
+    title: 'Studio',
+    description: 'For running many brands at once.',
     price: '$149.99',
     features: ['Unlimited brands', 'Unlimited people', 'Insights and diversity settings', 'Advanced treatments', 'Klip included']
   }

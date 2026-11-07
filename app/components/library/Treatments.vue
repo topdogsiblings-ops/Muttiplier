@@ -22,7 +22,7 @@ const PLACEMENTS = [
   { label: 'The CTA', value: 'cta' }
 ]
 const NEEDS = [
-  { label: 'Text written for it', value: 'text', help: 'AI writes it from the script when the batch is built' },
+  { label: 'Text written for it', value: 'text', help: 'Klip writes it from the script when the batch is built' },
   { label: 'The speaker\'s video', value: 'speaker_video', help: 'Every take is filmed on camera, so every recipe has it' },
   { label: 'Old footage', value: 'old_footage', help: 'Clips filmed before a date, from the footage library' },
   { label: 'The shoot\'s offer', value: 'offer', help: 'Only when the shoot fills {{offer}}' }

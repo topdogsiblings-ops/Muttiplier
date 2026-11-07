@@ -43,7 +43,7 @@ export function recommendedPreamble(orgName: string, profile: OrgProfile): strin
   ].filter(Boolean).join(' ')
 }
 
-/** The preamble AI drafting uses: the org's own, or the recommended one. */
+/** The preamble its connected AI is given: the org's own, or the recommended one. */
 export const aiPreamble = (orgName: string, settings: { ai_preamble?: string | null, org_profile?: unknown } | null | undefined) =>
   settings?.ai_preamble?.trim() || recommendedPreamble(orgName, parseOrgProfile(settings?.org_profile))
 

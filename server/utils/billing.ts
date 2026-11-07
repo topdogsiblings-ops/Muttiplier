@@ -14,7 +14,7 @@ export function stripeClient(event: H3Event) {
   return new Stripe(key)
 }
 
-/** The service-role client: bypasses row level security, so it's only for billing writes and usage logging. */
+/** The service-role client: bypasses row level security, so it's only for billing and license writes. */
 export const serviceDb = (event: H3Event) => serverSupabaseServiceRole<Database>(event)
 
 const ENTITLED = ['trialing', 'active', 'past_due']
@@ -50,22 +50,6 @@ export async function syncSubscription(event: H3Event, subscriptionId: string) {
     synced_at: new Date().toISOString()
   }, { onConflict: 'org_id' })
   if (error) throw error
-}
-
-/** Add one AI request's token use to the org's monthly total (best effort: never fails the request). */
-export async function recordAiUsage(event: H3Event, orgId: string, usage: { input_tokens?: number | null, output_tokens?: number | null, cache_read_input_tokens?: number | null, cache_creation_input_tokens?: number | null } | null | undefined) {
-  if (!usage) return
-  try {
-    await serviceDb(event).rpc('record_ai_usage', {
-      p_org_id: orgId,
-      p_input: usage.input_tokens ?? 0,
-      p_output: usage.output_tokens ?? 0,
-      p_cache_read: usage.cache_read_input_tokens ?? 0,
-      p_cache_write: usage.cache_creation_input_tokens ?? 0
-    })
-  } catch (error) {
-    console.error('Couldn\'t record AI usage', error)
-  }
 }
 
 /** The signed-in admin's org, for starting checkout or opening the portal. */

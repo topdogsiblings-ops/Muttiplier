@@ -199,35 +199,6 @@ watch(() => [form.cast_channel, form.person_id], () => {
 const featureId = computed(() => form.feature === GENERAL ? null : form.feature)
 const feature = computed(() => featureOf(featureId.value ?? undefined))
 
-// Draft the beats in place with AI. The person reviews them before saving.
-const drafting = ref(false)
-async function draftBeats() {
-  if (form.beats.some(beat => beat.script.trim()) && !(await confirmDialog({
-    title: 'Replace your beats with an AI draft?',
-    description: 'The scripts you have written in each beat are replaced. Nothing is saved until you press Save VO.',
-    confirmLabel: 'Replace'
-  }))) return
-  drafting.value = true
-  await run(async () => {
-    const response = await $fetch('/api/ai/draft', {
-      method: 'POST',
-      body: {
-        type: 'body' as const,
-        formatId: form.format_id!,
-        brief: feature.value
-          ? `Write it about this feature of the product: ${feature.value.name}${feature.value.description ? ` (${feature.value.description})` : ''}`
-          : 'Write it about the product as a whole, not one feature of it.',
-        productId: props.productId,
-        count: 1
-      }
-    })
-    const draft = response.drafts[0]
-    if (!draft?.beats) throw new Error('No draft came back. Try again.')
-    form.beats = alignBeats(formatOf(form.format_id)?.beats ?? draft.beats.map(beat => beat.beat), draft.beats)
-  })
-  drafting.value = false
-}
-
 const channelSlotNames = computed(() => parseChannelSlots(settings.value?.channel_slots).map(slot => slot.name))
 /** the channel slots it uses: each one makes it a recording per channel */
 const usedChannelSlots = computed(() => channelSlotsInBeats(form.beats, channelSlotNames.value).map(name => `{{${name}}}`))
@@ -356,21 +327,6 @@ async function save() {
             to write VOs about one.
           </p>
 
-          <div v-if="!readonly" class="flex flex-wrap items-center gap-2 rounded-lg bg-elevated/50 p-2">
-            <UButton
-              label="Draft beats with AI"
-              icon="i-lucide-sparkles"
-              size="sm"
-              color="neutral"
-              variant="subtle"
-              :loading="drafting"
-              :disabled="!form.format_id"
-              @click="draftBeats"
-            />
-            <p class="w-full text-xs text-muted">
-              Uses the product, what it's about and the format above. Review the beats before saving.
-            </p>
-          </div>
 
           <p v-if="format?.source_url" class="flex items-center gap-1.5 text-xs text-muted">
             Reference for {{ format.code }}: <SourceLink :url="format.source_url" />

@@ -166,7 +166,7 @@ async function save() {
         <UFormField
           v-if="form.beats.length"
           label="Each beat"
-          help="What to write in it and an example line (both shown when writing a VO, and used by AI drafting), its default layout (face to camera or over b-roll; treatments can add other versions), and the b-roll shots to suggest for it on a shoot."
+          help="What to write in it and an example line (both shown when writing a VO, and given to your AI when it's connected), its default layout (face to camera or over b-roll; treatments can add other versions), and the b-roll shots to suggest for it on a shoot."
         >
           <div class="space-y-3">
             <div v-for="beat in form.beats" :key="beat" class="space-y-2 rounded-lg border border-default p-3">

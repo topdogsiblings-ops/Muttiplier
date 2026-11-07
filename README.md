@@ -17,8 +17,6 @@ npm run dev
 | `SUPABASE_URL` | Project API URL |
 | `SUPABASE_ANON_KEY` | Publishable (or legacy anon) key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Not needed today. Every server route runs as the signed-in user under RLS. |
-| `ANTHROPIC_API_KEY` | AI drafting (optional). Without it the "Draft with AI" buttons return an error. |
-| `ANTHROPIC_MODEL` | Model for AI drafting. Defaults to `claude-opus-5-5`. |
 
 ### Google sign-in (one-off, in the Supabase dashboard)
 
@@ -45,7 +43,7 @@ Import the repo, keep the Nuxt preset, and add the environment variables above. 
 
 ```
 app/                 pages, components, composables (client)
-server/api/          Nitro routes: shoot exports, AI drafting
+server/api/          Nitro routes: shoot exports, billing, licenses, Dropbox
 shared/utils/        pure, unit-tested logic used by both sides
   slots.ts             {{slot}} parsing, rendering, validation
   calculator.ts        recipes / submissions / time estimates (spec §9)

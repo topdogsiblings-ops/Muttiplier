@@ -96,9 +96,6 @@ async function save() {
       <USelect v-model="product" :items="productFilter" class="w-44" />
       <USelect v-model="hookType" :items="hookTypeFilter" class="w-40" />
       <USelect v-model="tag" :items="tagOptions(library.rows.value)" class="w-32" />
-      <template #actions>
-        <LibraryAiDrafts kind="hook" @use="edit($event)" />
-      </template>
     </LibraryToolbar>
 
     <div class="divide-y divide-default rounded-lg border border-default">
