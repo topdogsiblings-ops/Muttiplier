@@ -6,7 +6,8 @@ definePageMeta({ layout: 'plain' })
 
 const route = useRoute()
 
-const view = ref<'sign-in' | 'reset' | 'plans'>('sign-in')
+// ?reset=1 (the password-changed email's button) opens on resetting a password
+const view = ref<'sign-in' | 'reset' | 'plans'>(route.query.reset ? 'reset' : 'sign-in')
 function switchTo(next: 'sign-in' | 'sign-up' | 'reset') {
   view.value = next === 'sign-up' ? 'plans' : next
 }
