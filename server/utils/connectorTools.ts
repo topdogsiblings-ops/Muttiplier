@@ -87,7 +87,7 @@ export function buildConnectorServer(event: H3Event, token: string) {
     title: 'List brands',
     description: 'The organisation\'s brands and their products, with each product\'s allowed and forbidden claims and its core features. Never make or imply a forbidden claim.',
     inputSchema: z.object({
-      status: z.enum(['prospect', 'auditioning', 'active', 'paused']).optional().describe('Only brands at this stage')
+      status: z.enum(['prospect', 'auditioning', 'piloting', 'active', 'paused']).optional().describe('Only brands at this stage')
     }),
     annotations: { readOnlyHint: true }
   }, guarded(async ({ status }: { status?: string }) => {

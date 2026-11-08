@@ -2,7 +2,7 @@
 
 Kreate, by UGC Kompany: a web app for UGC teams and agencies, built first for the topdogugc agency. It holds the script **Library** (hooks, CTAs, formats, hook types), the **Brands** pipeline from Trybe, and the **Planner** that turns library items into a shoot day: one shared shot list, a recipe/submission calculator, an on-set checklist, and exports that feed the later processing pipeline.
 
-**Names:** the apps call themselves **Kreate** (this app) and **Klip** (the desktop editor, Pawcessor). They're marketed as **UGC Kreate** and **UGC Klip**, each on a subdomain of the ugckompany site, and those are the names on Stripe's products, checkout and receipts. Code, packages and repos keep `muttiplier` and `pawcessor`. Both share the italic "k" logo (`public/logo.svg`).
+**Names:** the apps call themselves **Kreate** (this app) and **Klip** (the desktop editor; formerly Pawcessor). They're marketed as **UGC Kreate** and **UGC Klip**, each on a subdomain of the ugckompany site, and those are the names on Stripe's products, checkout and receipts. Code, packages and repos keep `muttiplier` and `pawcessor`. Both share the italic "k" logo (`public/logo.svg`).
 
 This spec covers the Library, Brands and Planner. Ingest, rendering and submissions are later projects. The schema is designed so they plug in without migrations of existing tables.
 
@@ -30,7 +30,7 @@ This spec covers the Library, Brands and Planner. Ingest, rendering and submissi
 1. **Library** — reusable, brand-agnostic templates. *(this project)*
 2. **Planner** — build a shoot for one product, run it on set, export shot lists, `shootsheet.json` and folder skeleton. *(this project)*
 3. **Dropbox uploads** — clips land in the right shoot folders. *(built; see §12)*
-4. **Pawcessor** — edits every clip in a shoot's `raw/` into `edited/` (trims dead space, captions) and makes each treatment's treated copies (sidecars). It knows nothing about recipes. *(separate tool; see §12b)*
+4. **Klip** — edits every clip in a shoot's `raw/` into `edited/` (trims dead space, captions) and makes each treatment's treated copies (sidecars). It knows nothing about recipes. *(separate tool; see §12b)*
 5. **Recipes and batches** — Kreate builds every recipe when the shoot goes Live and picks each batch (§12b); **Showdog** stitches each recipe exactly as specified, with no rules of its own. There are no human editors.
 6. Submission queue + form-filling Chrome extension. *(later)*
 
@@ -52,8 +52,8 @@ Kreate is **$54.99 USD a month per org**, the whole team included, with a **30-d
 - **The webhook** (`/api/billing/webhook`, signed) re-reads the subscription from Stripe on every event, so events arriving out of order can't leave `org_subscriptions` stale. Only the server writes billing rows, with the service role.
 - **Entitlement**: an org can use the app while its subscription is trialing, active or past due (Stripe is retrying), or when it's billing-exempt (`orgs.billing_exempt`: topdogugc). Otherwise every page but billing redirects there (admins to Settings, members to `/billing`). A new org goes to billing first.
 - The price is found by lookup key (`top_dog_kit_monthly`), so the app holds no price ID. Env: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY` (and optionally `STRIPE_PRICE_LOOKUP_KEY`).
-- **Klip** (Pawcessor) is **$189.99 USD once per org** (lookup key `ugc_klip`), bought in billing (`/api/billing/klip-checkout`: one-time Checkout, Managed Payments, needs a live Kreate). The webhook sets `orgs.klip_purchased_at` on `checkout.session.completed` / `async_payment_succeeded` (re-reading the session) and clears it on a full refund (`charge.refunded`). **Klip access** (`private.org_klip_access`): `purchased`, `exempt` (billing-exempt org), `trial` (Kreate trialing: ends with the trial) or `none`; `private.org_can_use_klip` = a live Kreate and access.
-- **Klip licenses**: Klip connects with a code, like PyCharm or the GitHub CLI, and never signs in to Supabase. It calls `/api/license/device/start` (returns `deviceCode`, a short `userCode` like `KQ7X-M2PD`, `verificationUriComplete` = `/klip/activate?code=…`, `expiresIn` 600, `interval` 5), opens the activation page, and polls `/api/license/device/poll` (`{ deviceCode }`) every `interval` seconds: `pending`, `slow_down`, `denied`, `expired`, or `approved` with `{ token, license }`, handed over once. On `/klip/activate` a signed-in member checks the code, picks the org and approves (`/api/license/device/approve`). Codes (`license_device_codes`, server only) last 10 minutes and are used once; only a hash of the device code is stored. Klip refreshes with `/api/license/refresh` (`{ token }`, up to 30 days after issue, membership re-checked); past that it connects again. `/api/license/issue` gives the signed-in Kreate member a token directly. The token is `<payload>.<signature>` (base64url), signed Ed25519; Pawcessor checks it offline with the public key (`/api/license/public-key`). Payload: `v`, `orgId`, `orgName` (display only), `userId`, `subscriptionState` (`active`|`lapsed`), `klipPurchased` (has Klip access), `klipAccess`, `trialEndsAt`, `issuedAt`, `expiresAt` (ms since epoch; 72 hours offline, capped at the trial's end when Klip comes from the trial). Klip opens only when `subscriptionState` is `active` and `klipPurchased`. Env: `LICENSE_PRIVATE_KEY` (PKCS#8 DER, base64).
+- **Klip** is **$189.99 USD once per org** (lookup key `ugc_klip`), bought in billing (`/api/billing/klip-checkout`: one-time Checkout, Managed Payments, needs a live Kreate). The webhook sets `orgs.klip_purchased_at` on `checkout.session.completed` / `async_payment_succeeded` (re-reading the session) and clears it on a full refund (`charge.refunded`). **Klip access** (`private.org_klip_access`): `purchased`, `exempt` (billing-exempt org), `trial` (Kreate trialing: ends with the trial) or `none`; `private.org_can_use_klip` = a live Kreate and access.
+- **Klip licenses**: Klip connects with a code, like PyCharm or the GitHub CLI, and never signs in to Supabase. It calls `/api/license/device/start` (returns `deviceCode`, a short `userCode` like `KQ7X-M2PD`, `verificationUriComplete` = `/klip/activate?code=…`, `expiresIn` 600, `interval` 5), opens the activation page, and polls `/api/license/device/poll` (`{ deviceCode }`) every `interval` seconds: `pending`, `slow_down`, `denied`, `expired`, or `approved` with `{ token, license }`, handed over once. On `/klip/activate` a signed-in member checks the code, picks the org and approves (`/api/license/device/approve`). Codes (`license_device_codes`, server only) last 10 minutes and are used once; only a hash of the device code is stored. Klip refreshes with `/api/license/refresh` (`{ token }`, up to 30 days after issue, membership re-checked); past that it connects again. `/api/license/issue` gives the signed-in Kreate member a token directly. The token is `<payload>.<signature>` (base64url), signed Ed25519; Klip checks it offline with the public key (`/api/license/public-key`). Payload: `v`, `orgId`, `orgName` (display only), `userId`, `subscriptionState` (`active`|`lapsed`), `klipPurchased` (has Klip access), `klipAccess`, `trialEndsAt`, `issuedAt`, `expiresAt` (ms since epoch; 72 hours offline, capped at the trial's end when Klip comes from the trial). Klip opens only when `subscriptionState` is `active` and `klipPurchased`. Env: `LICENSE_PRIVATE_KEY` (PKCS#8 DER, base64).
 
 ### Design tokens
 
@@ -85,13 +85,13 @@ SUPABASE_SERVICE_ROLE_KEY=      # server routes only; not required today
 
 ## 4. App structure
 
-A **top bar** is always there on signed-in pages: the Kreate logo and the current organisation (a switcher, with All organisations and New organisation) on the left, and your photo on the right, which opens **Your account** (`/account`, no sidebar):
-- **Your organisations**: open one (switches to it), or start a new one. Each has its own plan and billing.
+A **top bar** is always there on signed-in pages: the Kreate logo and the current organisation (a switcher, with All organisations and New organisation) on the left, and your photo on the right, which opens a menu: Your account, light/dark/device theme, Sign out. **Your account** (`/account`, no sidebar) has three tabs (`?tab=organisations|profile|ai`):
+- **Organisations**: a card per org you're in, at a glance: its photo and your role; its team as a row of faces (up to four, admins first, then +N) with members, channels and invites; its shoots as one bar, drafts → active (planned to editing) → live, with this month's and the last one; brands and hooks + CTAs as big numbers; billing state; Klip, from `public.my_org_summaries()`; open one (switches to it), or start a new one. Each has its own plan and billing.
 - **Profile**: your name and photo (`profiles.display_name`, `photo_url` in the `avatars` bucket at `<user id>/photo`; saved by `public.update_my_profile`, which also sets your name in every org you're in), shown instead of the ones from Google sign-in.
 - **Email** (Supabase emails a confirmation link; it changes once confirmed) and **password** (setting one lets a Google account also sign in with email and password).
-- **Connect your AI** (§11), and Sign out.
+- **Connect your AI** (§11).
 
-Below the bar, an organisation's pages have its sidebar:
+Signing in lands on Your account → Organisations (or back on the page that sent them to sign in, such as Klip's activation link). Below the bar, an organisation's pages have its sidebar; opening an organisation lands on its Library:
 
 | Tab | Purpose |
 |---|---|
@@ -168,7 +168,7 @@ All tables get `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at
 ### Brands
 
 **brands**
-- `name text`, `slug text unique`, `status text check (status in ('prospect','auditioning','active','paused'))`, `notes text`
+- `name text`, `slug text unique`, `status text check (status in ('prospect','auditioning','piloting','active','paused'))` (piloting: the first sample video is in, to keep the sample rate up, before it's active), `notes text`
 - Trybe deal: `trybe_url text`, `pay_model text check (pay_model in ('flat','commission','both'))`, `flat_fee numeric`, `commission_pct numeric` (0–100), `currency text default 'GBP'` (ISO code), `trybe_score numeric`
 - Import: `trybe_brand_id text`, `trybe_data jsonb` — everything else from the Scrybe export (about text, category, website, earnings, top formats, unrecognised columns under `extra`)
 - `videos_required int` — legacy, no longer shown
@@ -230,7 +230,7 @@ Hooks, CTAs and VOs written in a shoot (`shoot_id` set) can be deleted (RLS), wh
 
 **treatments** — ways a finished recipe is presented (§12b Treatments)
 - `name text unique`, `description text`, `source_url`, `sort_order`
-- `kind` — `layout` (changes which footage plays), `overlay` (a layer drawn on top) or `footage` (needs Pawcessor to prepare clips)
+- `kind` — `layout` (changes which footage plays), `overlay` (a layer drawn on top) or `footage` (needs Klip to prepare clips)
 - `placement` — `hook`, `video` (the whole video) or `cta`
 - `needs text[]` — what a recipe must have for it: `text` (AI writes it from the script), `speaker_video`, `old_footage`, `offer`
 - `component text`, `settings jsonb` — what Showdog draws it with, and how
@@ -246,7 +246,7 @@ Hooks, CTAs and VOs written in a shoot (`shoot_id` set) can be deleted (RLS), wh
 **shoots**
 - `code text unique` — auto-assigned sequential `S001`, `S002`, …
 - `product_id`, `shoot_date date`, `location_notes text`, `notes text`
-- `status text check (status in ('draft','planned','shooting','filmed','editing','edited'))` — `draft` → `planned` → `shooting` → `filmed` (and back, §9) → `editing` (Pawcessor has the manifest) → `edited`, shown as **Live** (recipes built, batches running; §12b). Batches carry their own statuses
+- `status text check (status in ('draft','planned','shooting','filmed','editing','edited'))` — `draft` → `planned` → `shooting` → `filmed` (and back, §9) → `editing` (Klip has the manifest) → `edited`, shown as **Live** (recipes built, batches running; §12b). Batches carry their own statuses
 - `stale_at`, `stale_by` — set when an admin marks the shoot **stale** (any time, from the shoot page's header; **Not stale** clears it). A stale shoot is archived from view: the shoots list hides it (its **Stale** filter shows only stale shoots) and so does the brand page. Its status and everything else stay as they are.
 - `exploit_share numeric default 0.7` — the share of each new batch that exploits elements that have won (§12b)
 - `started_at`, `started_by`, `ended_at`, `ended_by` — stamped by trigger on status changes only
@@ -497,7 +497,7 @@ Items: `file` is the edited clip (what the worker reads) and `raw_file` where Kr
 
 Download a zip of empty folders (each with a `.keep` file) plus the plan's `manifest.json`, to unzip into the Dropbox `UGC/` root folder. With Dropbox connected, the same tree is created directly in Dropbox instead (§12).
 
-Everything from a shoot lives in its shoot folder, and everything a shoot produces is split by channel first: clips, recipes and renders. `raw/` and `edited/` have exactly the same tree: Kreate only uploads to `raw/`; Pawcessor edits each clip into the same place under `edited/`, with any treated copies beside it (§12b).
+Everything from a shoot lives in its shoot folder, and everything a shoot produces is split by channel first: clips, recipes and renders. `raw/` and `edited/` have exactly the same tree: Kreate only uploads to `raw/`; Klip edits each clip into the same place under `edited/`, with any treated copies beside it (§12b).
 
 ```
 UGC/
@@ -524,8 +524,8 @@ UGC/
           report.json                      the stitcher's run report, entries grouped by channel
 ```
 
-- **Hooks, VOs and CTAs are files named by code**, keeping their own extension. Re-adding one replaces the file. Pawcessor saves the edited clip under the same name in `edited/` (the extension can differ).
-- **Captions** sit next to their clip under the same name (e.g. `H01.srt` beside `H01.mov`, `problem/V01.srt` beside `problem/V01.mov`), in `raw/` and `edited/` alike; there's no separate captions folder. Kreate writes them when each hook, CTA and VO beat uploads: the script that was read, split into short lines (sentence breaks, at most ~32 characters / 6 words) and timed across the clip's measured length in proportion to each line's length. Pawcessor polishes them into `edited/`.
+- **Hooks, VOs and CTAs are files named by code**, keeping their own extension. Re-adding one replaces the file. Klip saves the edited clip under the same name in `edited/` (the extension can differ).
+- **Captions** sit next to their clip under the same name (e.g. `H01.srt` beside `H01.mov`, `problem/V01.srt` beside `problem/V01.mov`), in `raw/` and `edited/` alike; there's no separate captions folder. Kreate writes them when each hook, CTA and VO beat uploads: the script that was read, split into short lines (sentence breaks, at most ~32 characters / 6 words) and timed across the clip's measured length in proportion to each line's length. Klip polishes them into `edited/`.
 - **B-roll** is per shoot and loose: any clip in a beat folder can go under any VO with that beat, so clips keep their own names and a clash gets a number rather than overwriting. Beats are filed by name, so the same beat in two formats (e.g. `product`) shares a folder; general product shots go in `general/`. `shared` stands in for the channel only when a shoot has no channels.
 
 All slugs lowercase kebab-case; generate once and never change after a shoot is planned.
@@ -547,7 +547,7 @@ Kreate has **no built-in AI**: no drafting, rewording or b-roll suggestions, and
 - **Sign-in:** Supabase's OAuth 2.1 server (Dashboard → Authentication → OAuth Server: on, authorization path `/oauth/consent`, dynamic client registration on). Only tokens issued through it (they carry `client_id`) are accepted; requests run as the person, under the database's rules.
 - **Consent:** `/oauth/consent` shows the app, the organisation it will work in (pick another to switch to it) and what it can do; Approve or Cancel.
 - **Tools:** `get_workspace` (voice, profile, channel slots, script rules, hook types, formats), `list_brands` (products, claims, features), `get_library` (hooks, CTAs or formats), `list_shoots`, `get_shoot` (the shot list with scripts), `add_hooks` and `add_ctas` (into the Library, tagged `ai-draft`, with hook types matched by name). Only while the organisation's subscription is live.
-- **Connect your AI** (in Your account, `/account#ai`; a button at the foot of the sidebar until they've connected an AI app; `/settings?tab=ai` redirects there): the connector's address, the steps, and the AI apps the person has connected, each with Disconnect.
+- **Connect your AI** (in Your account, `/account?tab=ai`; opening an organisation without an AI app connected shows a toast pointing here, until it's closed; `/settings?tab=ai` redirects there): the connector's address, the steps, and the AI apps the person has connected, each with Disconnect.
 - Not yet: writing VOs, and limiting it to Pro and Studio (tiers aren't built).
 
 ---
@@ -570,10 +570,10 @@ Goal: clips go straight from the shoot into the right Dropbox folders (§10d), s
 
 Once a shoot is **filmed**, its General tab shows **Filmed? Send it for editing**.
 
-- **Start editing** writes the plan's manifest (a new version, no clips) to `manifest.json` and sets the shoot to `editing`. It's what **Pawcessor** works from: the plan, and the treatments that are on (combinations with their parts), each with its `description` (Pawcessor's AI writes the treatment's text from it), its `sidecar` name and `applies_to`, the takes that need a treated copy. **Back to filmed** undoes it.
-- **Pawcessor** walks `raw/`, edits each clip into the same place in `edited/` (trims dead space, captions), and for each treatment puts a treated copy beside every clip it applies to: `<clip>.<sidecar>.<ext>` (`hooks/joe/H01.search-bar.mp4`), one per treatment or combination. Where they go: a hook treatment on hooks (and a standalone VO's hook beat), a CTA treatment on CTAs (and a standalone VO's CTA beat), a whole-video treatment on every take, and footage that needs the speaker (greenscreen, picture-in-picture) on VO takes only. A layout (face to camera, over b-roll) needs none: it only chooses which footage plays. A combination gets one wherever any of its non-layout parts applies. B-roll is never treated. Pawcessor knows nothing about recipes.
+- **Start editing** writes the plan's manifest (a new version, no clips) to `manifest.json` and sets the shoot to `editing`. It's what **Klip** works from: the plan, and the treatments that are on (combinations with their parts), each with its `description` (Klip's AI writes the treatment's text from it), its `sidecar` name and `applies_to`, the takes that need a treated copy. **Back to filmed** undoes it.
+- **Klip** walks `raw/`, edits each clip into the same place in `edited/` (trims dead space, captions), and for each treatment puts a treated copy beside every clip it applies to: `<clip>.<sidecar>.<ext>` (`hooks/joe/H01.search-bar.mp4`), one per treatment or combination. Where they go: a hook treatment on hooks (and a standalone VO's hook beat), a CTA treatment on CTAs (and a standalone VO's CTA beat), a whole-video treatment on every take, and footage that needs the speaker (greenscreen, picture-in-picture) on VO takes only. A layout (face to camera, over b-roll) needs none: it only chooses which footage plays. A combination gets one wherever any of its non-layout parts applies. B-roll is never treated. Klip knows nothing about recipes.
 - **Check edits** (runs in the browser, talking to Dropbox directly so a big shoot isn't cut short): lists `raw/` and `edited/` and checks that every filmed take is in both, named by its code (a VO beat by beat, in its beat's folder: `problem/V01`), a video; that `edited/` mirrors `raw/` clip for clip (same folders and names; extensions can differ; sidecars aren't extras); that every take has the treated copies it needs; that no clips are still on phones; and reads every edited clip's **length** (sidecars play for their clip's length). Any problem blocks going Live, unless someone goes Live anyway (whatever's missing is left out and the problems are noted in the manifest).
-- **Go Live** writes the full **manifest** and every recipe (`recipes.json`), and sets the shoot to `edited`, shown as **Live**. The treatments are the ones Pawcessor was given, even if the Library changed since. From here the recipes are fixed: batches reference them by ID.
+- **Go Live** writes the full **manifest** and every recipe (`recipes.json`), and sets the shoot to `edited`, shown as **Live**. The treatments are the ones Klip was given, even if the Library changed since. From here the recipes are fixed: batches reference them by ID.
 - **The manifest** (`manifest.json` in the shoot folder, and a copy in `shoot_manifests` with a version number) indexes every clip once, so batching never re-reads Dropbox: the plan, and for every take its kind, channel, person, code, beat and wording (VOs), how it's shown, format, CTA mode, hook type, the script read, its `edited/` and `raw/` file, its caption file, its length and its `sidecars` (treatment sidecar → file); for every b-roll clip its channel, beat folder (or `general`), feature folder and the shot it was filmed for. Before that, `manifest.json` holds just the plan.
 
 ### Recipes and batches
@@ -614,15 +614,15 @@ Once a shoot is Live its details lock (nothing in the plan's tabs can change), t
 
 ### Treatments
 
-A treatment is a way a finished recipe is presented: a layout (every beat face to camera, or every beat over b-roll), an on-screen layer (search bar, retro look, unusual text placement) or footage Pawcessor prepares (greenscreen, picture-in-picture). Each tool does only its own part:
+A treatment is a way a finished recipe is presented: a layout (every beat face to camera, or every beat over b-roll), an on-screen layer (search bar, retro look, unusual text placement) or footage Klip prepares (greenscreen, picture-in-picture). Each tool does only its own part:
 
 - **Kreate (the Library and the rules).** The Library's **Treatments** tab: each treatment has a name, its kind, where it goes (hook, whole video or CTA), what it needs, its Showdog component and settings, a source link and an on/off switch. Built in and always on: **Face to camera** and **Over b-roll**. The plan lists the treatments that are on (`treatments`), and the recipe builder applies them:
   - every recipe also gets **one version per treatment that applies** to it, alongside the untreated one (one treatment or curated combination per version, so they add rather than multiply). A combination's version carries its parts, each with its own spec. Each version is its own recipe: its ID is the untreated one's plus the treatment's slug (`…_<hash>_search-bar`), and `recipe.treatment` says which (null = untreated). Untreated IDs don't change;
   - a **layout** treatment re-lays the VO's beats (and a standalone VO's own hook and CTA; Library hooks and CTAs keep their own mode) and is covered again with b-roll. It's skipped where it changes nothing, or where the b-roll can't cover it;
-  - any other treatment applies when the recipe has what it needs: **text** (always: Pawcessor writes it), the **speaker's video** (every take is filmed; an audio-only take doesn't qualify), the shoot's **offer** (`{{offer}}` filled in); **old footage** isn't tracked yet, so those don't apply;
+  - any other treatment applies when the recipe has what it needs: **text** (always: Klip writes it), the **speaker's video** (every take is filmed; an audio-only take doesn't qualify), the shoot's **offer** (`{{offer}}` filled in); **old footage** isn't tracked yet, so those don't apply;
   - Best in Show spreads picks across treatments too, and never puts two versions of the same hook + VO in one batch;
   - the calculator counts every treated version, and the shoot's **General** tab has a collapsible **Treatments** card ("N of M applied") listing each treatment that's on with how many recipes it adds, or why it doesn't apply (for a combination, which part).
-- **Pawcessor (makes the content).** For every clip a treatment applies to, it makes a treated copy (a sidecar, §12b): its AI writes the treatment's text from the treatment's description and the clip's script (a search query, the hook as placed text), and it prepares any footage it needs (a cut-out of the speaker for greenscreen or picture-in-picture). It never decides which treatments apply to which recipes.
+- **Klip (makes the content).** For every clip a treatment applies to, it makes a treated copy (a sidecar, §12b): its AI writes the treatment's text from the treatment's description and the clip's script (a search query, the hook as placed text), and it prepares any footage it needs (a cut-out of the speaker for greenscreen or picture-in-picture). It never decides which treatments apply to which recipes.
 - **Showdog (stitches them).** A treated recipe's files are the sidecars, and it carries its treatment (component and settings); Showdog stitches exactly that, with no rules of its own.
 
 ### Text Thread format (F21)

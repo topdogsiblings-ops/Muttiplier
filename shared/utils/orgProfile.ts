@@ -19,7 +19,35 @@ export interface OrgProfile {
 
 export const EMPTY_PROFILE: OrgProfile = { about: '', products: '', creators: '', audience: '', voice: '', language: '' }
 
-export const LANGUAGES = ['Australian English', 'British English', 'American English', 'Canadian English', 'New Zealand English']
+/**
+ * The ad categories an org picks from ("What are your ad categories?"): every category on brands'
+ * Trybe data so far, and the usual UGC ones. The picks are saved as `products`, as a list in words.
+ */
+export const AD_CATEGORIES = [
+  'Beauty & Skincare', 'Haircare', 'Makeup & Cosmetics', 'Fragrance',
+  'Fashion & Apparel', 'Jewellery & Accessories',
+  'Health & Wellness', 'Supplements & Nutrition', 'Fitness & Sports', 'Recovery & Massage', 'Sleep',
+  'Food & Beverage', 'Home & Kitchen', 'Home Decor', 'Cleaning & Household',
+  'Baby & Kids',
+  'Pets', 'Pet Supplies', 'Pet Food & Treats', 'Pet Accessories', 'Pet Grooming', 'Pet Toys',
+  'Tech & Gadgets', 'SaaS & Tools', 'Apps & Games', 'Finance',
+  'Travel', 'Outdoors & Camping', 'Automotive',
+  'Arts & Crafts', 'Books & Education', 'Gift Sets', 'Holiday Products', 'Party Supplies',
+  'Sustainability'
+] as const
+
+/** Categories as words: "Pets, Pet Toys and Gift Sets". */
+export function categoriesToText(categories: string[]): string {
+  const list = categories.map(category => category.trim()).filter(Boolean)
+  return list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list.at(-1)}` : list[0] ?? ''
+}
+
+/** Back from words to categories (also reads older free text, e.g. "dog food, treats and toys"). */
+export function textToCategories(text: string): string[] {
+  return text.split(/,\s*|\s+and\s+/).map(part => part.trim()).filter(Boolean)
+}
+
+export const LANGUAGES =['Australian English', 'British English', 'American English', 'Canadian English', 'New Zealand English']
 
 /** Read `settings.org_profile` defensively. */
 export function parseOrgProfile(value: unknown): OrgProfile {

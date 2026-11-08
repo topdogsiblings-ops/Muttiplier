@@ -1,10 +1,11 @@
 type Color = 'primary' | 'secondary' | 'success' | 'info' | 'warning' | 'error' | 'neutral'
 
-export const BRAND_STATUSES = ['prospect', 'auditioning', 'active', 'paused'] as const
+export const BRAND_STATUSES = ['prospect', 'auditioning', 'piloting', 'active', 'paused'] as const
 
 export const BRAND_STATUS_COLORS: Record<string, Color> = {
   prospect: 'neutral',
   auditioning: 'info',
+  piloting: 'primary',
   active: 'success',
   paused: 'warning'
 }

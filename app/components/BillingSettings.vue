@@ -42,7 +42,7 @@ onMounted(async () => {
     await refresh()
   }
   waiting.value = false
-  if (live.value) window.location.assign('/shoots')
+  if (live.value) window.location.assign('/library')
   else toast.add({ title: 'Still waiting for Stripe', description: 'Your payment details went through. Refresh this page in a minute.', color: 'warning' })
 })
 

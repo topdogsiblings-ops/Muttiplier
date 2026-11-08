@@ -26,7 +26,7 @@
 // and CTA) and is skipped where it changes nothing or the b-roll can't cover it; Library hooks
 // and CTAs keep their own mode. Other treatments apply when the recipe has what they need: text
 // (the editor writes it), the speaker's video (every take filmed), the shoot's {{offer}}; old
-// footage isn't tracked yet. Pawcessor makes each treatment's content as a treated copy (a
+// footage isn't tracked yet. Klip makes each treatment's content as a treated copy (a
 // sidecar) beside every clip it applies to; a treated version plays those copies instead, and isn't
 // made when one's missing. Layouts need no sidecar: they only choose which footage plays.
 //
@@ -74,7 +74,7 @@ export interface Recipe {
   cta: { code: string, person: string, item_id: string, take: string | null, mode: string | null, file: string, caption: string | null, duration: number, broll: string[], text: string | null }
   /** the VO beats' captions, in order (each beat's SRT, offset by the running length when stitched) */
   vo_captions: (string | null)[]
-  /** the treatment this version carries (null = untreated): its files are Pawcessor's treated copies, Showdog stitches them */
+  /** the treatment this version carries (null = untreated): its files are Klip's treated copies, Showdog stitches them */
   treatment: RecipeTreatment | null
 }
 
@@ -89,7 +89,7 @@ export interface RecipeTreatment {
   settings: unknown
   /** a curated combination: its parts, each drawn on its own part of the video */
   parts?: RecipeTreatment[]
-  /** the sidecar Pawcessor makes for it (null: a layout, none needed; older manifests: not said) */
+  /** the sidecar Klip makes for it (null: a layout, none needed; older manifests: not said) */
   sidecar?: string | null
   /** the takes that get one */
   applies_to?: string[]

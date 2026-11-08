@@ -9,7 +9,8 @@ const redirect = useSupabaseCookieRedirect()
 watch(user, () => {
   if (!user.value) return
   const path = redirect.pluck()
-  return navigateTo(path?.startsWith('/') && !path.startsWith('//') ? path : '/shoots')
+  // a real page they were sent from (e.g. Klip's activation link); otherwise Your account → Organisations
+  return navigateTo(path?.startsWith('/') && !path.startsWith('//') && path !== '/' ? path : '/account')
 }, { immediate: true })
 </script>
 

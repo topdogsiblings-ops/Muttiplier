@@ -6,7 +6,7 @@ import { parseSlotValues } from './orgProfile'
 import type { ItemKind } from './calculator'
 
 /**
- * 9: each treatment says what Pawcessor makes for it: `description` (what the AI writes its text
+ * 9: each treatment says what Klip makes for it: `description` (what the AI writes its text
  * from), `sidecar` (the sidecar's name, or null for a layout) and `applies_to` (the clips that get
  * one: hook, vo, cta).
  * 8: beats can be shown `screen` (text on a phone screen, not filmed: file null) or `voice_note`;
@@ -145,7 +145,7 @@ export interface BundleBroll {
 /** A Library treatment that's on: applied to every recipe that has what it needs (§12b). */
 export interface BundleTreatment {
   name: string
-  /** what it is: Pawcessor's AI writes the treatment's text from it */
+  /** what it is: Klip's AI writes the treatment's text from it */
   description?: string | null
   /** layout (which footage plays), overlay (drawn on top) or footage (the editor prepares clips) */
   kind: string
@@ -162,7 +162,7 @@ export interface BundleTreatment {
 export type SidecarClip = 'hook' | 'vo' | 'cta'
 
 /**
- * The takes Pawcessor makes a treated copy (a sidecar) of for a treatment: a hook treatment the
+ * The takes Klip makes a treated copy (a sidecar) of for a treatment: a hook treatment the
  * hooks (and a standalone VO's hook beat), a CTA treatment the CTAs, a video treatment every take,
  * and footage that needs the speaker (greenscreen, picture-in-picture) the VO takes. A layout only
  * chooses which footage plays, so it needs none; a combination needs one wherever any other part
@@ -643,7 +643,7 @@ export function buildShootsheet(bundle: ShootBundle) {
       slug: slugify(treatment.name),
       name: treatment.name,
       description: treatment.description ?? null,
-      // Pawcessor makes a treated copy of every clip it applies to, beside the clip: <clip>.<sidecar>.<ext>
+      // Klip makes a treated copy of every clip it applies to, beside the clip: <clip>.<sidecar>.<ext>
       sidecar: sidecarClips(treatment).length ? slugify(treatment.name) : null,
       applies_to: sidecarClips(treatment),
       kind: treatment.kind,
@@ -765,7 +765,7 @@ export const MANIFEST_SCHEMA_VERSION = 10
 
 /**
  * The manifest before the edits are in (spec §14): just the plan, version 0, no clips. Written
- * when the shoot is planned and again when editing starts (for Pawcessor); going Live replaces it with the full one.
+ * when the shoot is planned and again when editing starts (for Klip); going Live replaces it with the full one.
  */
 export function planManifest(bundle: ShootBundle) {
   return { schema_version: MANIFEST_SCHEMA_VERSION, version: 0, generated_at: null, plan: buildShootsheet(bundle), clips: [] }

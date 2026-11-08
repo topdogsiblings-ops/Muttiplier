@@ -59,8 +59,8 @@ async function signOut() {
       <UFormField label="What does your organisation do?" required>
         <UInput v-model="profile.about" class="w-full" placeholder="a UGC agency making ads for beauty brands" />
       </UFormField>
-      <UFormField label="What do the ads sell?" required>
-        <UInput v-model="profile.products" class="w-full" placeholder="skincare and haircare" />
+      <UFormField label="What are your ad categories?" required help="Pick as many as you make ads for.">
+        <AdCategoryPicker v-model="profile.products" />
       </UFormField>
       <UFormField label="Who films them?" required>
         <UInput v-model="profile.creators" class="w-full" placeholder="creators filming their routines at home" />
@@ -79,7 +79,7 @@ async function signOut() {
       </p>
 
       <UButton block size="lg" label="Create" :loading="saving" :disabled="!ready" @click="create" />
-      <UButton v-if="orgs.length" block color="neutral" variant="ghost" label="Back" to="/shoots" />
+      <UButton v-if="orgs.length" block color="neutral" variant="ghost" label="Back" to="/account" />
       <UButton v-else block color="neutral" variant="ghost" label="Sign out" @click="signOut" />
     </UCard>
   </div>

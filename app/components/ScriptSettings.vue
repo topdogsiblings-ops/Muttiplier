@@ -95,8 +95,8 @@ const saveRules = () => save({
         <UFormField label="What does your organisation do?">
           <UInput v-model="profile.about" class="w-full" placeholder="a UGC agency making ads for beauty brands" />
         </UFormField>
-        <UFormField label="What do the ads sell?">
-          <UInput v-model="profile.products" class="w-full" placeholder="skincare and haircare" />
+        <UFormField label="What are your ad categories?" class="sm:col-span-2">
+          <AdCategoryPicker v-model="profile.products" />
         </UFormField>
         <UFormField label="Who films them?">
           <UInput v-model="profile.creators" class="w-full" placeholder="creators filming their routines at home" />

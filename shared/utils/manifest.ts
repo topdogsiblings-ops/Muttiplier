@@ -2,7 +2,7 @@
 // Live, so batching and later tools read it instead of Dropbox. Pure: the app lists Dropbox, reads
 // the clips' lengths and passes them in.
 //
-// Pawcessor edits raw/ into edited/ and, for each treatment that needs one, puts a treated copy
+// Klip edits raw/ into edited/ and, for each treatment that needs one, puts a treated copy
 // beside each clip it applies to: <clip>.<treatment sidecar>.<ext>, e.g. "…/hooks/joe/H01.retro-look.mp4".
 //
 // Paths here are relative to the shoot's raw/ or edited/ folder, e.g.
@@ -32,7 +32,7 @@ export const spotPath = (bundle: ShootBundle, item: BundleItem, beat: string | n
 const filesAt = (spot: string, files: string[]) =>
   files.filter(file => isClip(file) && withoutExtension(file).toLowerCase() === spot.toLowerCase())
 
-/** The treatments Pawcessor makes sidecars for: each one's sidecar name and the takes that get one. */
+/** The treatments Klip makes sidecars for: each one's sidecar name and the takes that get one. */
 export const shootSidecars = (bundle: ShootBundle) => (bundle.treatments ?? [])
   .map(treatment => ({ name: treatment.name, slug: slugify(treatment.name), clips: sidecarClips(treatment) }))
   .filter(treatment => treatment.clips.length)

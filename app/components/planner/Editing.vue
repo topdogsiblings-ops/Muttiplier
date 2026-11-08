@@ -5,7 +5,7 @@ import type { BundleTreatment } from '#shared/utils/shootsheet'
 import type { EditsCheck, Manifest } from '#shared/utils/manifest'
 
 // Filmed → Editing → Live (spec §14). Starting editing writes the plan's manifest (the plan and the
-// treatments that are on, with which clips each needs a treated copy of) for Pawcessor, which edits
+// treatments that are on, with which clips each needs a treated copy of) for Klip, which edits
 // raw/ into edited/ and puts each treatment's sidecars beside the clips. Once it's done, someone
 // checks its work against raw/ in Dropbox and reads every edited clip's length; going Live writes
 // the full manifest and every recipe (recipes.json), built from the edited clips. Batches start
@@ -21,7 +21,7 @@ const dropbox = useDropbox()
 const shoot = computed(() => props.bundle.shoot)
 const base = computed(() => shootFolder(props.bundle))
 
-// the latest manifest: while editing, the one Pawcessor was given
+// the latest manifest: while editing, the one Klip was given
 const latest = shallowRef<{ version: number, created_at: string, data: Manifest } | null>(null)
 async function loadLatest() {
   const { data } = await db.from('shoot_manifests').select('version, created_at, data').eq('shoot_id', shoot.value.id).order('version', { ascending: false }).limit(1).maybeSingle()
@@ -29,7 +29,7 @@ async function loadLatest() {
 }
 onMounted(loadLatest)
 
-/** The shoot as Pawcessor was given it: the treatments it was told to make, even if the Library's changed since. */
+/** The shoot as Klip was given it: the treatments it was told to make, even if the Library's changed since. */
 const handedOff = computed(() => {
   const treatments = latest.value?.data.plan?.treatments
   return treatments ? { ...props.bundle, treatments: treatments as unknown as BundleTreatment[] } : props.bundle
@@ -53,7 +53,7 @@ async function startEditing() {
     await dropboxUploader.writeText(`${base.value}/manifest.json`, JSON.stringify(manifest, null, 2))
     must(await db.from('shoot_manifests').insert({ shoot_id: shoot.value.id, version, data: manifest as unknown as Json }))
     must(await db.from('shoots').update({ status: 'editing' }).eq('id', shoot.value.id).eq('status', 'filmed'))
-  }, 'Editing: Pawcessor has its manifest')
+  }, 'Editing: Klip has its manifest')
   starting.value = false
   if (!ok) return
   await loadLatest()
@@ -67,7 +67,7 @@ async function backToFilmed() {
   emit('changed')
 }
 
-// --- checking Pawcessor's work ----------------------------------------------------------
+// --- checking Klip's work ----------------------------------------------------------
 const checking = ref(false)
 const reading = reactive({ done: 0, total: 0 })
 const result = ref<EditsCheck | null>(null)
@@ -180,8 +180,8 @@ const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyl
             Filmed? Send it for editing
           </p>
           <p class="text-sm text-muted">
-            Writes the manifest Pawcessor works from: the plan, and the treatments that are on, each with the clips it needs a treated copy of.
-            Pawcessor edits raw/ into edited/ and puts each copy beside its clip.
+            Writes the manifest Klip works from: the plan, and the treatments that are on, each with the clips it needs a treated copy of.
+            Klip edits raw/ into edited/ and puts each copy beside its clip.
           </p>
         </template>
         <template v-else>
@@ -190,9 +190,9 @@ const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyl
           </p>
           <p class="text-sm text-muted">
             <template v-if="latest">
-              Pawcessor's manifest v{{ latest.version }}, {{ when(latest.created_at) }}.
+              Klip's manifest v{{ latest.version }}, {{ when(latest.created_at) }}.
             </template>
-            Once Pawcessor's done, check its work: every take in raw/ and edited/, edited/ mirroring raw/, every clip's length readable<template v-if="sidecars.length">, and a treated copy for each of {{ sidecars.map(sidecar => sidecar.name).join(', ') }}</template>.
+            Once Klip's done, check its work: every take in raw/ and edited/, edited/ mirroring raw/, every clip's length readable<template v-if="sidecars.length">, and a treated copy for each of {{ sidecars.map(sidecar => sidecar.name).join(', ') }}</template>.
             Going Live builds every recipe from the edited clips.
           </p>
         </template>

@@ -31,5 +31,5 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // Settings is the organisation's, for admins; members' own things are in Your account
   if (to.path.startsWith('/settings') && !isAdmin.value) return navigateTo('/account')
   // Connect your AI moved from Settings to Your account
-  if (to.path.startsWith('/settings') && to.query.tab === 'ai') return navigateTo('/account#ai')
+  if (to.path.startsWith('/settings') && to.query.tab === 'ai') return navigateTo('/account?tab=ai')
 })

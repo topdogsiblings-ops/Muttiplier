@@ -961,7 +961,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
               </ul>
             </template>
           </UAlert>
-          <!-- filmed → editing (Pawcessor) → Live: check the edits, build the recipes -->
+          <!-- filmed → editing (Klip) → Live: check the edits, build the recipes -->
           <PlannerEditing v-if="isAdmin && (shoot.status === 'filmed' || shoot.status === 'editing')" :bundle="bundle" @changed="refresh" />
           <!-- slots nothing fills yet: fill them here (drafts only; planning freezes the scripts) -->
           <PlannerSlotFiller v-if="isDraft" :bundle="bundle" @changed="refresh" />
@@ -1011,7 +1011,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
               </div>
             </template>
             <p class="mb-3 text-sm text-muted">
-              Every recipe also gets a version for each treatment that applies to it. Pawcessor makes a treated copy of each clip it applies to, and Showdog stitches them.
+              Every recipe also gets a version for each treatment that applies to it. Klip makes a treated copy of each clip it applies to, and Showdog stitches them.
             </p>
             <ul class="divide-y divide-default">
               <li v-for="treatment in result.treatments" :key="treatment.name" class="flex items-baseline justify-between gap-3 py-1.5 text-sm">

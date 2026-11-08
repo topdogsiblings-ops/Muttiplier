@@ -1,5 +1,6 @@
 <script setup lang="ts">
-await navigateTo('/shoots', { replace: true })
+// an organisation opens on its Library
+await navigateTo('/library', { replace: true })
 </script>
 
 <template>

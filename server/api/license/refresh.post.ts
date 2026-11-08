@@ -1,6 +1,6 @@
 // Trade a license token this server signed (expired is fine, up to 30 days old) for a fresh one,
 // re-checked against the org's billing now. If the user has left the org, or the token is too old,
-// Pawcessor has to sign in again (401).
+// Klip has to sign in again (401).
 export default defineEventHandler(async (event) => {
   const body = await readBody<{ token?: string } | null>(event).catch(() => null)
   const license = body?.token ? readLicense(event, body.token) : null

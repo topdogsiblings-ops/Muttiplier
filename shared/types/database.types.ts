@@ -1907,6 +1907,31 @@ export type Database = {
     }
     Functions: {
       create_org: { Args: { p_name: string; p_profile?: Json; p_slug: string }; Returns: string }
+      my_org_summaries: {
+        Args: never
+        Returns: {
+          active_shoots: number
+          admins: number
+          billing_exempt: boolean
+          brands: number
+          cancel_at_period_end: boolean | null
+          channels: number
+          ctas: number
+          current_period_end: string | null
+          draft_shoots: number
+          faces: Json
+          hooks: number
+          invites: number
+          last_shoot_at: string | null
+          live_shoots: number
+          members: number
+          org_id: string
+          products: number
+          shoots_this_month: number
+          subscription_status: string | null
+          trial_end: string | null
+        }[]
+      }
       my_orgs: {
         Args: never
         Returns: {

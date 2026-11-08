@@ -27,7 +27,7 @@ async function save() {
     return
   }
   toast.add({ title: 'Password changed', color: 'success' })
-  await navigateTo('/shoots')
+  await navigateTo('/account')
 }
 </script>
 

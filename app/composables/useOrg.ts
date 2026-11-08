@@ -34,7 +34,7 @@ export const useOrg = () => {
     return orgs.value
   }
 
-  async function enter(path = '/shoots') {
+  async function enter(path = '/library') {
     // a new access token carries the new org, once the token hook is on
     await db.auth.refreshSession()
     window.location.assign(path)

@@ -70,7 +70,7 @@ const accountItems = computed(() => [
 
 <template>
   <header class="flex h-14 shrink-0 items-center gap-2 border-b border-default bg-default px-3 sm:px-4">
-    <NuxtLink :to="currentOrg ? '/shoots' : '/account'" class="flex shrink-0 items-center gap-2 px-1 text-highlighted" aria-label="Kreate">
+    <NuxtLink :to="currentOrg ? '/library' : '/account'" class="flex shrink-0 items-center gap-2 px-1 text-highlighted" aria-label="Kreate">
       <AppLogo class="size-6 shrink-0" />
       <span class="hidden items-baseline gap-1.5 sm:flex">
         <span class="text-lg font-semibold tracking-tight">Kreate</span>
