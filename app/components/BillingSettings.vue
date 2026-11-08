@@ -46,6 +46,24 @@ onMounted(async () => {
   else toast.add({ title: 'Still waiting for Stripe', description: 'Your payment details went through. Refresh this page in a minute.', color: 'warning' })
 })
 
+// Sign Klip out everywhere (admins): licences issued before now aren't renewed
+const { confirmDialog } = useConfirm()
+const signingOutKlip = ref(false)
+async function signOutKlip() {
+  if (!(await confirmDialog({
+    title: 'Sign Klip out everywhere?',
+    description: `Everyone in ${currentOrg.value?.name ?? 'this organisation'} is signed out of Klip on every computer the next time it checks in (computers offline right now within 72 hours). Each one connects again with a new code from Kreate.`,
+    confirmLabel: 'Sign out everywhere',
+    danger: true
+  }))) return
+  signingOutKlip.value = true
+  const { error } = await useSupabaseClient().rpc('sign_out_klip_everywhere')
+  signingOutKlip.value = false
+  toast.add(error
+    ? { title: 'Couldn\'t sign Klip out', description: error.message, color: 'error' }
+    : { title: 'Klip is signed out everywhere', description: 'Each computer connects again next time it\'s used.', color: 'success' })
+}
+
 // after buying Klip: the same wait, for the purchase
 const klipOwned = computed(() => currentOrg.value?.klip_access === 'purchased')
 const waitingKlip = ref(false)
@@ -179,6 +197,14 @@ async function go(path: '/api/billing/checkout' | '/api/billing/portal' | '/api/
         <p v-else class="text-sm text-muted">
           Start Kreate first: Klip works alongside it.
         </p>
+      </div>
+
+      <!-- like "sign out of all devices": every computer has to connect Klip again -->
+      <div v-if="isAdmin" class="flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4">
+        <p class="min-w-0 flex-1 text-sm text-muted">
+          Sign everyone in {{ currentOrg?.name }} out of Klip on every computer. Each one connects again with a new code.
+        </p>
+        <UButton label="Sign Klip out everywhere" icon="i-lucide-log-out" color="neutral" variant="outline" :loading="signingOutKlip" @click="signOutKlip" />
       </div>
     </UCard>
     <p class="text-xs text-dimmed">

@@ -816,6 +816,7 @@ export type Database = {
       }
       orgs: {
         Row: {
+          klip_signed_out_at: string | null
           billing_exempt: boolean
           created_at: string
           created_by: string | null
@@ -829,6 +830,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          klip_signed_out_at?: string | null
           billing_exempt?: boolean
           created_at?: string
           created_by?: string | null
@@ -842,6 +844,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          klip_signed_out_at?: string | null
           billing_exempt?: boolean
           created_at?: string
           created_by?: string | null
@@ -1965,6 +1968,7 @@ export type Database = {
         Args: { p_display_name: string; p_photo_url: string }
         Returns: undefined
       }
+      sign_out_klip_everywhere: { Args: never; Returns: string }
       set_channel_members: {
         Args: { p_channel_id: string; p_user_ids: string[] }
         Returns: undefined

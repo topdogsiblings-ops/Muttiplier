@@ -6,6 +6,7 @@ export type AiGrant = { client: { id: string, name: string, uri: string, logo_ur
  */
 export const useAiApps = () => {
   const supabase = useSupabaseClient()
+  const { reset } = useAccess()
   const grants = useState<AiGrant[]>('ai-grants', () => [])
   /** false until the first load */
   const loaded = useState('ai-grants-loaded', () => false)
@@ -13,6 +14,13 @@ export const useAiApps = () => {
 
   async function load() {
     const { data, error } = await supabase.auth.oauth.listGrants()
+    // their sign-in has ended (e.g. signed out everywhere from another device): sign in again
+    if (error && (error.name === 'AuthSessionMissingError' || (error as { code?: string }).code === 'session_not_found')) {
+      await supabase.auth.signOut({ scope: 'local' })
+      reset()
+      await navigateTo('/login?expired=1')
+      return
+    }
     loadError.value = error?.message ?? ''
     grants.value = Array.isArray(data) ? data : []
     loaded.value = true

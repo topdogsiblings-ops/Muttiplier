@@ -23,6 +23,13 @@ onMounted(async () => {
     return
   }
   const { data, error: failure } = await supabase.auth.oauth.getAuthorizationDetails(authorizationId)
+  // their sign-in here has ended (e.g. signed out from another device): sign in, then come back
+  if (failure && (failure.name === 'AuthSessionMissingError' || (failure as { code?: string }).code === 'session_not_found')) {
+    await supabase.auth.signOut({ scope: 'local' })
+    useSupabaseCookieRedirect().path.value = route.fullPath
+    await navigateTo('/login?expired=1')
+    return
+  }
   if (failure || !data) {
     error.value = failure?.message ?? 'This request has expired. Start connecting again from your AI app.'
     return

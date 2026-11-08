@@ -12,7 +12,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (!(await ensure(user.value))) {
     if (await signupOpen()) return to.path === '/onboarding' ? undefined : navigateTo('/onboarding')
     reset()
-    await useSupabaseClient().auth.signOut()
+    await useSupabaseClient().auth.signOut({ scope: 'local' })
     return navigateTo('/login?denied=1')
   }
 

@@ -19,6 +19,8 @@ export interface License {
   orgId: string
   /** the org's display name, for showing which org Klip is licensed to (display only) */
   orgName?: string
+  /** the org's photo, a public https URL that changes when the photo is replaced; display only */
+  orgLogoUrl?: string
   userId: string
   /** the org's Kreate: trialing, active and past due (Stripe still retrying) and billing-exempt are all 'active' */
   subscriptionState: 'active' | 'lapsed'
@@ -51,7 +53,7 @@ export async function issueLicense(event: H3Event, orgId: string, userId: string
   const db = serviceDb(event)
   const [{ data, error }, { data: org }] = await Promise.all([
     db.rpc('org_license_state', { p_org_id: orgId }),
-    db.from('orgs').select('name').eq('id', orgId).maybeSingle()
+    db.from('orgs').select('name, logo_url').eq('id', orgId).maybeSingle()
   ])
   if (error) throw createError({ statusCode: 500, statusMessage: error.message })
   const state = data?.[0]
@@ -69,6 +71,7 @@ export async function issueLicense(event: H3Event, orgId: string, userId: string
     v: 1,
     orgId,
     ...(org?.name ? { orgName: org.name } : {}),
+    ...(org?.logo_url ? { orgLogoUrl: org.logo_url } : {}),
     userId,
     subscriptionState: state.entitled ? 'active' : 'lapsed',
     klipPurchased: klipAccess !== 'none',

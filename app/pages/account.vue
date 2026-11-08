@@ -190,7 +190,7 @@ async function changePassword() {
 }
 
 async function signOut() {
-  await supabase.auth.signOut()
+  await supabase.auth.signOut({ scope: 'local' })
   reset()
   profile.value = null
   await navigateTo('/login')

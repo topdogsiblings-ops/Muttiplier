@@ -102,6 +102,15 @@ const plans = computed(() => PLANS.map(({ title, ...rest }) => ({
         </h1>
 
         <UAlert
+          v-if="route.query.expired"
+          color="neutral"
+          variant="subtle"
+          icon="i-lucide-clock"
+          title="Please sign in again"
+          description="You were signed out, perhaps from another device."
+          class="text-left"
+        />
+        <UAlert
           v-if="route.query.denied"
           color="error"
           variant="subtle"
