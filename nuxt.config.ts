@@ -41,7 +41,9 @@ export default defineNuxtConfig({
     stripeKlipPriceLookupKey: process.env.STRIPE_KLIP_PRICE_LOOKUP_KEY ?? 'ugc_klip',
     // Klip's license tokens (Phase 5): an Ed25519 private key, PKCS#8 DER in base64. Klip
     // holds the public key and checks tokens offline.
-    licensePrivateKey: process.env.LICENSE_PRIVATE_KEY ?? ''
+    licensePrivateKey: process.env.LICENSE_PRIVATE_KEY ?? '',
+    // Kreate's own emails (invites), through Resend from hello@kreate.ugckompany.com
+    resendApiKey: process.env.RESEND_API_KEY ?? ''
   },
 
   compatibilityDate: '2026-10-01',

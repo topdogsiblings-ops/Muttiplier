@@ -230,7 +230,6 @@ async function signOut() {
           :key="org.id"
           type="button"
           class="flex flex-col gap-3 rounded-lg border border-default p-4 text-left transition hover:bg-elevated/60 disabled:opacity-60"
-          :class="org.is_current && 'ring-1 ring-inset ring-primary/60'"
           :disabled="!!opening"
           @click="open(org)"
         >
@@ -240,12 +239,12 @@ async function signOut() {
               <p class="truncate font-medium text-highlighted">
                 {{ org.name }}
               </p>
-              <p class="text-xs text-muted">
-                <span class="capitalize">{{ org.role }}</span><template v-if="org.is_current">
-                  · Open now
-                </template>
+              <p class="text-xs text-muted capitalize">
+                {{ org.role }}
               </p>
             </div>
+            <!-- the one they were last in -->
+            <UBadge v-if="org.is_current" label="Jump back in" icon="i-lucide-corner-down-right" color="primary" variant="subtle" size="sm" class="shrink-0" />
             <UIcon v-if="opening === org.id" name="i-lucide-loader-circle" class="size-4 shrink-0 animate-spin text-muted" />
             <UIcon v-else name="i-lucide-chevron-right" class="size-4 shrink-0 text-dimmed" />
           </div>

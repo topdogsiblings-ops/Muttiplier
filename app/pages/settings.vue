@@ -198,8 +198,30 @@ function editInvite(row: Row<'org_invites'>) {
   userOpen.value = true
 }
 
+/** Email someone their invite (again): from Kreate, with replies coming to you. */
+const emailing = ref<string | null>(null)
+async function emailInvite(email: string, quiet = false) {
+  emailing.value = email
+  try {
+    await $fetch('/api/invites/send', { method: 'POST', body: { email } })
+    if (!quiet) useToast().add({ title: `Invite emailed to ${email}`, color: 'success' })
+    return true
+  } catch (failure) {
+    const message = (failure as { data?: { statusMessage?: string }, statusMessage?: string }).data?.statusMessage
+      ?? (failure as { statusMessage?: string }).statusMessage
+    useToast().add({ title: 'The invite is saved, but the email didn\'t go', description: message, color: 'warning' })
+    return false
+  } finally {
+    emailing.value = null
+    await loadMembers()
+  }
+}
+const emailedOn = (value: string | null) => value ? new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : ''
+
 async function saveMember() {
   saving.value = true
+  const isNew = !member.user_id && !member.invited
+  const newEmail = member.email.trim().toLowerCase()
   const ok = await run(async () => {
     const fields = { role: member.role, display_name: member.display_name.trim() || null }
     if (member.user_id) {
@@ -210,9 +232,12 @@ async function saveMember() {
     else if (member.invited) must(await db.from('org_invites').update(fields).eq('email', member.email))
     else must(await db.from('org_invites').insert({ ...fields, email: member.email.trim().toLowerCase() }))
     await Promise.all([load(true), loadMembers()])
-  }, 'Members updated')
+  }, isNew ? undefined : 'Members updated')
   saving.value = false
-  if (ok) userOpen.value = false
+  if (!ok) return
+  userOpen.value = false
+  // a new invite goes out by email straight away
+  if (isNew && await emailInvite(newEmail, true)) useToast().add({ title: `Invited ${newEmail}`, description: 'We\'ve emailed them the invite.', color: 'success' })
 }
 
 async function removeMember(row: typeof members.value[number]) {
@@ -475,10 +500,20 @@ async function saveDefaults() {
                   {{ row.email }}
                 </p>
                 <p class="text-sm text-muted">
-                  Invited: joins when they first sign in
+                  Invited{{ row.emailed_at ? `, emailed ${emailedOn(row.emailed_at)}` : ', not emailed yet' }}: joins when they first sign in
                 </p>
               </button>
               <UBadge :label="row.role" :color="row.role === 'admin' ? 'primary' : 'neutral'" variant="subtle" class="capitalize" />
+              <UButton
+                :label="row.emailed_at ? 'Resend invite' : 'Email invite'"
+                icon="i-lucide-send"
+                size="sm"
+                color="neutral"
+                variant="outline"
+                :loading="emailing === row.email"
+                :disabled="!!emailing"
+                @click="emailInvite(row.email)"
+              />
               <UButton icon="i-lucide-trash-2" color="error" variant="ghost" aria-label="Remove invite" @click="removeInvite(row)" />
             </div>
           </div>

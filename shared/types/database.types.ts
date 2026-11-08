@@ -641,6 +641,7 @@ export type Database = {
       }
       org_invites: {
         Row: {
+          emailed_at: string | null
           channel_ids: string[]
           created_at: string
           created_by: string | null
@@ -650,6 +651,7 @@ export type Database = {
           role: string
         }
         Insert: {
+          emailed_at?: string | null
           channel_ids?: string[]
           created_at?: string
           created_by?: string | null
@@ -659,6 +661,7 @@ export type Database = {
           role?: string
         }
         Update: {
+          emailed_at?: string | null
           channel_ids?: string[]
           created_at?: string
           created_by?: string | null

@@ -6,13 +6,15 @@ const props = defineProps<{
   mode: 'sign-in' | 'sign-up' | 'reset'
   /** sign-up: the plan they picked (pricing preview: noted on the account, nothing is charged) */
   plan?: string
+  /** the email to start with (an invite link fills it in) */
+  email?: string
 }>()
 const emit = defineEmits<{ switch: [mode: 'sign-in' | 'sign-up' | 'reset'] }>()
 
 const supabase = useSupabaseClient()
 const toast = useToast()
 
-const email = ref('')
+const email = ref(props.email ?? '')
 const password = ref('')
 const loading = ref(false)
 const googleLoading = ref(false)
