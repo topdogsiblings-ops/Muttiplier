@@ -19,13 +19,17 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // connecting Klip picks its own org, and works whatever the subscription (the license says)
   // connecting an AI app picks its own org too
   if (to.path === '/klip/activate' || to.path === '/oauth/consent') return
-  if (needsPicker.value && to.path !== '/orgs') return navigateTo('/orgs')
+  // Your account is theirs, whatever the organisation's state; it's also where they pick one
+  if (to.path === '/account') return
+  if (needsPicker.value) return navigateTo('/account')
   // no live subscription: only billing (in Settings for admins) and switching org are open
   const { currentOrg } = useOrg()
   if (currentOrg.value && !currentOrg.value.entitled) {
-    const open = ['/billing', '/orgs', ...(isAdmin.value ? ['/settings'] : [])]
+    const open = ['/billing', ...(isAdmin.value ? ['/settings'] : [])]
     if (!open.includes(to.path)) return navigateTo(isAdmin.value ? '/settings?tab=profile' : '/billing')
   }
-  // members get Settings for Connect your AI only
-  if (to.path.startsWith('/settings') && !isAdmin.value && to.query.tab !== 'ai') return navigateTo('/settings?tab=ai')
+  // Settings is the organisation's, for admins; members' own things are in Your account
+  if (to.path.startsWith('/settings') && !isAdmin.value) return navigateTo('/account')
+  // Connect your AI moved from Settings to Your account
+  if (to.path.startsWith('/settings') && to.query.tab === 'ai') return navigateTo('/account#ai')
 })

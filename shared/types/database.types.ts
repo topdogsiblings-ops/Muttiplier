@@ -1032,25 +1032,31 @@ export type Database = {
         Row: {
           active_org_id: string | null
           avatar_url: string | null
+          display_name: string | null
           email: string | null
           full_name: string | null
           id: string
+          photo_url: string | null
           updated_at: string
         }
         Insert: {
           active_org_id?: string | null
           avatar_url?: string | null
+          display_name?: string | null
           email?: string | null
           full_name?: string | null
           id: string
+          photo_url?: string | null
           updated_at?: string
         }
         Update: {
           active_org_id?: string | null
           avatar_url?: string | null
+          display_name?: string | null
           email?: string | null
           full_name?: string | null
           id?: string
+          photo_url?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -1927,6 +1933,10 @@ export type Database = {
       }
       org_signup_open: { Args: never; Returns: boolean }
       set_active_org: { Args: { p_org_id: string }; Returns: undefined }
+      update_my_profile: {
+        Args: { p_display_name: string; p_photo_url: string }
+        Returns: undefined
+      }
       set_channel_members: {
         Args: { p_channel_id: string; p_user_ids: string[] }
         Returns: undefined

@@ -23,7 +23,7 @@ export function connectorMetadata(event: H3Event) {
     authorization_servers: [`${url}/auth/v1`],
     bearer_methods_supported: ['header'],
     resource_name: 'Kreate',
-    resource_documentation: new URL('/settings?tab=ai', connectorUrl(event)).href
+    resource_documentation: new URL('/account#ai', connectorUrl(event)).href
   }
 }
 

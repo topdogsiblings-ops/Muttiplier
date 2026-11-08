@@ -6,27 +6,25 @@ const db = useDb()
 const run = useAction()
 const { confirmDialog } = useConfirm()
 const { people, channels, settings, load } = useRefData()
-const { access, isAdmin } = useAccess()
+const { access } = useAccess()
 const { currentOrg, load: loadOrgs } = useOrg()
 
-// Members (not admins) see only Connect your AI: each person connects their own AI app.
-const aiTab = { label: 'Connect your AI', value: 'ai', icon: 'i-lucide-plug' }
-const adminTabs = [
+// The organisation's settings, for its admins. Your own name, email, password and AI apps are in
+// Your account (/account).
+const tabs = [
   { label: 'Profile', value: 'profile', icon: 'i-lucide-building-2' },
   { label: 'Channels', value: 'channels', icon: 'i-lucide-tv' },
   { label: 'Scripts', value: 'scripts', icon: 'i-lucide-pen-line' },
   { label: 'Members', value: 'members', icon: 'i-lucide-shield-check' },
   { label: 'Defaults', value: 'defaults', icon: 'i-lucide-timer' },
-  { label: 'Dropbox', value: 'dropbox', icon: 'i-simple-icons-dropbox' },
-  aiTab
+  { label: 'Dropbox', value: 'dropbox', icon: 'i-simple-icons-dropbox' }
 ]
-const tabs = computed(() => isAdmin.value ? adminTabs : [aiTab])
 const route = useRoute()
-const tabFrom = (value: unknown) => tabs.value.some(t => t.value === value) ? String(value) : tabs.value[0]!.value
+const tabFrom = (value: unknown) => tabs.some(t => t.value === value) ? String(value) : tabs[0]!.value
 const tab = ref(tabFrom(route.query.tab))
-// the sidebar's Connect your AI button links here with ?tab=ai, also while Settings is already open
+// links come in with ?tab=…, also while Settings is already open
 watch(() => route.query.tab, value => (tab.value = tabFrom(value)))
-// and the open tab is kept in the URL, so that button (and reloads) always land on the right one
+// and the open tab is kept in the URL, so reloads land on the right one
 const router = useRouter()
 watch(tab, (value) => {
   if (route.query.tab !== value) router.replace({ query: { ...route.query, tab: value } })
@@ -50,18 +48,15 @@ async function loadPersonChannels() {
   personChannels.value = must(await db.from('person_channels').select('person_id, channel_id'))
 }
 
-// the rest is admins' only; a member here just has the AI tab
-await Promise.all(isAdmin.value ? [load(true), loadMembers(), loadPersonChannels(), loadOrgs()] : [loadOrgs()])
+await Promise.all([load(true), loadMembers(), loadPersonChannels(), loadOrgs()])
 
 const saving = ref(false)
 
 // --- profile -----------------------------------------------------------------
-// The organisation's name (its slug never changes) and photo, and the admin's own name in it.
-const me = computed(() => members.value.find(row => row.user_id === access.value?.id) ?? null)
-const profile = reactive({ org_name: '', my_name: '' })
-watch([currentOrg, me], () => {
+// The organisation's name (its slug never changes) and photo.
+const profile = reactive({ org_name: '' })
+watch(currentOrg, () => {
   profile.org_name = currentOrg.value?.name ?? ''
-  profile.my_name = me.value?.display_name ?? me.value?.profile?.full_name ?? ''
 }, { immediate: true })
 
 async function saveOrg() {
@@ -107,19 +102,6 @@ async function removeLogo() {
     await loadOrgs()
   }, 'Photo removed')
   logoSaving.value = false
-}
-
-async function saveMyName() {
-  const name = profile.my_name.trim()
-  if (!me.value || !name) return
-  saving.value = true
-  await run(async () => {
-    must(await db.from('org_members').update({ display_name: name }).eq('user_id', me.value!.user_id))
-    // how they read on shot lists (their folder slug never changes)
-    must(await db.from('people').update({ name }).eq('user_id', me.value!.user_id))
-    await Promise.all([load(true), loadMembers(), loadOrgs()])
-  }, 'Name saved')
-  saving.value = false
 }
 
 // --- channels --------------------------------------------------------------
@@ -424,30 +406,6 @@ async function saveDefaults() {
             </template>
           </UCard>
 
-          <UCard v-if="me">
-            <template #header>
-              <h3 class="font-semibold text-highlighted">
-                You
-              </h3>
-            </template>
-            <div class="grid gap-4 sm:grid-cols-2">
-              <UFormField label="Your name" required help="How you appear on shot lists and to the team here">
-                <UInput v-model="profile.my_name" class="w-full" />
-              </UFormField>
-              <UFormField label="Email" help="You sign in with it">
-                <UInput :model-value="me.profile?.email ?? ''" class="w-full" disabled />
-              </UFormField>
-            </div>
-            <template #footer>
-              <UButton
-                label="Save your name"
-                :loading="saving"
-                :disabled="!profile.my_name.trim() || profile.my_name.trim() === (me.display_name ?? me.profile?.full_name ?? '')"
-                @click="saveMyName"
-              />
-            </template>
-          </UCard>
-
           <BillingSettings />
         </template>
 
@@ -529,7 +487,6 @@ async function saveDefaults() {
         <!-- Defaults -->
         <ScriptSettings v-else-if="tab === 'scripts'" />
         <DropboxSettings v-else-if="tab === 'dropbox'" />
-        <AiSettings v-else-if="tab === 'ai'" />
 
         <template v-else>
           <p class="text-sm text-muted">

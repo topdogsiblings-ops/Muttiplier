@@ -120,7 +120,7 @@ async function answer(approve: boolean) {
             </li>
           </ul>
           <p class="mt-2 text-xs text-dimmed">
-            It can't delete anything, plan shoots or change billing. You can disconnect it any time from Connect your AI in Kreate.
+            It can't delete anything, plan shoots or change billing. You can disconnect it any time from Your account in Kreate (your photo, top right).
           </p>
         </div>
 

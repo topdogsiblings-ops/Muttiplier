@@ -74,7 +74,7 @@ SUPABASE_SERVICE_ROLE_KEY=      # server routes only; not required today
 - **Orgs**, like Shopify: an org owns everything in the app (`org_id` on every table) and pays; its admins invite members by email, and members don't pay. Names, slugs and codes are unique within an org, and each org counts its own shoots (S001…).
 - Sign in with Google, or an email and password (`/login`: sign in, create an account, or reset a forgotten password by email at `/reset-password`). A new email account confirms its address by the emailed link. Not in an org → signed out with a "no access" message. (Starting a new org at `/onboarding` is closed until billing exists: `private.platform.org_signup_open`.)
 - **Invites** (`org_invites`): Settings → Members. An invite becomes a membership (`org_members`) when someone signs in with that email, or straight away if they already have, but only once the account's email is **confirmed** (`auth.users.email_confirmed_at`): Google accounts always are, email accounts once they've opened the confirmation link. Confirming later accepts the invites then.
-- **The current org**: `private.current_org_id()` is the `org_id` claim in the access token (`public.custom_access_token_hook`, optional, turned on in the Supabase dashboard), else the org the user last switched to (`profiles.active_org_id`), else their first; always one they're a member of right now. Someone in several orgs picks one at `/orgs` and switches from the sidebar. Inserts default to it, so app queries don't mention orgs.
+- **The current org**: `private.current_org_id()` is the `org_id` claim in the access token (`public.custom_access_token_hook`, optional, turned on in the Supabase dashboard), else the org the user last switched to (`profiles.active_org_id`), else their first; always one they're a member of right now. Someone in several orgs picks one in Your account (`/account`; `/orgs` redirects there) and switches from the top bar. Inserts default to it, so app queries don't mention orgs.
 - Two roles, per org:
   - **admin** — everything, plus managing people, channels, members and settings. Only admins move a shoot through its statuses (planning it, starting and ending filming, editing, going Live), renumber it, mark it stale and run its batches (making them, moving them on, scoring, dropping elements). The database enforces it.
   - **member** — full read/write on the Library, Brands and planning a shoot. Once an admin has started a shoot, members tick off their shots and add their clips; before that the checklist is read-only for them. They can see batches but not change them.
@@ -84,6 +84,14 @@ SUPABASE_SERVICE_ROLE_KEY=      # server routes only; not required today
 ---
 
 ## 4. App structure
+
+A **top bar** is always there on signed-in pages: the Kreate logo and the current organisation (a switcher, with All organisations and New organisation) on the left, and your photo on the right, which opens **Your account** (`/account`, no sidebar):
+- **Your organisations**: open one (switches to it), or start a new one. Each has its own plan and billing.
+- **Profile**: your name and photo (`profiles.display_name`, `photo_url` in the `avatars` bucket at `<user id>/photo`; saved by `public.update_my_profile`, which also sets your name in every org you're in), shown instead of the ones from Google sign-in.
+- **Email** (Supabase emails a confirmation link; it changes once confirmed) and **password** (setting one lets a Google account also sign in with email and password).
+- **Connect your AI** (§11), and Sign out.
+
+Below the bar, an organisation's pages have its sidebar:
 
 | Tab | Purpose |
 |---|---|
@@ -539,7 +547,7 @@ Kreate has **no built-in AI**: no drafting, rewording or b-roll suggestions, and
 - **Sign-in:** Supabase's OAuth 2.1 server (Dashboard → Authentication → OAuth Server: on, authorization path `/oauth/consent`, dynamic client registration on). Only tokens issued through it (they carry `client_id`) are accepted; requests run as the person, under the database's rules.
 - **Consent:** `/oauth/consent` shows the app, the organisation it will work in (pick another to switch to it) and what it can do; Approve or Cancel.
 - **Tools:** `get_workspace` (voice, profile, channel slots, script rules, hook types, formats), `list_brands` (products, claims, features), `get_library` (hooks, CTAs or formats), `list_shoots`, `get_shoot` (the shot list with scripts), `add_hooks` and `add_ctas` (into the Library, tagged `ai-draft`, with hook types matched by name). Only while the organisation's subscription is live.
-- **Connect your AI** (Settings → Connect your AI, `/settings?tab=ai`; a button at the foot of the sidebar, for everyone; members see only this tab of Settings): the connector's address, the steps, and the AI apps the person has connected, each with Disconnect.
+- **Connect your AI** (in Your account, `/account#ai`; a button at the foot of the sidebar until they've connected an AI app; `/settings?tab=ai` redirects there): the connector's address, the steps, and the AI apps the person has connected, each with Disconnect.
 - Not yet: writing VOs, and limiting it to Pro and Studio (tiers aren't built).
 
 ---
@@ -681,7 +689,7 @@ Motion's pet data gives **Text message** the highest spend use ratio of any form
   | Price (USD a month) | $44.99 | $74.99 | $149.99 |
   | Seats (org members and pending invites; cast aren't seats) | 2 | Unlimited | Unlimited |
   | Brands | 5 | 10 | Unlimited |
-  | Shoots per month | 4 | 12 | Unlimited |
+  | Shoots per month | 2 | 6 | Unlimited |
   | AI connector (§11) | – | ✓ | ✓ |
   | Insights and diversity settings | ✓ | ✓ | ✓ |
   | Treatments | Basic | Moderate | Advanced (not enforced until treatments are built) |
