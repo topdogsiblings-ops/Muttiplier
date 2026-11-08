@@ -399,6 +399,27 @@ export type Database = {
         }
         Relationships: []
       }
+      connector_org_access: {
+        Row: {
+          client_id: string
+          created_at: string
+          org_id: string
+          user_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          org_id: string
+          user_id: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          org_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       cta_templates: {
         Row: {
           org_id: string
@@ -1969,6 +1990,10 @@ export type Database = {
         Returns: undefined
       }
       sign_out_klip_everywhere: { Args: never; Returns: string }
+      set_connector_orgs: {
+        Args: { p_client_id: string; p_org_ids: string[] }
+        Returns: undefined
+      }
       set_channel_members: {
         Args: { p_channel_id: string; p_user_ids: string[] }
         Returns: undefined

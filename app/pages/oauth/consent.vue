@@ -1,17 +1,17 @@
 <script setup lang="ts">
 // Connecting an AI app to Kreate (spec §11): Supabase Auth sends the person here, signed in, with
-// an authorization_id. They see which app is asking and which organisation it will work in, and
-// approve or deny; Supabase then hands the app its token and sends the browser back to it.
-// The app works in their current organisation (picking another here switches to it).
+// an authorization_id. They see which app is asking, tick which of their organisations it may use
+// (all, to start with; saved as connector_org_access for this app), and approve or deny; Supabase
+// then hands the app its token and sends the browser back to it.
 definePageMeta({ layout: 'plain' })
 
 const route = useRoute()
 const supabase = useSupabaseClient()
-const { orgs, currentOrg, load } = useOrg()
+const { orgs, load } = useOrg()
 await load()
 
 const authorizationId = String(route.query.authorization_id ?? '')
-type Details = { client: { name: string, uri: string, logo_uri: string }, scope: string }
+type Details = { client: { id: string, name: string, uri: string, logo_uri: string }, scope: string }
 const details = ref<Details | null>(null)
 const error = ref('')
 const done = ref<'approved' | 'denied' | null>(null)
@@ -42,16 +42,15 @@ onMounted(async () => {
   details.value = data
 })
 
-const orgId = ref(currentOrg.value?.id)
+/** the organisations it may use: all of them to start with */
+const orgIds = ref(orgs.value.map(org => org.id))
 /** it connects as whoever is signed in to Kreate here */
 const { access } = useAccess()
-const orgItems = computed(() => orgs.value.map(org => ({ label: org.name, value: org.id })))
-const orgName = computed(() => orgs.value.find(org => org.id === orgId.value)?.name ?? '')
 
 /** What the app can do, in plain words (the scopes are Supabase's sign-in ones). */
 const permissions = computed(() => [
   'Read your brands, products, Library and shoots',
-  'Read your organisation\'s voice and script rules',
+  'Read each organisation\'s voice and script rules',
   'Add hooks and CTAs to your Library, tagged for you to review',
   ...(details.value?.scope.split(' ').includes('email') ? ['See your email address'] : [])
 ])
@@ -60,10 +59,10 @@ async function answer(approve: boolean) {
   sending.value = true
   error.value = ''
   try {
-    // it works in the organisation chosen here
-    if (approve && orgId.value && orgId.value !== currentOrg.value?.id) {
-      const { error: switchFailure } = await supabase.rpc('set_active_org', { p_org_id: orgId.value })
-      if (switchFailure) throw switchFailure
+    // the organisations it may use, saved before it gets its token
+    if (approve && details.value) {
+      const { error: saveFailure } = await supabase.rpc('set_connector_orgs', { p_client_id: details.value.client.id, p_org_ids: orgIds.value })
+      if (saveFailure) throw saveFailure
     }
     const { data, error: failure } = approve
       ? await supabase.auth.oauth.approveAuthorization(authorizationId, { skipBrowserRedirect: true })
@@ -110,11 +109,15 @@ async function answer(approve: boolean) {
           It will work as <span class="font-medium text-highlighted">{{ access?.email }}</span>.
         </p>
 
-        <UFormField v-if="orgs.length > 1" label="Organisation" help="It works in this organisation. Choosing another switches Kreate to it too.">
-          <USelect v-model="orgId" :items="orgItems" class="w-full" />
+        <UFormField
+          v-if="orgs.length > 1"
+          label="Organisations it can use"
+          help="You'll tell it which one you mean as you go. Change these any time in Your account → Connect your AI."
+        >
+          <OrgChecklist v-model="orgIds" :orgs="orgs" />
         </UFormField>
         <p v-else class="text-sm text-muted">
-          It works in <span class="font-medium text-highlighted">{{ orgName }}</span>.
+          It works in <span class="font-medium text-highlighted">{{ orgs[0]?.name }}</span>.
         </p>
 
         <div>
@@ -135,7 +138,7 @@ async function answer(approve: boolean) {
           {{ error }}
         </p>
         <div class="flex gap-2">
-          <UButton class="flex-1" block label="Approve" :loading="sending" @click="answer(true)" />
+          <UButton class="flex-1" block label="Approve" :loading="sending" :disabled="!orgIds.length" @click="answer(true)" />
           <UButton color="neutral" variant="subtle" label="Cancel" :disabled="sending" @click="answer(false)" />
         </div>
       </template>

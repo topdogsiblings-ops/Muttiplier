@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
   const auth = await gate(request)
   if (auth instanceof Response) return sendWebResponse(event, auth)
 
-  const handler = createMcpHandler(() => buildConnectorServer(event, auth.token), {
+  const handler = createMcpHandler(() => buildConnectorServer(event, auth.token, auth.clientId), {
     onerror: error => console.error('AI connector:', error)
   })
   try {

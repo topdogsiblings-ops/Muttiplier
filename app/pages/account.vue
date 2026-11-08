@@ -325,9 +325,6 @@ async function signOut() {
           <span class="font-medium">New organisation</span>
         </NuxtLink>
       </div>
-      <p class="text-xs text-muted">
-        Each organisation has its own plan and billing, in its Settings.
-      </p>
     </section>
 
     <!-- Profile -->

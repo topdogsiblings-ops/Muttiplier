@@ -6,9 +6,10 @@ import type { Database } from '#shared/types/database.types'
 
 // Kreate's AI connector (spec §11): an MCP server at /mcp that people's own AI apps (Claude,
 // ChatGPT…) connect to. Supabase Auth is the OAuth 2.1 server: the AI app finds it from our
-// protected resource metadata, the person approves it on /oauth/consent, and Supabase issues it a
-// token for that person. Every request runs as them, so the database's own rules keep it inside
-// their current organisation. Kreate has no AI of its own.
+// protected resource metadata, the person approves it on /oauth/consent (picking which of their
+// organisations it may use), and Supabase issues it a token for that person. Every request runs as
+// them, naming its organisation (x-kreate-org); the database only honours one they're in and the
+// app was allowed. Kreate has no AI of its own.
 
 /** The MCP endpoint's URL, from the request (so it follows whichever domain served it). */
 export function connectorUrl(event: H3Event) {
@@ -29,11 +30,14 @@ export function connectorMetadata(event: H3Event) {
 
 export const connectorMetadataUrl = (event: H3Event) => getOAuthProtectedResourceMetadataUrl(connectorUrl(event))
 
-/** A database client that acts as the person the token belongs to (their organisation's rules apply). */
-export function connectorDb(event: H3Event, token: string) {
+/**
+ * A database client that acts as the person the token belongs to, in `orgId` when given (the
+ * database checks they're in it and the app may use it), else their current organisation.
+ */
+export function connectorDb(event: H3Event, token: string, orgId?: string) {
   const { url, key } = useRuntimeConfig(event).public.supabase
   return createClient<Database>(url, key, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
+    global: { headers: { Authorization: `Bearer ${token}`, ...(orgId ? { 'x-kreate-org': orgId } : {}) } },
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   })
 }
