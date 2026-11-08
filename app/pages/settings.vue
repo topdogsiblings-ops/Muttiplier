@@ -56,7 +56,7 @@ await Promise.all(isAdmin.value ? [load(true), loadMembers(), loadPersonChannels
 const saving = ref(false)
 
 // --- profile -----------------------------------------------------------------
-// The organisation's name (its slug never changes), and the admin's own name in it.
+// The organisation's name (its slug never changes) and photo, and the admin's own name in it.
 const me = computed(() => members.value.find(row => row.user_id === access.value?.id) ?? null)
 const profile = reactive({ org_name: '', my_name: '' })
 watch([currentOrg, me], () => {
@@ -73,6 +73,40 @@ async function saveOrg() {
     await loadOrgs()
   }, 'Organisation renamed')
   saving.value = false
+}
+
+// its photo: one file per org in the public org-logos bucket, replaced in place
+const logoInput = ref<HTMLInputElement | null>(null)
+const logoSaving = ref(false)
+async function uploadLogo(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !currentOrg.value) return
+  if (file.size > 2 * 1024 * 1024) {
+    useToast().add({ title: 'That photo is over 2 MB', description: 'Pick a smaller one.', color: 'error' })
+    return
+  }
+  logoSaving.value = true
+  await run(async () => {
+    const path = `${currentOrg.value!.id}/logo`
+    const { error } = await db.storage.from('org-logos').upload(path, file, { upsert: true, contentType: file.type, cacheControl: '3600' })
+    if (error) throw error
+    const url = `${db.storage.from('org-logos').getPublicUrl(path).data.publicUrl}?v=${Date.now()}`
+    must(await db.from('orgs').update({ logo_url: url }).eq('id', currentOrg.value!.id))
+    await loadOrgs()
+  }, 'Photo saved')
+  logoSaving.value = false
+}
+async function removeLogo() {
+  if (!currentOrg.value) return
+  logoSaving.value = true
+  await run(async () => {
+    await db.storage.from('org-logos').remove([`${currentOrg.value!.id}/logo`])
+    must(await db.from('orgs').update({ logo_url: null }).eq('id', currentOrg.value!.id))
+    await loadOrgs()
+  }, 'Photo removed')
+  logoSaving.value = false
 }
 
 async function saveMyName() {
@@ -343,6 +377,35 @@ async function saveDefaults() {
                 Organisation
               </h3>
             </template>
+            <div class="mb-4 flex items-center gap-4">
+              <UAvatar :src="currentOrg?.logo_url ?? undefined" :alt="currentOrg?.name" size="3xl" />
+              <div class="space-y-1.5">
+                <div class="flex gap-2">
+                  <UButton
+                    :label="currentOrg?.logo_url ? 'Change photo' : 'Add photo'"
+                    icon="i-lucide-image-up"
+                    color="neutral"
+                    variant="outline"
+                    size="sm"
+                    :loading="logoSaving"
+                    @click="logoInput?.click()"
+                  />
+                  <UButton
+                    v-if="currentOrg?.logo_url"
+                    label="Remove"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    :disabled="logoSaving"
+                    @click="removeLogo"
+                  />
+                </div>
+                <p class="text-xs text-muted">
+                  Shown in the organisation switcher. PNG, JPG, WebP or GIF, up to 2 MB.
+                </p>
+              </div>
+              <input ref="logoInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="hidden" @change="uploadLogo">
+            </div>
             <div class="grid gap-4 sm:grid-cols-2">
               <UFormField label="Name" required help="Shown in the organisation switcher and to everyone in it">
                 <UInput v-model="profile.org_name" class="w-full" />

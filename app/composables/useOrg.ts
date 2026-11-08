@@ -10,6 +10,8 @@ export interface MyOrg {
   entitled: boolean
   /** how it has Klip: bought, billing-exempt, for the length of its trial, or not at all */
   klip_access: 'purchased' | 'exempt' | 'trial' | 'none'
+  /** its photo, set by its admins (Settings → Profile) */
+  logo_url: string | null
 }
 
 /**

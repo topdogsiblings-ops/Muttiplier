@@ -9,17 +9,14 @@ const { currentOrg } = useOrg()
 
 const connectorUrl = computed(() => import.meta.client ? `${window.location.origin}/mcp` : '/mcp')
 
-type Grant = { client: { id: string, name: string, uri: string, logo_uri: string }, granted_at: string }
-const grants = ref<Grant[]>([])
+type Grant = AiGrant
+const { grants, loadError, load } = useAiApps()
 const loading = ref(true)
-const loadError = ref('')
 /** the account the list is for: AI apps are connected per person */
 const { access } = useAccess()
 async function loadGrants() {
   loading.value = true
-  const { data, error } = await supabase.auth.oauth.listGrants()
-  loadError.value = error?.message ?? ''
-  grants.value = Array.isArray(data) ? data : []
+  await load()
   loading.value = false
 }
 onMounted(loadGrants)

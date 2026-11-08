@@ -13,7 +13,7 @@ onMounted(async () => {
 const orgItems = computed(() => [
   orgs.value.map(org => ({
     label: org.name,
-    avatar: { alt: org.name },
+    avatar: { src: org.logo_url ?? undefined, alt: org.name },
     type: 'checkbox' as const,
     checked: org.is_current,
     onSelect: (event: Event) => {
@@ -25,6 +25,14 @@ const orgItems = computed(() => [
 ])
 const supabase = useSupabaseClient()
 const route = useRoute()
+
+// Connect your AI stays at the foot of the pane until they've connected an AI app
+const { grants, loaded: aiLoaded, load: loadAiApps } = useAiApps()
+onMounted(() => loadAiApps().catch(() => {}))
+const showConnectAi = computed(() => aiLoaded.value && grants.value.length === 0)
+
+/** the collapsed pane's labels: beside each icon, centred on it, as soon as it's hovered */
+const tooltip = { delayDuration: 0, content: { side: 'right' as const, align: 'center' as const } }
 
 const items = computed<NavigationMenuItem[]>(() => [
   { label: 'Library', icon: 'i-lucide-library', to: '/library' },
@@ -61,36 +69,41 @@ async function signOut() {
             :content="{ align: 'center', collisionPadding: 12 }"
             :ui="{ content: collapsed ? 'w-48' : 'w-(--reka-dropdown-menu-trigger-width)' }"
           >
-            <UButton
-              :label="collapsed ? undefined : currentOrg?.name ?? 'Kreate'"
-              :avatar="{ alt: currentOrg?.name ?? 'Kreate', size: '2xs' }"
-              :trailing-icon="collapsed ? undefined : 'i-lucide-chevrons-up-down'"
-              color="neutral"
-              variant="ghost"
-              block
-              :square="collapsed"
-              class="data-[state=open]:bg-elevated"
-              :class="[!collapsed && 'py-2']"
-              :ui="{ trailingIcon: 'text-dimmed' }"
-              aria-label="Switch organisation"
-            />
+            <UTooltip :text="currentOrg?.name ?? 'Kreate'" :disabled="!collapsed" v-bind="tooltip">
+              <UButton
+                :label="collapsed ? undefined : currentOrg?.name ?? 'Kreate'"
+                :avatar="{ src: currentOrg?.logo_url ?? undefined, alt: currentOrg?.name ?? 'Kreate', size: '2xs' }"
+                :trailing-icon="collapsed ? undefined : 'i-lucide-chevrons-up-down'"
+                color="neutral"
+                variant="ghost"
+                block
+                :square="collapsed"
+                class="data-[state=open]:bg-elevated"
+                :class="[!collapsed && 'py-2']"
+                :ui="{ trailingIcon: 'text-dimmed' }"
+                aria-label="Switch organisation"
+              />
+            </UTooltip>
           </UDropdownMenu>
         </div>
 
-        <UNavigationMenu :items="items" orientation="vertical" :collapsed="collapsed" />
+        <UNavigationMenu :items="items" orientation="vertical" :collapsed="collapsed" :tooltip="tooltip" />
 
-        <!-- Connect your AI (Settings → Connect your AI, open to every member), at the foot of the pane -->
-        <UButton
-          to="/settings?tab=ai"
-          icon="i-lucide-plug"
-          :label="collapsed ? undefined : 'Connect your AI'"
-          color="neutral"
-          variant="outline"
-          block
-          :square="collapsed"
-          class="mt-auto"
-          aria-label="Connect your AI"
-        />
+        <!-- Connect your AI (Settings → Connect your AI, open to every member), at the foot of the pane,
+             until they've connected one -->
+        <UTooltip v-if="showConnectAi" text="Connect your AI" :disabled="!collapsed" v-bind="tooltip">
+          <UButton
+            to="/settings?tab=ai"
+            icon="i-lucide-plug"
+            :label="collapsed ? undefined : 'Connect your AI'"
+            color="neutral"
+            variant="outline"
+            block
+            :square="collapsed"
+            class="mt-auto"
+            aria-label="Connect your AI"
+          />
+        </UTooltip>
       </template>
 
       <template #footer="{ collapsed }">
@@ -103,7 +116,9 @@ async function signOut() {
               {{ access?.role }}
             </p>
           </div>
-          <UButton icon="i-lucide-log-out" color="neutral" variant="ghost" aria-label="Sign out" @click="signOut" />
+          <UTooltip text="Sign out" :disabled="!collapsed" v-bind="tooltip">
+            <UButton icon="i-lucide-log-out" color="neutral" variant="ghost" aria-label="Sign out" @click="signOut" />
+          </UTooltip>
         </div>
       </template>
     </UDashboardSidebar>

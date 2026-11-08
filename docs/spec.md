@@ -678,18 +678,16 @@ Motion's pet data gives **Text message** the highest spend use ratio of any form
 
   | | Starter | Pro | Studio |
   |---|---|---|---|
-  | Price (USD a month) | $34.99 | $59.99 | $149.99 |
+  | Price (USD a month) | $44.99 | $74.99 | $149.99 |
+  | Seats (org members and pending invites; cast aren't seats) | 2 | Unlimited | Unlimited |
   | Brands | 5 | 10 | Unlimited |
-  | People | 2 | Unlimited | Unlimited |
-  | Shoots per month | tbd | tbd | Unlimited |
+  | Shoots per month | 4 | 12 | Unlimited |
   | AI connector (§11) | – | ✓ | ✓ |
   | Insights and diversity settings | ✓ | ✓ | ✓ |
-  | Treatments | Basic | Moderate | Advanced |
+  | Treatments | Basic | Moderate | Advanced (not enforced until treatments are built) |
   | Klip | Buy | Buy | Included |
 
-  The free trial is on Pro. Existing subscribers keep $54.99 with Pro limits.
-
-  Shoots per month are to be set from real use.
+  The free trial is on Pro. A shoot counts when it's marked Planned, in the calendar month it happens; deleting it doesn't give it back. Over a limit after a downgrade, nothing is removed: they just can't add more. Billing-exempt orgs (set by SQL only: `update public.orgs set billing_exempt = true where slug = '…'`) get Studio limits.
 
 - Local worker (Windows now, VPS later): ingest, auto-tagging, conformance checks, caption alignment, recipe generation, selection, rendering.
 - Submission queue and form-filling Chrome extension (linked to Dropbox).

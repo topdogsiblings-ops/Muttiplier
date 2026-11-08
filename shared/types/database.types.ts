@@ -819,6 +819,7 @@ export type Database = {
           klip_payment_intent_id: string | null
           klip_purchased_at: string | null
           id: string
+          logo_url: string | null
           name: string
           next_shoot_number: number
           slug: string
@@ -831,6 +832,7 @@ export type Database = {
           klip_payment_intent_id?: string | null
           klip_purchased_at?: string | null
           id?: string
+          logo_url?: string | null
           name: string
           next_shoot_number?: number
           slug: string
@@ -843,6 +845,7 @@ export type Database = {
           klip_payment_intent_id?: string | null
           klip_purchased_at?: string | null
           id?: string
+          logo_url?: string | null
           name?: string
           next_shoot_number?: number
           slug?: string
@@ -1902,6 +1905,7 @@ export type Database = {
         Args: never
         Returns: {
           klip_access: string
+          logo_url: string
           display_name: string | null
           has_chosen: boolean
           id: string
