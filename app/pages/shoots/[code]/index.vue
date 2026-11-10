@@ -423,6 +423,19 @@ async function onVoSaved(vo: Row<'body_templates'>) {
 }
 const voPickerOpen = ref(false)
 
+// a VO's own link (?vo=<id>, e.g. one an AI app drafted, shared in chat) opens it in the editor:
+// saving it puts it on the plan
+const openedVo = ref<string | null>(null)
+watch(() => [route.query.vo, !!voEditor.value] as const, async ([id, ready]) => {
+  if (typeof id !== 'string' || !ready || openedVo.value === id) return
+  openedVo.value = id
+  await run(async () => {
+    const vo = must(await db.from('body_templates').select('*').eq('id', id).eq('shoot_id', shoot.value.id).maybeSingle())
+    if (!vo) throw new Error('That VO isn\'t on this shoot.')
+    voEditor.value?.edit(vo)
+  })
+}, { immediate: true })
+
 async function renumber() {
   await run(async () => {
     must(await db.rpc('renumber_shoot_items', { p_shoot_id: shoot.value.id }))
@@ -755,6 +768,7 @@ const exportItems = computed<DropdownMenuItem[][]>(() => [
           <UBadge v-if="stale" label="Stale" color="neutral" variant="outline" />
         </template>
         <template #right>
+          <ShareToChat :share="{ type: 'shoot', id: shoot.id, title: `${shoot.code} · ${bundle.brand.name} — ${bundle.product.name}`, preview: SHOOT_STATUS_LABELS[shoot.status] ?? shoot.status, path: `/shoots/${shoot.code}` }" />
           <UButton
             v-if="isAdmin"
             :label="stale ? 'Not stale' : 'Mark stale'"

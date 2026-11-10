@@ -245,6 +245,16 @@ async function signOut() {
             </div>
             <!-- the one they were last in -->
             <UBadge v-if="org.is_current" label="Jump back in" icon="i-lucide-corner-down-right" color="primary" variant="subtle" size="sm" class="shrink-0" />
+            <!-- unread chat messages there -->
+            <UBadge
+              v-if="summaries.get(org.id)?.chat_unread"
+              :label="`${summaries.get(org.id)!.chat_unread > 99 ? '99+' : summaries.get(org.id)!.chat_unread} unread`"
+              icon="i-lucide-messages-square"
+              color="primary"
+              variant="solid"
+              size="sm"
+              class="shrink-0"
+            />
             <UIcon v-if="opening === org.id" name="i-lucide-loader-circle" class="size-4 shrink-0 animate-spin text-muted" />
             <UIcon v-else name="i-lucide-chevron-right" class="size-4 shrink-0 text-dimmed" />
           </div>

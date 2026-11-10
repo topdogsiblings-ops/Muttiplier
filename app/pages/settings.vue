@@ -335,6 +335,32 @@ const defaultFields = [
   { key: 'words_per_second', label: 'Speech pace', unit: 'words/s', help: 'Used to estimate each VO\'s length from its script. 2.5 is about 150 words a minute.' }
 ] as const
 
+// --- chat updates ------------------------------------------------------------
+// Which of Kreate's own updates go to the organisation's chat (settings.chat_events; missing = on).
+const CHAT_EVENTS = [
+  { key: 'shoot_planned', label: 'A shoot is planned' },
+  { key: 'shoot_shooting', label: 'Filming starts' },
+  { key: 'shoot_filmed', label: 'A shoot is filmed' },
+  { key: 'shoot_editing', label: 'Editing starts' },
+  { key: 'shoot_live', label: 'A shoot goes Live' },
+  { key: 'member_joined', label: 'Someone joins' },
+  { key: 'ai_drafts', label: 'An AI app adds drafts' }
+] as const
+const chatEvents = reactive<Record<string, boolean>>({})
+watch(settings, (value) => {
+  const saved = (value?.chat_events ?? {}) as Record<string, unknown>
+  for (const event of CHAT_EVENTS) chatEvents[event.key] = saved[event.key] !== false
+}, { immediate: true })
+async function saveChatEvents() {
+  if (!settings.value) return
+  saving.value = true
+  await run(async () => {
+    must(await db.from('settings').update({ chat_events: { ...chatEvents } }).eq('id', settings.value!.id))
+    await load(true)
+  }, 'Chat updates saved')
+  saving.value = false
+}
+
 async function saveDefaults() {
   if (!settings.value) return
   saving.value = true
@@ -539,6 +565,23 @@ async function saveDefaults() {
             </div>
             <template #footer>
               <UButton label="Save defaults" :loading="saving" @click="saveDefaults" />
+            </template>
+          </UCard>
+
+          <UCard>
+            <template #header>
+              <h3 class="font-semibold text-highlighted">
+                Chat updates
+              </h3>
+              <p class="text-sm text-muted">
+                What Kreate posts to the organisation's chat by itself.
+              </p>
+            </template>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <USwitch v-for="event in CHAT_EVENTS" :key="event.key" v-model="chatEvents[event.key]" :label="event.label" />
+            </div>
+            <template #footer>
+              <UButton label="Save chat updates" :loading="saving" @click="saveChatEvents" />
             </template>
           </UCard>
 

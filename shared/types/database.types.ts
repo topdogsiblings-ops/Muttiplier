@@ -16,76 +16,141 @@ export type Database = {
     Tables: {
       angles: {
         Row: {
-          org_id: string
           archived: boolean
           created_at: string
           created_by: string | null
           description: string | null
           id: string
           name: string
+          org_id: string
           source_url: string | null
           updated_at: string
         }
         Insert: {
-          org_id?: string
           archived?: boolean
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
           name: string
+          org_id?: string
           source_url?: string | null
           updated_at?: string
         }
         Update: {
-          org_id?: string
           archived?: boolean
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
           name?: string
+          org_id?: string
           source_url?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "angles_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      batch_scores: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          element_key: string
+          element_kind: string
+          notes: string | null
+          org_id: string
+          score: string
+          shortlist_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          element_key: string
+          element_kind: string
+          notes?: string | null
+          org_id?: string
+          score: string
+          shortlist_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          element_key?: string
+          element_kind?: string
+          notes?: string | null
+          org_id?: string
+          score?: string
+          shortlist_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "batch_scores_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "batch_scores_shortlist_id_fkey"
+            columns: ["org_id", "shortlist_id"]
+            isOneToOne: false
+            referencedRelation: "shoot_shortlists"
+            referencedColumns: ["org_id", "id"]
+          },
+        ]
       }
       body_template_products: {
         Row: {
-          org_id: string
           body_template_id: string
+          org_id: string
           product_id: string
         }
         Insert: {
-          org_id?: string
           body_template_id: string
+          org_id?: string
           product_id: string
         }
         Update: {
-          org_id?: string
           body_template_id?: string
+          org_id?: string
           product_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "body_template_products_body_template_id_fkey"
-            columns: ["body_template_id"]
+            columns: ["org_id", "body_template_id"]
             isOneToOne: false
             referencedRelation: "body_templates"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "body_template_products_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "body_template_products_product_id_fkey"
-            columns: ["product_id"]
+            columns: ["org_id", "product_id"]
             isOneToOne: false
             referencedRelation: "products"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
       body_templates: {
         Row: {
-          org_id: string
           angle_id: string | null
           archived: boolean
           beats: Json
@@ -97,6 +162,7 @@ export type Database = {
           format_id: string
           id: string
           notes: string | null
+          org_id: string
           person_id: string | null
           product_id: string
           shoot_id: string | null
@@ -106,7 +172,6 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          org_id?: string
           angle_id?: string | null
           archived?: boolean
           beats?: Json
@@ -118,6 +183,7 @@ export type Database = {
           format_id: string
           id?: string
           notes?: string | null
+          org_id?: string
           person_id?: string | null
           product_id: string
           shoot_id?: string | null
@@ -127,7 +193,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          org_id?: string
           angle_id?: string | null
           archived?: boolean
           beats?: Json
@@ -139,6 +204,7 @@ export type Database = {
           format_id?: string
           id?: string
           notes?: string | null
+          org_id?: string
           person_id?: string | null
           product_id?: string
           shoot_id?: string | null
@@ -150,70 +216,104 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "body_templates_angle_id_fkey"
-            columns: ["angle_id"]
+            columns: ["org_id", "angle_id"]
             isOneToOne: false
             referencedRelation: "angles"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "body_templates_cast_channel_id_fkey"
+            columns: ["org_id", "cast_channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "body_templates_feature_id_fkey"
-            columns: ["feature_id"]
+            columns: ["org_id", "feature_id"]
             isOneToOne: false
             referencedRelation: "product_features"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "body_templates_format_id_fkey"
-            columns: ["format_id"]
+            columns: ["org_id", "format_id"]
             isOneToOne: false
             referencedRelation: "formats"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "body_templates_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "body_templates_person_id_fkey"
-            columns: ["person_id"]
+            columns: ["org_id", "person_id"]
             isOneToOne: false
             referencedRelation: "people"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "body_templates_product_id_fkey"
+            columns: ["org_id", "product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "body_templates_shoot_id_fkey"
+            columns: ["org_id", "shoot_id"]
+            isOneToOne: false
+            referencedRelation: "shoots"
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
       brand_channels: {
         Row: {
-          org_id: string
           brand_id: string
           channel_id: string
+          org_id: string
         }
         Insert: {
-          org_id?: string
           brand_id: string
           channel_id: string
+          org_id?: string
         }
         Update: {
-          org_id?: string
           brand_id?: string
           channel_id?: string
+          org_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "brand_channels_brand_id_fkey"
-            columns: ["brand_id"]
+            columns: ["org_id", "brand_id"]
             isOneToOne: false
             referencedRelation: "brands"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "brand_channels_channel_id_fkey"
-            columns: ["channel_id"]
+            columns: ["org_id", "channel_id"]
             isOneToOne: false
             referencedRelation: "channels"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "brand_channels_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
             referencedColumns: ["id"]
           },
         ]
       }
       brands: {
         Row: {
-          org_id: string
           commission_pct: number | null
           created_at: string
           created_by: string | null
@@ -222,6 +322,7 @@ export type Database = {
           id: string
           name: string
           notes: string | null
+          org_id: string
           pay_model: string | null
           slug: string
           status: string
@@ -233,7 +334,6 @@ export type Database = {
           videos_required: number | null
         }
         Insert: {
-          org_id?: string
           commission_pct?: number | null
           created_at?: string
           created_by?: string | null
@@ -242,6 +342,7 @@ export type Database = {
           id?: string
           name: string
           notes?: string | null
+          org_id?: string
           pay_model?: string | null
           slug: string
           status?: string
@@ -253,7 +354,6 @@ export type Database = {
           videos_required?: number | null
         }
         Update: {
-          org_id?: string
           commission_pct?: number | null
           created_at?: string
           created_by?: string | null
@@ -262,6 +362,7 @@ export type Database = {
           id?: string
           name?: string
           notes?: string | null
+          org_id?: string
           pay_model?: string | null
           slug?: string
           status?: string
@@ -272,11 +373,18 @@ export type Database = {
           updated_at?: string
           videos_required?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "brands_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       broll_shots: {
         Row: {
-          org_id: string
           beat: string
           channel_id: string | null
           clips_filmed: number
@@ -286,13 +394,13 @@ export type Database = {
           feature_id: string | null
           format_id: string | null
           id: string
+          org_id: string
           shoot_id: string
           sort_order: number
           status: string
           updated_at: string
         }
         Insert: {
-          org_id?: string
           beat: string
           channel_id?: string | null
           clips_filmed?: number
@@ -302,13 +410,13 @@ export type Database = {
           feature_id?: string | null
           format_id?: string | null
           id?: string
+          org_id?: string
           shoot_id: string
           sort_order?: number
           status?: string
           updated_at?: string
         }
         Update: {
-          org_id?: string
           beat?: string
           channel_id?: string | null
           clips_filmed?: number
@@ -318,6 +426,7 @@ export type Database = {
           feature_id?: string | null
           format_id?: string | null
           id?: string
+          org_id?: string
           shoot_id?: string
           sort_order?: number
           status?: string
@@ -325,38 +434,44 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "broll_shots_channel_id_fkey"
+            columns: ["org_id", "channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
             foreignKeyName: "broll_shots_feature_id_fkey"
-            columns: ["feature_id"]
+            columns: ["org_id", "feature_id"]
             isOneToOne: false
             referencedRelation: "product_features"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "broll_shots_format_id_fkey"
-            columns: ["format_id"]
+            columns: ["org_id", "format_id"]
             isOneToOne: false
             referencedRelation: "formats"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
-            foreignKeyName: "broll_shots_channel_id_fkey"
-            columns: ["channel_id"]
+            foreignKeyName: "broll_shots_org_id_fkey"
+            columns: ["org_id"]
             isOneToOne: false
-            referencedRelation: "channels"
+            referencedRelation: "orgs"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "broll_shots_shoot_id_fkey"
-            columns: ["shoot_id"]
+            columns: ["org_id", "shoot_id"]
             isOneToOne: false
             referencedRelation: "shoots"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
       channels: {
         Row: {
-          org_id: string
           active: boolean
           created_at: string
           created_by: string | null
@@ -365,12 +480,12 @@ export type Database = {
           folder_slug: string
           id: string
           name: string
+          org_id: string
           slot_values: Json
           slug: string
           updated_at: string
         }
         Insert: {
-          org_id?: string
           active?: boolean
           created_at?: string
           created_by?: string | null
@@ -379,12 +494,12 @@ export type Database = {
           folder_slug: string
           id?: string
           name: string
+          org_id?: string
           slot_values?: Json
           slug: string
           updated_at?: string
         }
         Update: {
-          org_id?: string
           active?: boolean
           created_at?: string
           created_by?: string | null
@@ -393,11 +508,20 @@ export type Database = {
           folder_slug?: string
           id?: string
           name?: string
+          org_id?: string
           slot_values?: Json
           slug?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "channels_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       connector_org_access: {
         Row: {
@@ -418,11 +542,25 @@ export type Database = {
           org_id?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "connector_org_access_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "connector_org_access_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cta_templates: {
         Row: {
-          org_id: string
           archived: boolean
           created_at: string
           created_by: string | null
@@ -430,6 +568,7 @@ export type Database = {
           id: string
           mode: string
           notes: string | null
+          org_id: string
           product_id: string | null
           script: string
           shoot_id: string | null
@@ -438,7 +577,6 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          org_id?: string
           archived?: boolean
           created_at?: string
           created_by?: string | null
@@ -446,6 +584,7 @@ export type Database = {
           id?: string
           mode: string
           notes?: string | null
+          org_id?: string
           product_id?: string | null
           script: string
           shoot_id?: string | null
@@ -454,7 +593,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          org_id?: string
           archived?: boolean
           created_at?: string
           created_by?: string | null
@@ -462,6 +600,7 @@ export type Database = {
           id?: string
           mode?: string
           notes?: string | null
+          org_id?: string
           product_id?: string | null
           script?: string
           shoot_id?: string | null
@@ -469,41 +608,63 @@ export type Database = {
           tags?: string[]
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cta_templates_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cta_templates_product_id_fkey"
+            columns: ["org_id", "product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "cta_templates_shoot_id_fkey"
+            columns: ["org_id", "shoot_id"]
+            isOneToOne: false
+            referencedRelation: "shoots"
+            referencedColumns: ["org_id", "id"]
+          },
+        ]
       }
       dropbox_connection: {
         Row: {
-          org_id: string
           account_email: string | null
           account_id: string
           account_name: string | null
           created_at: string
           created_by: string | null
           id: string
+          org_id: string
           refresh_token_enc: string
           root: string
           updated_at: string
         }
         Insert: {
-          org_id?: string
           account_email?: string | null
           account_id: string
           account_name?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
+          org_id?: string
           refresh_token_enc: string
           root?: string
           updated_at?: string
         }
         Update: {
-          org_id?: string
           account_email?: string | null
           account_id?: string
           account_name?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
+          org_id?: string
           refresh_token_enc?: string
           root?: string
           updated_at?: string
@@ -516,15 +677,21 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "dropbox_connection_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: true
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
         ]
       }
       formats: {
         Row: {
-          org_id: string
           archived: boolean
           beat_broll: Json
-          beat_display: Json
           beat_descriptions: Json
+          beat_display: Json
           beat_examples: Json
           beats: string[]
           code: string
@@ -535,16 +702,16 @@ export type Database = {
           id: string
           kind: string
           name: string
+          org_id: string
           source_url: string | null
           target_seconds: number | null
           updated_at: string
         }
         Insert: {
-          org_id?: string
           archived?: boolean
           beat_broll?: Json
-          beat_display?: Json
           beat_descriptions?: Json
+          beat_display?: Json
           beat_examples?: Json
           beats?: string[]
           code: string
@@ -555,16 +722,16 @@ export type Database = {
           id?: string
           kind?: string
           name: string
+          org_id?: string
           source_url?: string | null
           target_seconds?: number | null
           updated_at?: string
         }
         Update: {
-          org_id?: string
           archived?: boolean
           beat_broll?: Json
-          beat_display?: Json
           beat_descriptions?: Json
+          beat_display?: Json
           beat_examples?: Json
           beats?: string[]
           code?: string
@@ -575,15 +742,23 @@ export type Database = {
           id?: string
           kind?: string
           name?: string
+          org_id?: string
           source_url?: string | null
           target_seconds?: number | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "formats_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       hook_templates: {
         Row: {
-          org_id: string
           angle_id: string | null
           archived: boolean
           caption: string | null
@@ -593,6 +768,7 @@ export type Database = {
           filming_notes: string | null
           id: string
           notes: string | null
+          org_id: string
           product_id: string | null
           script: string
           shoot_id: string | null
@@ -601,7 +777,6 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          org_id?: string
           angle_id?: string | null
           archived?: boolean
           caption?: string | null
@@ -611,6 +786,7 @@ export type Database = {
           filming_notes?: string | null
           id?: string
           notes?: string | null
+          org_id?: string
           product_id?: string | null
           script: string
           shoot_id?: string | null
@@ -619,7 +795,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          org_id?: string
           angle_id?: string | null
           archived?: boolean
           caption?: string | null
@@ -629,6 +804,7 @@ export type Database = {
           filming_notes?: string | null
           id?: string
           notes?: string | null
+          org_id?: string
           product_id?: string | null
           script?: string
           shoot_id?: string | null
@@ -639,59 +815,153 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "hook_templates_angle_id_fkey"
-            columns: ["angle_id"]
+            columns: ["org_id", "angle_id"]
             isOneToOne: false
             referencedRelation: "angles"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "hook_templates_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "hook_templates_product_id_fkey"
-            columns: ["product_id"]
+            columns: ["org_id", "product_id"]
             isOneToOne: false
             referencedRelation: "products"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "hook_templates_shoot_id_fkey"
-            columns: ["shoot_id"]
+            columns: ["org_id", "shoot_id"]
             isOneToOne: false
             referencedRelation: "shoots"
+            referencedColumns: ["org_id", "id"]
+          },
+        ]
+      }
+      license_device_codes: {
+        Row: {
+          approved_at: string | null
+          created_at: string
+          device_code_hash: string
+          expires_at: string
+          id: string
+          last_polled_at: string | null
+          org_id: string | null
+          status: string
+          user_code: string
+          user_id: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          created_at?: string
+          device_code_hash: string
+          expires_at?: string
+          id?: string
+          last_polled_at?: string | null
+          org_id?: string | null
+          status?: string
+          user_code: string
+          user_id?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          created_at?: string
+          device_code_hash?: string
+          expires_at?: string
+          id?: string
+          last_polled_at?: string | null
+          org_id?: string | null
+          status?: string
+          user_code?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "license_device_codes_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      org_chat_reads: {
+        Row: {
+          last_read_at: string
+          org_id: string
+          user_id: string
+        }
+        Insert: {
+          last_read_at?: string
+          org_id: string
+          user_id: string
+        }
+        Update: {
+          last_read_at?: string
+          org_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_chat_reads_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "org_chat_reads_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
       }
       org_invites: {
         Row: {
-          emailed_at: string | null
           channel_ids: string[]
           created_at: string
           created_by: string | null
           display_name: string | null
           email: string
+          emailed_at: string | null
           org_id: string
           role: string
         }
         Insert: {
-          emailed_at?: string | null
           channel_ids?: string[]
           created_at?: string
           created_by?: string | null
           display_name?: string | null
           email: string
+          emailed_at?: string | null
           org_id?: string
           role?: string
         }
         Update: {
-          emailed_at?: string | null
           channel_ids?: string[]
           created_at?: string
           created_by?: string | null
           display_name?: string | null
           email?: string
+          emailed_at?: string | null
           org_id?: string
           role?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "org_invites_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "org_invites_org_id_fkey"
             columns: ["org_id"]
@@ -739,6 +1009,73 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      org_messages: {
+        Row: {
+          author_id: string | null
+          body: string
+          created_at: string
+          deleted_at: string | null
+          edited_at: string | null
+          id: string
+          kind: string
+          mentions: string[]
+          org_id: string
+          ref: Json | null
+          reply_to: string | null
+          via: string | null
+        }
+        Insert: {
+          author_id?: string | null
+          body?: string
+          created_at?: string
+          deleted_at?: string | null
+          edited_at?: string | null
+          id?: string
+          kind: string
+          mentions?: string[]
+          org_id?: string
+          ref?: Json | null
+          reply_to?: string | null
+          via?: string | null
+        }
+        Update: {
+          author_id?: string | null
+          body?: string
+          created_at?: string
+          deleted_at?: string | null
+          edited_at?: string | null
+          id?: string
+          kind?: string
+          mentions?: string[]
+          org_id?: string
+          ref?: Json | null
+          reply_to?: string | null
+          via?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_messages_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "org_messages_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "org_messages_reply_to_fkey"
+            columns: ["reply_to"]
+            isOneToOne: false
+            referencedRelation: "org_messages"
             referencedColumns: ["id"]
           },
         ]
@@ -796,54 +1133,15 @@ export type Database = {
           },
         ]
       }
-      license_device_codes: {
-        Row: {
-          approved_at: string | null
-          created_at: string
-          device_code_hash: string
-          expires_at: string
-          id: string
-          last_polled_at: string | null
-          org_id: string | null
-          status: string
-          user_code: string
-          user_id: string | null
-        }
-        Insert: {
-          approved_at?: string | null
-          created_at?: string
-          device_code_hash: string
-          expires_at?: string
-          id?: string
-          last_polled_at?: string | null
-          org_id?: string | null
-          status?: string
-          user_code: string
-          user_id?: string | null
-        }
-        Update: {
-          approved_at?: string | null
-          created_at?: string
-          device_code_hash?: string
-          expires_at?: string
-          id?: string
-          last_polled_at?: string | null
-          org_id?: string | null
-          status?: string
-          user_code?: string
-          user_id?: string | null
-        }
-        Relationships: []
-      }
       orgs: {
         Row: {
-          klip_signed_out_at: string | null
           billing_exempt: boolean
           created_at: string
           created_by: string | null
+          id: string
           klip_payment_intent_id: string | null
           klip_purchased_at: string | null
-          id: string
+          klip_signed_out_at: string | null
           logo_url: string | null
           name: string
           next_shoot_number: number
@@ -851,13 +1149,13 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          klip_signed_out_at?: string | null
           billing_exempt?: boolean
           created_at?: string
           created_by?: string | null
+          id?: string
           klip_payment_intent_id?: string | null
           klip_purchased_at?: string | null
-          id?: string
+          klip_signed_out_at?: string | null
           logo_url?: string | null
           name: string
           next_shoot_number?: number
@@ -865,13 +1163,13 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          klip_signed_out_at?: string | null
           billing_exempt?: boolean
           created_at?: string
           created_by?: string | null
+          id?: string
           klip_payment_intent_id?: string | null
           klip_purchased_at?: string | null
-          id?: string
+          klip_signed_out_at?: string | null
           logo_url?: string | null
           name?: string
           next_shoot_number?: number
@@ -879,110 +1177,138 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
-
+          {
+            foreignKeyName: "orgs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       people: {
         Row: {
-          user_id: string | null
-          org_id: string
           active: boolean
           created_at: string
           created_by: string | null
           id: string
           name: string
+          org_id: string
           slug: string
           updated_at: string
+          user_id: string | null
         }
         Insert: {
-          user_id?: string | null
-          org_id?: string
           active?: boolean
           created_at?: string
           created_by?: string | null
           id?: string
           name: string
+          org_id?: string
           slug: string
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
-          user_id?: string | null
-          org_id?: string
           active?: boolean
           created_at?: string
           created_by?: string | null
           id?: string
           name?: string
+          org_id?: string
           slug?: string
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: [
-        ]      }
+          {
+            foreignKeyName: "people_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "people_org_member_fkey"
+            columns: ["org_id", "user_id"]
+            isOneToOne: true
+            referencedRelation: "org_members"
+            referencedColumns: ["org_id", "user_id"]
+          },
+        ]
+      }
       person_channels: {
         Row: {
-          org_id: string
           channel_id: string
+          org_id: string
           person_id: string
         }
         Insert: {
-          org_id?: string
           channel_id: string
+          org_id?: string
           person_id: string
         }
         Update: {
-          org_id?: string
           channel_id?: string
+          org_id?: string
           person_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "person_channels_channel_id_fkey"
-            columns: ["channel_id"]
+            columns: ["org_id", "channel_id"]
             isOneToOne: false
             referencedRelation: "channels"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "person_channels_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "person_channels_person_id_fkey"
-            columns: ["person_id"]
+            columns: ["org_id", "person_id"]
             isOneToOne: false
             referencedRelation: "people"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
       product_features: {
         Row: {
-          org_id: string
           created_at: string
           created_by: string | null
           description: string | null
           id: string
           name: string
+          org_id: string
           product_id: string
           slug: string
           sort_order: number
           updated_at: string
         }
         Insert: {
-          org_id?: string
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
           name: string
+          org_id?: string
           product_id: string
           slug?: string
           sort_order?: number
           updated_at?: string
         }
         Update: {
-          org_id?: string
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
           name?: string
+          org_id?: string
           product_id?: string
           slug?: string
           sort_order?: number
@@ -997,17 +1323,23 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "product_features_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "product_features_product_id_fkey"
-            columns: ["product_id"]
+            columns: ["org_id", "product_id"]
             isOneToOne: false
             referencedRelation: "products"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
       products: {
         Row: {
-          org_id: string
           brand_id: string
           claims_allowed: string | null
           claims_forbidden: string | null
@@ -1016,11 +1348,11 @@ export type Database = {
           id: string
           name: string
           notes: string | null
+          org_id: string
           slug: string
           updated_at: string
         }
         Insert: {
-          org_id?: string
           brand_id: string
           claims_allowed?: string | null
           claims_forbidden?: string | null
@@ -1029,11 +1361,11 @@ export type Database = {
           id?: string
           name: string
           notes?: string | null
+          org_id?: string
           slug: string
           updated_at?: string
         }
         Update: {
-          org_id?: string
           brand_id?: string
           claims_allowed?: string | null
           claims_forbidden?: string | null
@@ -1042,15 +1374,23 @@ export type Database = {
           id?: string
           name?: string
           notes?: string | null
+          org_id?: string
           slug?: string
           updated_at?: string
         }
         Relationships: [
           {
             foreignKeyName: "products_brand_id_fkey"
-            columns: ["brand_id"]
+            columns: ["org_id", "brand_id"]
             isOneToOne: false
             referencedRelation: "brands"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "products_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
             referencedColumns: ["id"]
           },
         ]
@@ -1086,11 +1426,21 @@ export type Database = {
           photo_url?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_active_org_id_fkey"
+            columns: ["active_org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       settings: {
         Row: {
-          org_id: string
+          ai_preamble: string | null
+          channel_slots: Json
+          chat_events: Json
           clip_aspect_height: number
           clip_aspect_width: number
           clip_max_fps: number
@@ -1101,23 +1451,24 @@ export type Database = {
           created_by: string | null
           default_submission_rate: number
           general_broll: Json
-          ai_preamble: string | null
-          channel_slots: Json
-          org_profile: Json
-          script_rules: Json
           id: string
           minutes_per_cta_sync: number
           minutes_per_cta_vo: number
           minutes_per_hook: number
           minutes_per_vo: number
+          org_id: string
+          org_profile: Json
           productive_hours_per_day: number
+          script_rules: Json
           updated_at: string
           vo_max_share: number
           vo_min_share: number
           words_per_second: number
         }
         Insert: {
-          org_id?: string
+          ai_preamble?: string | null
+          channel_slots?: Json
+          chat_events?: Json
           clip_aspect_height?: number
           clip_aspect_width?: number
           clip_max_fps?: number
@@ -1128,23 +1479,24 @@ export type Database = {
           created_by?: string | null
           default_submission_rate?: number
           general_broll?: Json
-          ai_preamble?: string | null
-          channel_slots?: Json
-          org_profile?: Json
-          script_rules?: Json
           id?: string
           minutes_per_cta_sync?: number
           minutes_per_cta_vo?: number
           minutes_per_hook?: number
           minutes_per_vo?: number
+          org_id?: string
+          org_profile?: Json
           productive_hours_per_day?: number
+          script_rules?: Json
           updated_at?: string
           vo_max_share?: number
           vo_min_share?: number
           words_per_second?: number
         }
         Update: {
-          org_id?: string
+          ai_preamble?: string | null
+          channel_slots?: Json
+          chat_events?: Json
           clip_aspect_height?: number
           clip_aspect_width?: number
           clip_max_fps?: number
@@ -1155,63 +1507,77 @@ export type Database = {
           created_by?: string | null
           default_submission_rate?: number
           general_broll?: Json
-          ai_preamble?: string | null
-          channel_slots?: Json
-          org_profile?: Json
-          script_rules?: Json
           id?: string
           minutes_per_cta_sync?: number
           minutes_per_cta_vo?: number
           minutes_per_hook?: number
           minutes_per_vo?: number
+          org_id?: string
+          org_profile?: Json
           productive_hours_per_day?: number
+          script_rules?: Json
           updated_at?: string
           vo_max_share?: number
           vo_min_share?: number
           words_per_second?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "settings_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: true
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       shoot_channels: {
         Row: {
-          org_id: string
           channel_id: string
+          org_id: string
           shoot_id: string
         }
         Insert: {
-          org_id?: string
           channel_id: string
+          org_id?: string
           shoot_id: string
         }
         Update: {
-          org_id?: string
           channel_id?: string
+          org_id?: string
           shoot_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "shoot_channels_channel_id_fkey"
-            columns: ["channel_id"]
+            columns: ["org_id", "channel_id"]
             isOneToOne: false
             referencedRelation: "channels"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "shoot_channels_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shoot_channels_shoot_id_fkey"
-            columns: ["shoot_id"]
+            columns: ["org_id", "shoot_id"]
             isOneToOne: false
             referencedRelation: "shoots"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
       shoot_clips: {
         Row: {
-          org_id: string
           created_at: string
           created_by: string | null
           file_name: string
           id: string
+          org_id: string
           path: string | null
           shoot_id: string
           size: number
@@ -1220,11 +1586,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          org_id?: string
           created_at?: string
           created_by?: string | null
           file_name: string
           id?: string
+          org_id?: string
           path?: string | null
           shoot_id: string
           size: number
@@ -1233,11 +1599,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          org_id?: string
           created_at?: string
           created_by?: string | null
           file_name?: string
           id?: string
+          org_id?: string
           path?: string | null
           shoot_id?: string
           size?: number
@@ -1254,50 +1620,108 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "shoot_clips_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "shoot_clips_shoot_id_fkey"
-            columns: ["shoot_id"]
+            columns: ["org_id", "shoot_id"]
             isOneToOne: false
             referencedRelation: "shoots"
+            referencedColumns: ["org_id", "id"]
+          },
+        ]
+      }
+      shoot_element_overrides: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dropped: boolean
+          element_key: string
+          element_kind: string
+          org_id: string
+          shoot_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dropped: boolean
+          element_key: string
+          element_kind: string
+          org_id?: string
+          shoot_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dropped?: boolean
+          element_key?: string
+          element_kind?: string
+          org_id?: string
+          shoot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shoot_element_overrides_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shoot_element_overrides_shoot_id_fkey"
+            columns: ["org_id", "shoot_id"]
+            isOneToOne: false
+            referencedRelation: "shoots"
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
       shoot_formats: {
         Row: {
-          org_id: string
           format_id: string
+          org_id: string
           shoot_id: string
         }
         Insert: {
-          org_id?: string
           format_id: string
+          org_id?: string
           shoot_id: string
         }
         Update: {
-          org_id?: string
           format_id?: string
+          org_id?: string
           shoot_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "shoot_formats_format_id_fkey"
-            columns: ["format_id"]
+            columns: ["org_id", "format_id"]
             isOneToOne: false
             referencedRelation: "formats"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "shoot_formats_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shoot_formats_shoot_id_fkey"
-            columns: ["shoot_id"]
+            columns: ["org_id", "shoot_id"]
             isOneToOne: false
             referencedRelation: "shoots"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
       shoot_items: {
         Row: {
-          org_id: string
           body_template_id: string | null
           caption: string | null
           channel_id: string | null
@@ -1310,6 +1734,7 @@ export type Database = {
           id: string
           kind: string
           location: string | null
+          org_id: string
           person_id: string
           rating: string | null
           script_override: Json | null
@@ -1321,7 +1746,6 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          org_id?: string
           body_template_id?: string | null
           caption?: string | null
           channel_id?: string | null
@@ -1334,6 +1758,7 @@ export type Database = {
           id?: string
           kind: string
           location?: string | null
+          org_id?: string
           person_id: string
           rating?: string | null
           script_override?: Json | null
@@ -1345,7 +1770,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          org_id?: string
           body_template_id?: string | null
           caption?: string | null
           channel_id?: string | null
@@ -1358,6 +1782,7 @@ export type Database = {
           id?: string
           kind?: string
           location?: string | null
+          org_id?: string
           person_id?: string
           rating?: string | null
           script_override?: Json | null
@@ -1371,38 +1796,45 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "shoot_items_body_template_id_fkey"
-            columns: ["body_template_id"]
+            columns: ["org_id", "body_template_id"]
             isOneToOne: false
             referencedRelation: "body_templates"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "shoot_items_channel_id_fkey"
-            columns: ["channel_id"]
+            columns: ["org_id", "channel_id"]
             isOneToOne: false
             referencedRelation: "channels"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "shoot_items_cta_template_id_fkey"
-            columns: ["cta_template_id"]
+            columns: ["org_id", "cta_template_id"]
             isOneToOne: false
             referencedRelation: "cta_templates"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "shoot_items_hook_template_id_fkey"
-            columns: ["hook_template_id"]
+            columns: ["org_id", "hook_template_id"]
             isOneToOne: false
             referencedRelation: "hook_templates"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "shoot_items_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "shoot_items_shoot_id_fkey"
-            columns: ["shoot_id"]
+            columns: ["org_id", "shoot_id"]
             isOneToOne: false
             referencedRelation: "shoots"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "shoot_items_shoot_id_person_id_fkey"
@@ -1413,115 +1845,33 @@ export type Database = {
           },
         ]
       }
-      batch_scores: {
-        Row: {
-          org_id: string
-          created_at: string
-          created_by: string | null
-          element_key: string
-          element_kind: string
-          notes: string | null
-          score: string
-          shortlist_id: string
-          updated_at: string
-        }
-        Insert: {
-          org_id?: string
-          created_at?: string
-          created_by?: string | null
-          element_key: string
-          element_kind: string
-          notes?: string | null
-          score: string
-          shortlist_id: string
-          updated_at?: string
-        }
-        Update: {
-          org_id?: string
-          created_at?: string
-          created_by?: string | null
-          element_key?: string
-          element_kind?: string
-          notes?: string | null
-          score?: string
-          shortlist_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "batch_scores_shortlist_id_fkey"
-            columns: ["shortlist_id"]
-            isOneToOne: false
-            referencedRelation: "shoot_shortlists"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      shoot_element_overrides: {
-        Row: {
-          org_id: string
-          created_at: string
-          created_by: string | null
-          dropped: boolean
-          element_key: string
-          element_kind: string
-          shoot_id: string
-        }
-        Insert: {
-          org_id?: string
-          created_at?: string
-          created_by?: string | null
-          dropped: boolean
-          element_key: string
-          element_kind: string
-          shoot_id: string
-        }
-        Update: {
-          org_id?: string
-          created_at?: string
-          created_by?: string | null
-          dropped?: boolean
-          element_key?: string
-          element_kind?: string
-          shoot_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "shoot_element_overrides_shoot_id_fkey"
-            columns: ["shoot_id"]
-            isOneToOne: false
-            referencedRelation: "shoots"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       shoot_manifests: {
         Row: {
-          org_id: string
           created_at: string
           created_by: string | null
           data: Json
           id: string
+          org_id: string
           shoot_id: string
           updated_at: string
           version: number
         }
         Insert: {
-          org_id?: string
           created_at?: string
           created_by?: string | null
           data: Json
           id?: string
+          org_id?: string
           shoot_id: string
           updated_at?: string
           version: number
         }
         Update: {
-          org_id?: string
           created_at?: string
           created_by?: string | null
           data?: Json
           id?: string
+          org_id?: string
           shoot_id?: string
           updated_at?: string
           version?: number
@@ -1535,11 +1885,18 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "shoot_manifests_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "shoot_manifests_shoot_id_fkey"
-            columns: ["shoot_id"]
+            columns: ["org_id", "shoot_id"]
             isOneToOne: false
             referencedRelation: "shoots"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
@@ -1561,31 +1918,38 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "shoot_people_person_id_fkey"
-            columns: ["person_id"]
+            foreignKeyName: "shoot_people_org_id_fkey"
+            columns: ["org_id"]
             isOneToOne: false
-            referencedRelation: "people"
+            referencedRelation: "orgs"
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "shoot_people_person_id_fkey"
+            columns: ["org_id", "person_id"]
+            isOneToOne: false
+            referencedRelation: "people"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
             foreignKeyName: "shoot_people_shoot_id_fkey"
-            columns: ["shoot_id"]
+            columns: ["org_id", "shoot_id"]
             isOneToOne: false
             referencedRelation: "shoots"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
       shoot_shortlists: {
         Row: {
-          org_id: string
           code: string
           created_at: string
           created_by: string | null
-          id: string
           entry_ids: string[]
           exploit_share: number | null
+          id: string
           manifest_version: number | null
+          org_id: string
           shoot_id: string
           size: number
           status: string
@@ -1593,14 +1957,14 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          org_id?: string
           code: string
           created_at?: string
           created_by?: string | null
-          id?: string
           entry_ids: string[]
           exploit_share?: number | null
+          id?: string
           manifest_version?: number | null
+          org_id?: string
           shoot_id: string
           size: number
           status?: string
@@ -1608,14 +1972,14 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          org_id?: string
           code?: string
           created_at?: string
           created_by?: string | null
-          id?: string
           entry_ids?: string[]
           exploit_share?: number | null
+          id?: string
           manifest_version?: number | null
+          org_id?: string
           shoot_id?: string
           size?: number
           status?: string
@@ -1631,17 +1995,23 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "shoot_shortlists_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "shoot_shortlists_shoot_id_fkey"
-            columns: ["shoot_id"]
+            columns: ["org_id", "shoot_id"]
             isOneToOne: false
             referencedRelation: "shoots"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
       shoots: {
         Row: {
-          org_id: string
           broll_variations: number
           code: string
           created_at: string
@@ -1654,6 +2024,7 @@ export type Database = {
           kit: string
           location_notes: string | null
           notes: string | null
+          org_id: string
           product_id: string
           reverted_at: string | null
           runway_target: number
@@ -1672,7 +2043,6 @@ export type Database = {
           wording_variations: number
         }
         Insert: {
-          org_id?: string
           broll_variations?: number
           code?: string
           created_at?: string
@@ -1685,6 +2055,7 @@ export type Database = {
           kit?: string
           location_notes?: string | null
           notes?: string | null
+          org_id?: string
           product_id: string
           reverted_at?: string | null
           runway_target?: number
@@ -1703,7 +2074,6 @@ export type Database = {
           wording_variations?: number
         }
         Update: {
-          org_id?: string
           broll_variations?: number
           code?: string
           created_at?: string
@@ -1716,6 +2086,7 @@ export type Database = {
           kit?: string
           location_notes?: string | null
           notes?: string | null
+          org_id?: string
           product_id?: string
           reverted_at?: string | null
           runway_target?: number
@@ -1735,10 +2106,24 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "shoots_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "shoots_product_id_fkey"
-            columns: ["product_id"]
+            columns: ["org_id", "product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "shoots_stale_by_fkey"
+            columns: ["stale_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -1752,7 +2137,6 @@ export type Database = {
       }
       treatments: {
         Row: {
-          org_id: string
           active: boolean
           archived: boolean
           component: string
@@ -1763,6 +2147,7 @@ export type Database = {
           kind: string
           name: string
           needs: string[]
+          org_id: string
           parts: string[]
           placement: string
           settings: Json
@@ -1772,7 +2157,6 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          org_id?: string
           active?: boolean
           archived?: boolean
           component: string
@@ -1783,6 +2167,7 @@ export type Database = {
           kind: string
           name: string
           needs?: string[]
+          org_id?: string
           parts?: string[]
           placement: string
           settings?: Json
@@ -1792,7 +2177,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          org_id?: string
           active?: boolean
           archived?: boolean
           component?: string
@@ -1803,6 +2187,7 @@ export type Database = {
           kind?: string
           name?: string
           needs?: string[]
+          org_id?: string
           parts?: string[]
           placement?: string
           settings?: Json
@@ -1811,112 +2196,141 @@ export type Database = {
           system?: boolean
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "treatments_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       vo_cast: {
         Row: {
-          org_id: string
           body_template_id: string
           created_at: string
+          org_id: string
           person_id: string
         }
         Insert: {
-          org_id?: string
           body_template_id: string
           created_at?: string
+          org_id?: string
           person_id: string
         }
         Update: {
-          org_id?: string
           body_template_id?: string
           created_at?: string
+          org_id?: string
           person_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "vo_cast_body_template_id_fkey"
-            columns: ["body_template_id"]
+            columns: ["org_id", "body_template_id"]
             isOneToOne: false
             referencedRelation: "body_templates"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "vo_cast_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "vo_cast_person_id_fkey"
-            columns: ["person_id"]
+            columns: ["org_id", "person_id"]
             isOneToOne: false
             referencedRelation: "people"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
       vo_cta_links: {
         Row: {
-          org_id: string
           body_template_id: string
           created_at: string
           cta_template_id: string
+          org_id: string
         }
         Insert: {
-          org_id?: string
           body_template_id: string
           created_at?: string
           cta_template_id: string
+          org_id?: string
         }
         Update: {
-          org_id?: string
           body_template_id?: string
           created_at?: string
           cta_template_id?: string
+          org_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "vo_cta_links_body_template_id_fkey"
-            columns: ["body_template_id"]
+            columns: ["org_id", "body_template_id"]
             isOneToOne: false
             referencedRelation: "body_templates"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "vo_cta_links_cta_template_id_fkey"
-            columns: ["cta_template_id"]
+            columns: ["org_id", "cta_template_id"]
             isOneToOne: false
             referencedRelation: "cta_templates"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "vo_cta_links_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
             referencedColumns: ["id"]
           },
         ]
       }
       vo_hook_links: {
         Row: {
-          org_id: string
           body_template_id: string
           created_at: string
           hook_template_id: string
+          org_id: string
         }
         Insert: {
-          org_id?: string
           body_template_id: string
           created_at?: string
           hook_template_id: string
+          org_id?: string
         }
         Update: {
-          org_id?: string
           body_template_id?: string
           created_at?: string
           hook_template_id?: string
+          org_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "vo_hook_links_body_template_id_fkey"
-            columns: ["body_template_id"]
+            columns: ["org_id", "body_template_id"]
             isOneToOne: false
             referencedRelation: "body_templates"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "vo_hook_links_hook_template_id_fkey"
-            columns: ["hook_template_id"]
+            columns: ["org_id", "hook_template_id"]
             isOneToOne: false
             referencedRelation: "hook_templates"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "vo_hook_links_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
             referencedColumns: ["id"]
           },
         ]
@@ -1933,7 +2347,13 @@ export type Database = {
       }
     }
     Functions: {
-      create_org: { Args: { p_name: string; p_profile?: Json; p_slug: string }; Returns: string }
+      chat_unread_count: { Args: never; Returns: number }
+      create_org: {
+        Args: { p_name: string; p_profile?: Json; p_slug: string }
+        Returns: string
+      }
+      custom_access_token_hook: { Args: { event: Json }; Returns: Json }
+      mark_chat_read: { Args: never; Returns: undefined }
       my_org_summaries: {
         Args: never
         Returns: {
@@ -1941,34 +2361,35 @@ export type Database = {
           admins: number
           billing_exempt: boolean
           brands: number
-          cancel_at_period_end: boolean | null
+          cancel_at_period_end: boolean
           channels: number
+          chat_unread: number
           ctas: number
-          current_period_end: string | null
+          current_period_end: string
           draft_shoots: number
           faces: Json
           hooks: number
           invites: number
-          last_shoot_at: string | null
+          last_shoot_at: string
           live_shoots: number
           members: number
           org_id: string
           products: number
           shoots_this_month: number
-          subscription_status: string | null
-          trial_end: string | null
+          subscription_status: string
+          trial_end: string
         }[]
       }
       my_orgs: {
         Args: never
         Returns: {
-          klip_access: string
-          logo_url: string
-          display_name: string | null
+          display_name: string
+          entitled: boolean
           has_chosen: boolean
           id: string
-          entitled: boolean
           is_current: boolean
+          klip_access: string
+          logo_url: string
           name: string
           role: string
           slug: string
@@ -1978,28 +2399,32 @@ export type Database = {
         Args: { p_org_id: string }
         Returns: {
           can_use_klip: boolean
-          klip_access: string
           entitled: boolean
-          trial_end: string | null
+          klip_access: string
+          trial_end: string
         }[]
       }
       org_signup_open: { Args: never; Returns: boolean }
-      set_active_org: { Args: { p_org_id: string }; Returns: undefined }
-      update_my_profile: {
-        Args: { p_display_name: string; p_photo_url: string }
-        Returns: undefined
-      }
-      sign_out_klip_everywhere: { Args: never; Returns: string }
-      set_connector_orgs: {
-        Args: { p_client_id: string; p_org_ids: string[] }
-        Returns: undefined
-      }
-      set_channel_members: {
-        Args: { p_channel_id: string; p_user_ids: string[] }
+      post_ai_drafts_event: {
+        Args: { p_count: number; p_kind: string }
         Returns: undefined
       }
       renumber_shoot_items: { Args: { p_shoot_id: string }; Returns: undefined }
       revert_shoot: { Args: { p_shoot_id: string }; Returns: undefined }
+      set_active_org: { Args: { p_org_id: string }; Returns: undefined }
+      set_channel_members: {
+        Args: { p_channel_id: string; p_user_ids: string[] }
+        Returns: undefined
+      }
+      set_connector_orgs: {
+        Args: { p_client_id: string; p_org_ids: string[] }
+        Returns: undefined
+      }
+      sign_out_klip_everywhere: { Args: never; Returns: string }
+      update_my_profile: {
+        Args: { p_display_name: string; p_photo_url: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never

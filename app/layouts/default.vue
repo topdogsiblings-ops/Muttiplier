@@ -6,7 +6,24 @@ import type { NavigationMenuItem } from '@nuxt/ui'
 const { isAdmin } = useAccess()
 const route = useRoute()
 
+// the organisation's chat: one live subscription for the whole app, and the unread count on its button
+const { currentOrg } = useOrg()
+const chat = useChat()
+let chatChannel: ReturnType<typeof chat.subscribe> | null = null
+onMounted(() => {
+  if (!currentOrg.value) return
+  chat.refreshUnread().catch(() => {})
+  chatChannel = chat.subscribe(currentOrg.value.id, () => {
+    if (route.path === '/chat') chat.markRead().catch(() => {})
+    else chat.unread.value++
+  })
+})
+onBeforeUnmount(() => {
+  if (chatChannel) useSupabaseClient().removeChannel(chatChannel)
+})
+
 const items = computed<NavigationMenuItem[]>(() => [
+  { label: 'Chat', icon: 'i-lucide-messages-square', to: '/chat', ...(chat.unread.value ? { badge: { label: chat.unread.value > 99 ? '99+' : String(chat.unread.value), color: 'primary' as const, variant: 'solid' as const } } : {}) },
   { label: 'Library', icon: 'i-lucide-library', to: '/library' },
   { label: 'Planner', icon: 'i-lucide-clapperboard', to: '/shoots', active: route.path.startsWith('/shoots') },
   { label: 'Brands', icon: 'i-lucide-store', to: '/brands', active: route.path.startsWith('/brands') },

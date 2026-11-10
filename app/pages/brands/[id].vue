@@ -73,6 +73,12 @@ const product = reactive({
   features: [] as { id: string, name: string, description: string }[]
 })
 const requestProductOpen = useGuardedClose(productOpen, product)
+
+// a product's own link (?product=<id>, e.g. shared in chat) opens it
+watch(() => [route.query.product, products.value.length] as const, ([id]) => {
+  const row = products.value.find(entry => entry.id === id)
+  if (row && !productOpen.value) editProduct(row)
+}, { immediate: true })
 watch(() => product.name, (name) => {
   if (!product.id) product.slug = slugify(name)
 })
@@ -163,6 +169,9 @@ async function saveProduct() {
         </template>
         <template #trailing>
           <UBadge :label="brand.status" :color="BRAND_STATUS_COLORS[brand.status]" variant="subtle" class="capitalize" />
+        </template>
+        <template #right>
+          <ShareToChat :share="{ type: 'brand', id: brand.id, title: brand.name, preview: brand.notes || undefined, path: `/brands/${brand.id}` }" />
         </template>
       </UDashboardNavbar>
     </template>

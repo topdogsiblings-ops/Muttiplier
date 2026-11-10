@@ -20,6 +20,13 @@ async function loadCounts() {
 run(loadCounts)
 
 const list = computed(() => formatsLib.visible())
+
+// a link to one format (e.g. shared in chat) opens it
+const route = useRoute()
+watch(() => [formatsLib.rows.value.length, route.query.open, !!formatEditor.value], () => {
+  const row = formatsLib.rows.value.find(entry => entry.id === route.query.open)
+  if (row && formatEditor.value) formatEditor.value.edit(row)
+}, { immediate: true })
 const page = computed(() => formatsLib.paginate(list.value))
 
 async function onSaved() {
@@ -90,6 +97,7 @@ async function setArchived(row: Row<'formats'>, archived: boolean) {
           class="shrink-0"
         />
         <LibraryRowActions
+          :share="{ type: 'format', id: format.id, title: `${format.code} · ${format.name}`, preview: format.description ?? undefined, path: `/library?tab=formats&open=${format.id}` }"
           noun="format"
           :archived="format.archived"
           duplicable

@@ -1,7 +1,11 @@
 <script setup lang="ts">
-// Duplicate / archive / restore for a Library row. Archiving asks for confirmation first;
-// restoring doesn't, since it's harmless.
+import type { ChatShare } from '~/composables/useChat'
+
+// Share to chat / duplicate / archive / restore for a Library row. Archiving asks for confirmation
+// first; restoring doesn't, since it's harmless.
 const props = defineProps<{
+  /** what to post when it's shared to the organisation's chat */
+  share?: ChatShare
   archived: boolean
   duplicable?: boolean
   /** what the row is, for the confirmation text, e.g. "hook" */
@@ -24,6 +28,7 @@ function confirmArchive() {
 
 <template>
   <div class="flex shrink-0 items-center" @click.stop>
+    <ShareToChat v-if="props.share && !props.archived" :share="props.share" />
     <UTooltip v-if="props.duplicable" text="Duplicate">
       <UButton icon="i-lucide-copy" color="neutral" variant="ghost" aria-label="Duplicate" @click="emit('duplicate')" />
     </UTooltip>

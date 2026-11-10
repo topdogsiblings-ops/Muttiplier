@@ -42,6 +42,13 @@ const form = reactive({
 })
 const requestOpen = useGuardedClose(open, form)
 
+// a link to one hook (e.g. shared in chat) opens it
+const route = useRoute()
+watch(() => [library.rows.value.length, route.query.open], () => {
+  const row = library.rows.value.find(entry => entry.id === route.query.open)
+  if (row && !open.value) edit(row)
+}, { immediate: true })
+
 function edit(row?: Partial<Row<'hook_templates'>>, duplicate = false) {
   Object.assign(form, {
     id: duplicate ? '' : row?.id ?? '',
@@ -126,6 +133,7 @@ async function save() {
             <CreatedBy :by="row.created_by" :at="row.created_at" />          </div>
         </div>
         <LibraryRowActions
+          :share="{ type: 'hook', id: row.id, title: hookTypeName(row.angle_id) ? `Hook · ${hookTypeName(row.angle_id)}` : 'Hook', preview: row.script, path: `/library?tab=hooks&open=${row.id}` }"
           noun="hook"
           :archived="row.archived"
           duplicable
